@@ -50,6 +50,7 @@ from pydantic import (AwareDatetime, BaseModel, ConfigDict, Discriminator, Field
                       field_validator, model_validator)
 
 from turbotab.core.designs import DesignKey
+from turbotab.core.exit_target import toward
 
 try:  # POSIX only; on Windows the in-process lock is the whole of it.
     import fcntl
@@ -2484,7 +2485,10 @@ class Refusal(Exception):
     """The "refuse" rung: HTTP 409 ``{error: {code, message, exits}}``, never recorded.
 
     ``exits`` are ways forward, each ``{label, decision|None}``; a decision may
-    be given as a model or a dict and is stored as its JSON form.
+    be given as a model or a dict and is stored as its JSON form. A way forward that names no
+    decision names the card that opens it where it can (``target``, read by
+    ``exit_target.exit_target``: its quest stage and line), and is served without one where it
+    opens nothing.
     """
 
     def __init__(self, code: str, message: str, exits: Iterable[Mapping[str, Any]] = ()):
@@ -2501,10 +2505,12 @@ class Refusal(Exception):
 
 
 def _normalize_exit(item: Mapping[str, Any]) -> dict[str, Any]:
+    from turbotab.core.exit_target import with_target
+
     decision = item.get("decision")
     if decision is not None:
         decision = parse_decision(decision).model_dump(mode="json")
-    return {"label": str(item["label"]), "decision": decision}
+    return with_target(item, {"label": str(item["label"]), "decision": decision})
 
 
 # ── the registry: one handler per kind ──────────────────────────────────────
@@ -2694,14 +2700,16 @@ def _target_is_a_column(decision: SetTarget, ctx: Any) -> None:
         raise Refusal(
             "row_identity",
             "The row identity column numbers the rows; it cannot be the target.",
-            exits=[{"label": "Choose one of the dataset's own columns", "decision": None}],
+            exits=[{"label": "Choose one of the dataset's own columns", "decision": None,
+                    "target": toward("target")}],
         )
     columns = _columns_of(ctx)
     if columns is not None and decision.column not in columns:
         raise Refusal(
             "unknown_column",
             f"There is no column named {decision.column!r} in this dataset.",
-            exits=[{"label": "Choose one of the dataset's columns", "decision": None}],
+            exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                    "target": toward("target")}],
         )
 
 
@@ -2725,13 +2733,14 @@ def _task_is_for_the_target(decision: SetTask, ctx: Any) -> None:
         raise Refusal(
             "no_target",
             "Choose the outcome first; the task describes it.",
-            exits=[{"label": "Choose the outcome", "decision": None}],
+            exits=[{"label": "Choose the outcome", "decision": None, "target": toward("target")}],
         )
     if decision.column != target:
         raise Refusal(
             "not_the_target",
             f"The outcome is {target!r}, not {decision.column!r}; a task answers for the outcome.",
-            exits=[{"label": f"Answer the task question for {target}", "decision": None}],
+            exits=[{"label": f"Answer the task question for {target}", "decision": None,
+                    "target": toward("task")}],
         )
 
 
@@ -3100,18 +3109,20 @@ def _cluster_is_a_column_with_levels(decision: "SetSplit", ctx: Any) -> None:
     if cluster == ROW_ID or (columns is not None and cluster not in columns):
         raise Refusal("unknown_column", f"This table has no column named `{cluster}`.",
                       exits=[{"label": "Choose the column that names each site, study or period",
-                              "decision": None}])
+                              "decision": None, "target": toward(decision.kind)}])
     target = _ctx(ctx, "target") or getattr(_state(ctx), "target", None)
     if cluster == target:
         raise Refusal("cluster_is_outcome",
                       f"`{cluster}` is the outcome; the folds of internal–external validation are "
                       f"the levels of a column that says where or when a row came from.",
-                      exits=[{"label": "Choose another column", "decision": None}])
+                      exits=[{"label": "Choose another column", "decision": None,
+                              "target": toward(decision.kind)}])
     info = _info(ctx, cluster)
     if info is not None and int(info.get("n_unique") or 0) < 2:
         raise Refusal("one_cluster",
                       f"`{cluster}` has one level, so no cluster could be held out.",
-                      exits=[{"label": "Choose a column with two or more levels", "decision": None}])
+                      exits=[{"label": "Choose a column with two or more levels", "decision": None,
+                              "target": toward(decision.kind)}])
 
 
 def task_fits(n_unique: int, numeric: bool) -> list[str]:
@@ -3151,26 +3162,30 @@ def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
                 f"`{decision.column}` holds numbers written as text (a SAS or Stata \".\", a "
                 f"spreadsheet error, a comma), so as it stands it has no mean to model as a "
                 f"regression outcome: read it as numbers first.",
-                exits=[*read, *exits, {"label": "Choose another outcome", "decision": None}],
+                exits=[*read, *exits, {"label": "Choose another outcome", "decision": None,
+                                       "target": toward("target")}],
             )
         raise Refusal(
             "task_mismatch",
             f"`{decision.column}` holds labels, not numbers, so it has no mean to model as a "
             f"regression outcome.",
-            exits=exits or [{"label": "Choose another outcome", "decision": None}],
+            exits=exits or [{"label": "Choose another outcome", "decision": None,
+                             "target": toward("target")}],
         )
     if decision.task == "binary" and n_unique != 2:
         raise Refusal(
             "task_mismatch",
             f"`{decision.column}` has {n_unique:,} distinct values; a binary outcome has exactly 2.",
-            exits=exits or [{"label": "Choose another outcome", "decision": None}],
+            exits=exits or [{"label": "Choose another outcome", "decision": None,
+                             "target": toward("target")}],
         )
     if decision.task == "multiclass" and n_unique > MAX_CLASSES_MULTICLASS:
         raise Refusal(
             "task_mismatch",
             f"`{decision.column}` has {n_unique:,} distinct values; multiclass takes at most "
             f"{MAX_CLASSES_MULTICLASS}.",
-            exits=exits or [{"label": "Choose another outcome", "decision": None}],
+            exits=exits or [{"label": "Choose another outcome", "decision": None,
+                             "target": toward("target")}],
         )
     if decision.task == "ordinal" and not 2 < n_unique <= MAX_CLASSES_MULTICLASS:
         why = ("two levels are a binary outcome" if n_unique == 2 else
@@ -3179,14 +3194,15 @@ def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
             "task_mismatch",
             f"`{decision.column}` has {n_unique:,} distinct values; {why}.",
             exits=[e for e in exits if e["decision"].task != "ordinal"]
-            or [{"label": "Choose another outcome", "decision": None}],
+            or [{"label": "Choose another outcome", "decision": None, "target": toward("target")}],
         )
     if decision.task == "time_to_event" and n_unique != 2:
         raise Refusal(
             "task_mismatch",
             f"`{decision.column}` has {n_unique:,} distinct values; a time-to-event outcome's "
             f"column says whether the event happened, so it has exactly 2.",
-            exits=exits or [{"label": "Choose another outcome", "decision": None}],
+            exits=exits or [{"label": "Choose another outcome", "decision": None,
+                             "target": toward("target")}],
         )
 
 
@@ -3219,13 +3235,15 @@ def _follow_up_belongs_to_the_outcome(decision: SetFollowUp, ctx: Any) -> None:
     if target is not _UNKNOWN:
         if target is None:
             raise Refusal("no_target", "Choose the outcome first; the follow-up belongs to it.",
-                          exits=[{"label": "Choose the outcome", "decision": None}])
+                          exits=[{"label": "Choose the outcome", "decision": None,
+                                  "target": toward("target")}])
         if decision.column != target:
             raise Refusal(
                 "not_the_target",
                 f"The outcome is `{target}`, not `{decision.column}`; a follow-up answers for the "
                 f"outcome.",
-                exits=[{"label": f"Answer the follow-up question for `{target}`", "decision": None}])
+                exits=[{"label": f"Answer the follow-up question for `{target}`", "decision": None,
+                        "target": toward("follow_up")}])
     # A follow-up is read only by a time-to-event model: recorded beside a yes/no task, the record
     # would say the outcome "was analyzed as a time to event" over a logistic fit (the verifier's
     # RO-03 repro). The task must be time to event first, and only an answer makes it one:
@@ -3260,12 +3278,14 @@ def _follow_up_belongs_to_the_outcome(decision: SetFollowUp, ctx: Any) -> None:
         unknown = [c for c in named if c not in columns or c == ROW_ID]
         if unknown:
             raise Refusal("unknown_column", f"This dataset has no column named {_and(unknown)}.",
-                          exits=[{"label": "Name one of the dataset's columns", "decision": None}])
+                          exits=[{"label": "Name one of the dataset's columns", "decision": None,
+                                  "target": toward("follow_up")}])
     if decision.column in named:
         raise Refusal("follow_up_is_the_outcome",
                       f"`{decision.column}` is the event; the follow-up is another column, the time "
                       f"each row was observed until.",
-                      exits=[{"label": "Name the follow-up time column", "decision": None}])
+                      exits=[{"label": "Name the follow-up time column", "decision": None,
+                              "target": toward("follow_up")}])
     if decision.entry_column is not None and decision.entry_column == decision.time_column:
         raise Refusal("entry_is_the_end",
                       f"`{decision.time_column}` cannot be both where follow-up starts and where it "
@@ -3279,7 +3299,8 @@ def _follow_up_belongs_to_the_outcome(decision: SetFollowUp, ctx: Any) -> None:
             raise Refusal("not_numeric",
                           f"`{column}` holds {info.get('dtype')} values; a follow-up time is a "
                           f"number on one time scale.",
-                          exits=[{"label": "Name a numeric time column", "decision": None}])
+                          exits=[{"label": "Name a numeric time column", "decision": None,
+                                  "target": toward("follow_up")}])
 
 
 def _roles_name_real_columns(decision: SetRoles, ctx: Any) -> None:
@@ -3293,7 +3314,8 @@ def _roles_name_real_columns(decision: SetRoles, ctx: Any) -> None:
             raise Refusal(
                 "unknown_column",
                 f"This dataset has no column named {_and(unknown)}.",
-                exits=exits + [{"label": "Choose roles for the dataset's columns", "decision": None}],
+                exits=exits + [{"label": "Choose roles for the dataset's columns", "decision": None,
+                                "target": toward("roles")}],
             )
     target = _target_of(ctx)
     if target is not _UNKNOWN and target is not None and target in decision.roles:
@@ -3308,7 +3330,8 @@ def _roles_name_real_columns(decision: SetRoles, ctx: Any) -> None:
         raise Refusal(
             "no_predictors",
             "No column is a study factor, a covariate or energy, so the models would have nothing to use.",
-            exits=[{"label": "Mark at least one column as a study factor or a covariate", "decision": None}],
+            exits=[{"label": "Mark at least one column as a study factor or a covariate", "decision": None,
+                    "target": toward("roles")}],
         )
 
 
@@ -3370,12 +3393,14 @@ def _reading_names_a_column(decision: "ConfirmReading", ctx: Any) -> None:
     columns = _columns_of(ctx)
     if columns is not None and (decision.column not in columns or decision.column == ROW_ID):
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
-                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                              "target": toward("confirm_reading")}])
     target = _target_of(ctx)
     if target is not _UNKNOWN and target is not None and decision.column == target:
         raise Refusal("target_has_role",
                       f"`{target}` is the outcome; its unit and kind have their own questions.",
-                      exits=[{"label": "Confirm another column", "decision": None}])
+                      exits=[{"label": "Confirm another column", "decision": None,
+                              "target": toward("confirm_reading")}])
     allowed = VALUES.get(decision.reading)
     if decision.reading == "nested_in":
         # Any column of the table is a total the user may name, or none (BLUEPRINT §14.3: the
@@ -3396,7 +3421,8 @@ def _reading_names_a_column(decision: "ConfirmReading", ctx: Any) -> None:
             raise Refusal("unknown_column",
                           f"`{decision.column}` cannot be part of {what}: name another column of "
                           f"the table as its total, or none.",
-                          exits=[{"label": "Name the total it is part of", "decision": None},
+                          exits=[{"label": "Name the total it is part of", "decision": None,
+                                  "target": toward("confirm_reading")},
                                  {"label": f"`{decision.column}` is part of no total",
                                   "decision": ConfirmReading(reading="nested_in",
                                                              column=decision.column,
@@ -3410,7 +3436,7 @@ def _reading_names_a_column(decision: "ConfirmReading", ctx: Any) -> None:
                               f"`{decision.value}` is recorded as part of `{decision.column}`, so "
                               f"`{decision.column}` cannot also be part of it.",
                               exits=[{"label": f"Change what `{decision.value}` is part of",
-                                      "decision": None}])
+                                      "decision": None, "target": toward("confirm_reading")}])
         return
     if decision.reading == "code_or_count" and decision.value == "amount":
         store = _store_of(ctx)
@@ -3451,7 +3477,8 @@ def _reading_names_a_column(decision: "ConfirmReading", ctx: Any) -> None:
         raise Refusal("not_a_value",
                       f"`{decision.value}` is not a value a {decision.reading.replace('_', ' ')} "
                       f"reading takes; it takes {allowed_words}.",
-                      exits=[{"label": "Choose one of its values", "decision": None}])
+                      exits=[{"label": "Choose one of its values", "decision": None,
+                              "target": toward("confirm_reading")}])
 
 
 def _readings_name_columns(decision: "ConfirmReadings", ctx: Any) -> None:
@@ -3650,7 +3677,8 @@ def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
         roles = any(r.kind == "role" for r in waiting.readings)
         raise Refusal("reading_unsettled", str(waiting), exits=[
             *waiting.exits,
-            *([{"label": "Change the roles (the roles question)", "decision": None}] if roles
+            *([{"label": "Change the roles (the roles question)", "decision": None,
+                "target": toward("roles")}] if roles
               else [])]) from None
 
 
@@ -3658,12 +3686,14 @@ def _confirmed_role_names_a_column(decision: ConfirmRole, ctx: Any) -> None:
     columns = _columns_of(ctx)
     if columns is not None and (decision.column not in columns or decision.column == ROW_ID):
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
-                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                              "target": toward("confirm_role")}])
     target = _target_of(ctx)
     if target is not _UNKNOWN and target is not None and decision.column == target:
         raise Refusal("target_has_role",
                       f"`{target}` is the outcome, so it has no role among the predictors.",
-                      exits=[{"label": "Confirm another column", "decision": None}])
+                      exits=[{"label": "Confirm another column", "decision": None,
+                              "target": toward("confirm_role")}])
 
 
 def _defaults_and_their_columns(state: Any) -> dict[str, list[str]]:
@@ -4336,7 +4366,7 @@ def _screens_wait_for_the_unit(decision: SetExclusions, ctx: Any) -> None:
                           "decision": SetColumnUnit(column=column, unit=u, days=d)}
                          for u, d in pairs),
                        {"label": "Another unit or day count (record it with the column's unit)",
-                        "decision": None}])
+                        "decision": None, "target": toward("set_column_unit")}])
         if reading.get("basis") == "not_energy":
             raise Refusal(
                 "energy_unit_unconfirmed",
@@ -4524,7 +4554,8 @@ def _exclusions_leave_the_outcome_alone(decision: SetExclusions, ctx: Any) -> No
         f"the outcome.",
         exits=[{"label": f"Drop the rule on `{target}`", "decision": kept},
                *_outcome_repair_exits(target, ctx),
-               {"label": "Restrict by a variable measured before the outcome", "decision": None}],
+               {"label": "Restrict by a variable measured before the outcome", "decision": None,
+                "target": toward("exclusions")}],
     )
 
 
@@ -4570,7 +4601,8 @@ def _follow_up_rule_refusal(state: Any, rules: Sequence[Any], kept: SetExclusion
         exits.append({"label": (f"End follow-up at `{horizon:g}`: events after it count as "
                                 f"censored there, and no row leaves"),
                       "decision": follow_up(horizon=horizon)})
-    exits.append({"label": "Restrict by a variable measured before the outcome", "decision": None})
+    exits.append({"label": "Restrict by a variable measured before the outcome", "decision": None,
+                  "target": toward("exclusions")})
     return Refusal(
         "rule_on_outcome",
         f"`{time}` is the follow-up time of `{state.target}`: a time to event is its time and its "
@@ -4658,7 +4690,8 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
         raise Refusal(
             "roles_first",
             "Energy adjustment works on the column roles; confirm them first.",
-            exits=[{"label": "Confirm the column roles", "decision": None},
+            exits=[{"label": "Confirm the column roles", "decision": None,
+                    "target": toward("roles")},
                    {"label": "Do not adjust for energy", "decision": with_(method="none")}],
         )
     energy_columns = [c for c, r in roles.items() if r == "energy"]
@@ -4668,7 +4701,8 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
         raise Refusal(
             "energy_role",
             f"{named} has the energy role, and adjustment is computed against total energy.",
-            exits=exits + [{"label": "Give a column the energy role", "decision": None}],
+            exits=exits + [{"label": "Give a column the energy role", "decision": None,
+                            "target": toward("roles")}],
         )
     exposures = [n for n in decision.nutrients if roles.get(n) == "exposure"]
     if not decision.nutrients:
@@ -4692,7 +4726,8 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
                    f"{_and(others)} {'is' if len(others) == 1 else 'are'} not a study factor; only study factors are adjusted.")
         exits = [{"label": "Adjust only the study factors", "decision": with_(nutrients=exposures)}] if exposures else []
         raise Refusal("nutrients_not_exposures", message,
-                      exits=exits + [{"label": "Choose the nutrients to adjust", "decision": None}])
+                      exits=exits + [{"label": "Choose the nutrients to adjust", "decision": None,
+                                      "target": toward("energy_adjustment")}])
     gone = [c for c in (decision.energy_column, *decision.nutrients) if c in left_out(state)]
     if gone:
         kept = [n for n in decision.nutrients if n not in gone]
@@ -4877,7 +4912,8 @@ def _models_can_fit_the_task(decision: SelectModels, ctx: Any) -> None:
             "unknown_model",
             f"There is no model family called {_and(unknown)}.",
             exits=([{"label": "Keep the families that exist", "decision": SelectModels(models=known)}]
-                   if known else []) + [{"label": "Choose from the shelf", "decision": None}],
+                   if known else []) + [{"label": "Choose from the shelf", "decision": None,
+                                         "target": toward("models")}],
         )
     task = _ctx(ctx, "task")
     if task is None:
@@ -4889,7 +4925,8 @@ def _models_can_fit_the_task(decision: SelectModels, ctx: Any) -> None:
             "model_cannot_fit_task",
             f"{_and(unable)} cannot model a {str(task).replace('_', '-')} outcome.",
             exits=([{"label": "Keep the families that can", "decision": SelectModels(models=able)}]
-                   if able else []) + [{"label": "Choose from the shelf", "decision": None}],
+                   if able else []) + [{"label": "Choose from the shelf", "decision": None,
+                                        "target": toward("models")}],
         )
 
 
@@ -4930,7 +4967,8 @@ def _labels(families: Sequence[Any]) -> str:
 def _keep_the_rest(decision: SelectModels, dropped: Sequence[str]) -> list[dict[str, Any]]:
     rest = [m for m in decision.models if m not in dropped]
     return ([{"label": "Keep the families that can", "decision": SelectModels(models=rest)}]
-            if rest else []) + [{"label": "Choose from the shelf", "decision": None}]
+            if rest else []) + [{"label": "Choose from the shelf", "decision": None,
+                                 "target": toward("models")}]
 
 
 def _models_serve_the_purpose(decision: SelectModels, ctx: Any) -> None:
@@ -5027,7 +5065,8 @@ def _substitution_swaps_energy(decision: SetSubstitution, ctx: Any) -> None:
         raise Refusal(
             "same_nutrient",
             f"A substitution swaps one nutrient for another; `{decision.donor}` cannot replace itself.",
-            exits=[{"label": "Choose a different recipient", "decision": None}],
+            exits=[{"label": "Choose a different recipient", "decision": None,
+                    "target": toward("substitution")}],
         )
     state = _state(ctx)
     if state is None:
@@ -5055,7 +5094,8 @@ def _substitution_swaps_energy(decision: SetSubstitution, ctx: Any) -> None:
                 "no_total_energy",
                 f"Moving a share of energy through {_and(amounts)} needs each row's total energy; "
                 f"no column has the energy role.",
-                exits=[{"label": "Give the total-energy column the energy role", "decision": None}])
+                exits=[{"label": "Give the total-energy column the energy role", "decision": None,
+                        "target": toward("roles")}])
     candidates = [c for c, r in roles.items() if r == "exposure"
                   and (energy_bearing(c) or (decision.scale == "percent_energy"
                                              and is_percent_of_energy(c)))]
@@ -5074,7 +5114,8 @@ def _substitution_swaps_energy(decision: SetSubstitution, ctx: Any) -> None:
             "not_energy_bearing",
             f"{_and(bad)} {'is' if len(bad) == 1 else 'are'} not an energy-bearing nutrient in the "
             f"model; a substitution moves kcal between two of them.",
-            exits=exits + [{"label": "Choose two energy-bearing nutrients", "decision": None}],
+            exits=exits + [{"label": "Choose two energy-bearing nutrients", "decision": None,
+                            "target": toward("substitution")}],
         )
 
 
@@ -5102,7 +5143,8 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
                       f"energy through {'it' if len(waiting) == 1 else 'them'} only once confirmed "
                       f"on {'its' if len(waiting) == 1 else 'their'} own.",
                       exits=[*confirm_exits(state, waiting),
-                             {"label": "Choose two confirmed nutrients", "decision": None}])
+                             {"label": "Choose two confirmed nutrients", "decision": None,
+                              "target": toward("substitution")}])
     shares = [c for c in moved if is_percent_of_energy(c)]
     opener = _ctx(ctx, "store")
     try:
@@ -5124,8 +5166,9 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
         r = refused[0]
         exits = [e for e in factor_exits(r.column) if e.get("decision")]
         if r.route:
-            exits.append({"label": r.route, "decision": None})
-        exits.append({"label": "Choose two nutrients whose units carry energy", "decision": None})
+            exits.append({"label": r.route, "decision": None, "target": toward("substitution")})
+        exits.append({"label": "Choose two nutrients whose units carry energy", "decision": None,
+                      "target": toward("substitution")})
         raise Refusal("reading_unsettled",
                       f"{r.why}, so moving energy through it has no kcal per unit to read. "
                       f"Record its unit as an amount, or move energy another way.", exits=exits)
@@ -5137,7 +5180,8 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
             f"nutrient, but {'its' if len(factors) == 1 else 'their'} unit is not recorded, so the "
             f"kcal each unit carries is a guess (a name never says it). Record the unit first.",
             exits=[*(e for c in factors for e in factor_exits(c)),
-                   {"label": "Choose two nutrients whose units are stated", "decision": None}])
+                   {"label": "Choose two nutrients whose units are stated", "decision": None,
+                    "target": toward("substitution")}])
     # A total moves with its parts (and a part with its total) by the nesting reading: the values
     # agree (a part never exceeds its total), which is necessary, not sufficient; confirmed once,
     # naming the total the guess found, another column, or none (``readings.nesting``: the user's
@@ -5155,7 +5199,7 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
               "not prove it. Confirm each before the curve moves them together.",
             exits=[*(e for c, p in open_pairs for e in nested_exits(c, p) if e.get("decision")),
                    {"label": "Choose two nutrients that are not parts of each other",
-                    "decision": None}])
+                    "decision": None, "target": toward("substitution")}])
     if decision.scale == "percent_energy" and shares:
         if store is not None:
             present = [c for c in shares if c in set(store.columns)]
@@ -5166,7 +5210,8 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
                               f"{wrong} A share of energy moves in percentage points, so its "
                               f"values are read before any curve.",
                               exits=[{"label": "Choose two columns that hold percentages of energy",
-                                      "decision": None}]) from None
+                                      "decision": None,
+                                      "target": toward("substitution")}]) from None
 
 
 def effective_nesting(ctx: Any, frame: Any = None, columns: Any = None) -> dict[str, str]:
@@ -5210,7 +5255,8 @@ def _substitution_moves_between_separate_nutrients(decision: SetSubstitution, ct
             "part_of_the_other",
             f"`{child}` is part of `{parent}`, so moving kcal between them moves nothing; a "
             f"substitution swaps two separate nutrients.",
-            exits=[{"label": "Choose two separate nutrients", "decision": None}],
+            exits=[{"label": "Choose two separate nutrients", "decision": None,
+                    "target": toward("substitution")}],
         )
 
 
@@ -5290,7 +5336,7 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
                     and roles.get(c) != "energy" and is_percent_of_energy(c)]
     frame = store.materialize(list(dict.fromkeys([E, *present, *spare_shares])), pool)
     base = decision.model_dump(exclude={"kind"})
-    another = {"label": "Choose another swap", "decision": None}
+    another = {"label": "Choose another swap", "decision": None, "target": toward("substitution")}
     moved = (decision.donor, decision.recipient)
 
     def by_share(columns: Sequence[str]) -> list[str]:
@@ -5457,7 +5503,8 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
                     {"label": "Fill in each training fold, without the outcome",
                      "decision": SetMissing(strategy="impute", **keep)},
                     {"label": "Complete cases", "decision": SetMissing(strategy="complete_case", **keep)},
-                    {"label": "Change the purpose to inference", "decision": None}], ctx))
+                    {"label": "Change the purpose to inference", "decision": None,
+                     "target": toward("purpose")}], ctx))
         if decision.indicators:
             raise Refusal(
                 "indicators_with_imputation",
@@ -5706,7 +5753,7 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
                 "decision": _missing_base(decision, below_detection="half_minimum",
                                           censored_columns=censored)},
                *([] if inference else [{"label": "Keep this fill: give your reason",
-                                        "decision": None}])])
+                                        "decision": None, "target": toward("missing")}])])
 
 
 def _raw_columns(ctx: Any) -> set[str] | None:
@@ -5730,7 +5777,8 @@ def _feature_table_names_the_files_columns(decision: SetFeatureTable, ctx: Any) 
         unknown = [c for c in named if c not in columns or c == ROW_ID]
         if unknown:
             raise Refusal("unknown_column", f"This file has no column named {_and(unknown)}.",
-                          exits=[{"label": "Name the file's own columns", "decision": None}])
+                          exits=[{"label": "Name the file's own columns", "decision": None,
+                                  "target": toward("set_feature_table")}])
     if decision.label is not None and decision.label in decision.annotations:
         rest = [c for c in decision.annotations if c != decision.label]
         raise Refusal(
@@ -5777,12 +5825,14 @@ def _unit_names_the_outcome(decision: SetOutcomeUnit, ctx: Any) -> None:
     target = _target_of(ctx)
     if target is not _UNKNOWN and target is None:
         raise Refusal("no_target", "Choose the outcome first; the unit describes it.",
-                      exits=[{"label": "Choose the outcome", "decision": None}])
+                      exits=[{"label": "Choose the outcome", "decision": None,
+                              "target": toward("target")}])
     if target is not _UNKNOWN and decision.column != target:
         raise Refusal(
             "not_the_target",
             f"The outcome is `{target}`, not `{decision.column}`; the unit answers for the outcome.",
-            exits=[{"label": f"Record the unit of `{target}`", "decision": None}])
+            exits=[{"label": f"Record the unit of `{target}`", "decision": None,
+                    "target": toward("set_outcome_unit")}])
 
 
 def _column_unit_fits(decision: SetColumnUnit, ctx: Any) -> None:
@@ -5790,12 +5840,14 @@ def _column_unit_fits(decision: SetColumnUnit, ctx: Any) -> None:
     columns = _columns_of(ctx)
     if columns is not None and decision.column not in columns:
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
-                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                              "target": toward("set_column_unit")}])
     info = _info(ctx, decision.column)
     if info is not None and info.get("dtype") not in NUMERIC_DTYPES:
         raise Refusal("not_numeric",
                       f"`{decision.column}` does not hold numbers, so it has no unit to record.",
-                      exits=[{"label": "Choose a numeric column", "decision": None}])
+                      exits=[{"label": "Choose a numeric column", "decision": None,
+                              "target": toward("set_column_unit")}])
     if decision.days != 1 and decision.unit not in ENERGY_UNITS:
         raise Refusal(
             "days_need_energy",
@@ -5810,12 +5862,14 @@ def _order_names_the_outcome(decision: SetOutcomeOrder, ctx: Any) -> None:
     target = _target_of(ctx)
     if target is not _UNKNOWN and target is None:
         raise Refusal("no_target", "Choose the outcome first; the order describes its levels.",
-                      exits=[{"label": "Choose the outcome", "decision": None}])
+                      exits=[{"label": "Choose the outcome", "decision": None,
+                              "target": toward("target")}])
     if target is not _UNKNOWN and decision.column != target:
         raise Refusal(
             "not_the_target",
             f"The outcome is `{target}`, not `{decision.column}`; the order answers for the outcome.",
-            exits=[{"label": f"Order the levels of `{target}`", "decision": None}])
+            exits=[{"label": f"Order the levels of `{target}`", "decision": None,
+                    "target": toward("set_outcome_order")}])
     from turbotab.core.stages.rows import _level_key
 
     values = _outcome_values(ctx, decision.column)
@@ -5827,7 +5881,8 @@ def _order_names_the_outcome(decision: SetOutcomeOrder, ctx: Any) -> None:
                 "levels_mismatch",
                 f"`{decision.column}` has {int(known):,} distinct values, but "
                 f"{len(decision.levels):,} levels were placed in order.",
-                exits=[{"label": "Place every level, each once", "decision": None}])
+                exits=[{"label": "Place every level, each once", "decision": None,
+                        "target": toward("set_outcome_order")}])
         return
     have = {_level_key(v) for v in values}
     named = {_level_key(v) for v in decision.levels}
@@ -5842,7 +5897,8 @@ def _order_names_the_outcome(decision: SetOutcomeOrder, ctx: Any) -> None:
         raise Refusal(
             "levels_mismatch",
             f"The order must place every level of `{decision.column}` once: {'; '.join(said)}.",
-            exits=[{"label": "Place every level, each once", "decision": None}])
+            exits=[{"label": "Place every level, each once", "decision": None,
+                    "target": toward("set_outcome_order")}])
 
 
 def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
@@ -5861,12 +5917,14 @@ def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
     columns = _columns_of(ctx)
     if columns is not None and (decision.column not in columns or decision.column == ROW_ID):
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
-                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                              "target": toward("form")}])
     target = _target_of(ctx)
     if target is not _UNKNOWN and target is not None and decision.column == target:
         raise Refusal("form_of_outcome",
                       f"`{decision.column}` is the outcome; a form shapes a predictor.",
-                      exits=[{"label": "Choose a predictor", "decision": None}])
+                      exits=[{"label": "Choose a predictor", "decision": None,
+                              "target": toward("form")}])
     if decision.form == "linear":
         return
     state = _state(ctx)
@@ -5876,7 +5934,7 @@ def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
             "not_a_predictor",
             f"`{decision.column}` is not a study factor, a covariate or energy, so it does not enter "
             f"the models.",
-            exits=[{"label": "Choose a predictor", "decision": None}])
+            exits=[{"label": "Choose a predictor", "decision": None, "target": toward("form")}])
     from turbotab.core.readings import confirmed_codes
 
     declared = set(confirmed_codes(state) if state is not None else [])
@@ -5957,7 +6015,8 @@ def _calibration_is_for_inference(decision: SetMeasurementError, ctx: Any) -> No
         "which is an inference question.",
         exits=[{"label": "Keep the recalls' mean uncorrected",
                 "decision": SetMeasurementError(method="none")},
-               {"label": "Change the purpose to inference", "decision": None}])
+               {"label": "Change the purpose to inference", "decision": None,
+                "target": toward("purpose")}])
 
 
 def _calibrated_interval_is_the_whole_chain(decision: SetMeasurementError, ctx: Any) -> None:

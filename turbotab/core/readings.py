@@ -61,6 +61,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 from turbotab.core import claims
+from turbotab.core.exit_target import toward
 
 ATTENTION = ("medium", "low")
 CONFIDENCES = ("high", "medium", "low")
@@ -2202,7 +2203,8 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
             [reading("code_or_count", c, "code", state=state) for c in clash],
             [*(confirm_exit("code_or_count", c, "amount",
                             f"`{c}` is an amount, as the energy answer reads it") for c in clash),
-             {"label": "Change the energy answer (the energy question)", "decision": None}])
+             {"label": "Change the energy answer (the energy question)", "decision": None,
+              "target": toward("energy_adjustment")}])
     # MS8: a declared scale's items are answers on its response scale by the scale's answer, summed
     # into its score, so their code-or-amount reading is not asked; one recorded as codes is refused
     # here, since the score would ignore that answer.
@@ -2216,7 +2218,8 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
             [reading("code_or_count", c, "code", state=state) for c in coded],
             [*(confirm_exit("code_or_count", c, "amount",
                             f"`{c}` holds answers, as the scales answer reads it") for c in coded),
-             {"label": "Change the scales answer", "decision": None}])
+             {"label": "Change the scales answer", "decision": None,
+              "target": toward("set_scales")}])
     asked_for = [c for c in [*preds, *pending]
                  if c not in left and c not in amounts and c not in scored]
     if any(k in ASSAY_LENSES for k in (_get(state, "lens") or [])):
@@ -2927,9 +2930,11 @@ def factor_exits(column: str) -> list[dict[str, Any]]:
         out += [confirm_exit("unit", column, drinks_value(g), f"`{column}` counts drinks: {said}")
                 for g, said in OFFERED_DRINKS]
         out.append({"label": f"`{column}` counts another country's standard drinks: record "
-                             f"`drinks:<grams of alcohol>` (8–20 g)", "decision": None})
+                             f"`drinks:<grams of alcohol>` (8–20 g)", "decision": None,
+                    "target": toward("set_column_unit")})
     out.append({"label": f"`{column}` is a share of energy: move a share of energy instead (the "
-                         f"substitution's share-of-energy scale)", "decision": None})
+                         f"substitution's share-of-energy scale)", "decision": None,
+                "target": toward("substitution")})
     return out
 
 
@@ -2986,7 +2991,7 @@ def nested_exits(column: str, parent: str) -> list[dict[str, Any]]:
             confirm_exit("nested_in", column, NOT_NESTED,
                          f"`{column}` is no part of `{parent}` or any other total"),
             {"label": f"`{column}` is part of another column: name it (confirm `{column}` nested in "
-                      f"that column)", "decision": None}]
+                      f"that column)", "decision": None, "target": toward("confirm_reading")}]
 
 
 # ── time-invariance under clustered imputation (MODELING_SEQUENCE §0 ruling 12) ─
@@ -3167,7 +3172,7 @@ def sex_coding_exits(column: str, values: Any) -> list[dict[str, Any]]:
     levels = sorted({_level(v) for v in pd.unique(_present(values))}, key=_sort_key)
     if len(levels) != 2:
         return [{"label": f"Say which level of `{column}` is female (the roles question)",
-                 "decision": None}]
+                 "decision": None, "target": toward("roles")}]
     a, b = levels
     return [confirm_exit("sex_coding", column, sex_coding_value(b, a),
                          f"`{column}`: {b} female, {a} male"),

@@ -39,6 +39,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
+from turbotab.core.exit_target import toward
+
 ROW_ID = "__row_id"
 
 def _contract() -> Any:
@@ -236,7 +238,7 @@ def plan(con: Any, left: Path, right: Path, *, on: str, right_on: str | None = N
                         refusal={"code": code, "message": message, "exits": exits})
 
     choose = [{"label": "Choose the column that identifies each unit in both files",
-               "decision": None}]
+               "decision": None, "target": toward("join_files")}]
     if on not in ltypes:
         return refused("unknown_column", f"The table has no column named `{on}`.", choose)
     if right_on not in rtypes:
@@ -247,7 +249,7 @@ def plan(con: Any, left: Path, right: Path, *, on: str, right_on: str | None = N
                        f"`{on}` holds {_family_words(lf)} in the table and {_family_words(rf)} in "
                        f"{right_name}, so no value of one can equal a value of the other.",
                        [{"label": "Join on a column both files write the same way",
-                         "decision": None}])
+                         "decision": None, "target": toward("join_files")}])
     lk, rk = f"L.{_ident(on)}", f"R.{_ident(right_on)}"
     l_named, r_named = _named(_ident(on), ltypes[on]), _named(_ident(right_on), rtypes[right_on])
     counts = con.execute(f"""
@@ -288,7 +290,7 @@ def plan(con: Any, left: Path, right: Path, *, on: str, right_on: str | None = N
             # Combining a file's rows to one per identifier before joining it is deep assembly,
             # planned for v2.x: no exit offers what v2 cannot do.
             [{"label": "Join on a column that names one row per unit in one of the files",
-              "decision": None}],
+              "decision": None, "target": toward("join_files")}],
             lside, rside)
     relation = ("one-to-one" if not lside.repeats and not rside.repeats else
                 "one-to-many" if rside.repeats else "many-to-one")
@@ -297,7 +299,8 @@ def plan(con: Any, left: Path, right: Path, *, on: str, right_on: str | None = N
                        f"No value of `{on}` in the table is a value of `{right_on}` in "
                        f"{right_name}, so the join would add only blanks.",
                        [{"label": "Join on another column, or check that both files are of the "
-                                  "same people", "decision": None}], lside, rside)
+                                  "same people", "decision": None,
+                         "target": toward("join_files")}], lside, rside)
     left_unmatched, right_unmatched = lrows - lmatched, rrows - rmatched
     result_rows = inner_rows + (left_unmatched if how == "left" else 0)
     names = {n for n, _ in lschema}
@@ -440,7 +443,8 @@ def plan_for(decision: Any, ctx: Any) -> JoinPlan:
     meta = file_meta(pdir, decision.file)
     if meta is None or not file_parquet(pdir, decision.file).is_file():
         raise Refusal("unknown_file", f"This project has no added file `{decision.file}`.",
-                      exits=[{"label": "Add the file to the project first", "decision": None}])
+                      exits=[{"label": "Add the file to the project first", "decision": None,
+                              "target": toward("join_files")}])
     state = _ctx(ctx, "state")
     joined = (getattr(state, "joins", None) or {}) if state is not None else {}
     if decision.file in joined:

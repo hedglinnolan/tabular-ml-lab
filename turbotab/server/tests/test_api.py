@@ -162,7 +162,11 @@ def test_decisions_are_refused_recorded_and_reverted(client):
     # M2 §12.2: the outcome waits for the lens, and says so with the way forward
     early = decide(client, pid, {"kind": "set_target", "column": "hba1c"})
     assert early.status_code == 409 and early.json()["error"]["code"] == "not_yet"
-    assert early.json()["error"]["exits"] == [{"label": "Answer the lens question first", "decision": None}]
+    # Its way forward opens the lens question's card, where the quest log serves it (G12).
+    log = client.get(f"/api/projects/{pid}/quest").json()
+    lens = next(s["key"] for s in log["stages"] if any(l["key"] == "lens" for l in s["lines"]))
+    assert early.json()["error"]["exits"] == [{"label": "Answer the lens question first", "decision": None,
+                                               "target": {"stage": lens, "key": "lens"}}]
     assert decide(client, pid, {"kind": "set_lens", "lenses": []}).status_code == 422
     assert client.get(f"/api/projects/{pid}").json()["decisions"] == []  # refusals are not recorded
 

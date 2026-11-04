@@ -57,6 +57,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from turbotab.core.exit_target import toward
+
 def _contract() -> Any:
     """The codebook import's method contract (BLUEPRINT §13), in the one registry
     (``turbotab.core.contracts``)."""
@@ -1109,7 +1111,8 @@ def _assessed(decision: Any, ctx: Any) -> Assessment:
     book = load(pdir, decision.codebook) if pdir is not None else None
     if book is None:
         raise Refusal("unknown_codebook", f"This project has no codebook `{decision.codebook}`.",
-                      exits=[{"label": "Add the codebook to the project first", "decision": None}])
+                      exits=[{"label": "Add the codebook to the project first", "decision": None,
+                              "target": toward("import_codebook")}])
     status = _ctx(ctx, "ingest_status")
     if status not in (None, "fresh") or not project_table(pdir, _ctx(ctx, "state")).is_file():
         raise Refusal("not_yet", "The table is still being read; import the codebook once it is "
@@ -1119,7 +1122,8 @@ def _assessed(decision: Any, ctx: Any) -> Assessment:
         raise Refusal("codebook_names_no_column",
                       f"No variable `{book.name}` documents is a column of this table "
                       f"(it names {_listed(a.unmatched)}).",
-                      exits=[{"label": "Import the codebook of this table's file", "decision": None}])
+                      exits=[{"label": "Import the codebook of this table's file", "decision": None,
+                              "target": toward("import_codebook")}])
     return a
 
 

@@ -36,6 +36,7 @@ from turbotab.core.decisions import (
     register_completion,
     register_validator,
 )
+from turbotab.core.exit_target import toward
 
 ATTEST = "My answer is right; the data is like this"
 
@@ -67,9 +68,13 @@ def _unknown(column: str | None, ctx: Any) -> bool:
     return columns is not None and column not in columns
 
 
-def _no_such_column(column: str, exits: list[dict[str, Any]] | None = None) -> Refusal:
+def _no_such_column(column: str, exits: list[dict[str, Any]] | None = None, *,
+                    question: str) -> Refusal:
+    """``column`` is none of the table's: its ways forward ``exits``, else choosing another column
+    in ``question``, the Router question that named it."""
     return Refusal("unknown_column", f"This dataset has no column named `{column}`.",
-                   exits=exits or [{"label": "Choose one of the dataset's columns", "decision": None}])
+                   exits=exits or [{"label": "Choose one of the dataset's columns", "decision": None,
+                                    "target": question}])
 
 
 # ── 1.5 · which way round ─────────────────────────────────────────────────────
@@ -121,12 +126,14 @@ def _event_is_a_level_of_the_outcome(decision: SetEvent, ctx: Any) -> None:
         return
     if target is None:
         raise Refusal("no_target", "Choose the outcome first; the event is one of its levels.",
-                      exits=[{"label": "Choose the outcome", "decision": None}])
+                      exits=[{"label": "Choose the outcome", "decision": None,
+                              "target": toward("target")}])
     if decision.column != target:
         raise Refusal(
             "not_the_target",
             f"The outcome is `{target}`, not `{decision.column}`; the event is a level of the outcome.",
-            exits=[{"label": f"Choose the event level of `{target}`", "decision": None}],
+            exits=[{"label": f"Choose the event level of `{target}`", "decision": None,
+                    "target": toward("event")}],
         )
     levels = _levels(ctx, target)
     task = _ctx(ctx, "task")
@@ -175,14 +182,16 @@ def _grain_is_consistent(decision: SetGrain, ctx: Any) -> None:
     if decision.grain == "unknown":
         return  # "I don't know" claims nothing the data could contradict; the seal says so
     if column is not None and _unknown(column, ctx):
-        raise _no_such_column(column, [repeats_by(c) for c in suggested[:3]] or None)
+        raise _no_such_column(column, [repeats_by(c) for c in suggested[:3]] or None,
+                              question="grain")
     if decision.grain == "repeated":
         if not column:
             raise Refusal(
                 "no_id_column",
                 "Name the column that says which unit a row belongs to; the held-out rows keep "
                 "each unit's rows together by it.",
-                exits=[repeats_by(c) for c in suggested[:3]] + [{"label": "Name the column", "decision": None}],
+                exits=[repeats_by(c) for c in suggested[:3]] + [{"label": "Name the column", "decision": None,
+                                                                 "target": toward("grain")}],
             )
         if column == target:
             raise Refusal("target_is_id", f"`{column}` is the outcome, so it cannot name the units.",
@@ -232,13 +241,14 @@ def _needs_repeats(ctx: Any, question: str) -> None:
                    f"{question} does not arise.")
     else:
         message = f"Each unit appears once, so {question} does not arise."
-    raise Refusal("not_repeated", message, exits=[{"label": "Answer the grain question", "decision": None}])
+    raise Refusal("not_repeated", message, exits=[{"label": "Answer the grain question", "decision": None,
+                                                   "target": toward("grain")}])
 
 
 def _repeat_kind_follows_the_grain(decision: Any, ctx: Any) -> None:
     _needs_repeats(ctx, "whether rows are repeats or time points")
     if decision.time_column is not None and _unknown(decision.time_column, ctx):
-        raise _no_such_column(decision.time_column)
+        raise _no_such_column(decision.time_column, question="repeat_kind")
 
 
 def _unit_follows_the_grain(decision: SetUnit, ctx: Any) -> None:
@@ -262,7 +272,8 @@ def _aggregation_knows_the_outcome(decision: SetAggregation, ctx: Any) -> None:
     if state.target is None:
         raise Refusal("no_target",
                       "Choose the outcome first: combining rows has to know which outcome to keep.",
-                      exits=[{"label": "Choose the outcome", "decision": None}])
+                      exits=[{"label": "Choose the outcome", "decision": None,
+                              "target": toward("target")}])
     outcome = (artifact(ctx, "structure") or {}).get("outcome") or {}
     if outcome.get("column") != state.target or not outcome.get("varies"):
         return
@@ -307,7 +318,7 @@ def _aggregation_can_order_the_records(decision: SetAggregation, ctx: Any) -> No
 
     for column in decision.columns:
         if _unknown(column, ctx):
-            raise _no_such_column(column)
+            raise _no_such_column(column, question="aggregation")
     state = _state(ctx)
     if state is None or not needs_order(decision.method, decision.outcome, decision.columns):
         return
@@ -324,11 +335,13 @@ def _aggregation_can_order_the_records(decision: SetAggregation, ctx: Any) -> No
                       "decision": SetRepeatKind(repeat_kind=kind, time_column=order["column"],
                                                 levels=levels)})
     if order.get("kind") == "ambiguous":
-        exits.append({"label": "Say how the dates are written (the dates finding)", "decision": None})
+        exits.append({"label": "Say how the dates are written (the dates finding)", "decision": None,
+                      "target": toward(stage="data")})
     if decision.outcome != "first" and decision.outcome != "last":
         exits.append({"label": "Combine by the mean", "decision": SetAggregation(
             method="mean", outcome=decision.outcome)})
-    exits.append({"label": "Choose another time column", "decision": None})
+    exits.append({"label": "Choose another time column", "decision": None,
+                  "target": toward("aggregation")})
     raise Refusal("cannot_order", order_refusal(order, decision.method), exits=exits)
 
 
@@ -384,7 +397,8 @@ def _aggregation_reads_settled_readings(decision: SetAggregation, ctx: Any) -> N
     if decision.method != "mean" and decision.outcome != "first" and decision.outcome != "last":
         exits.append({"label": "Combine by the mean",
                       "decision": SetAggregation(method="mean", outcome=decision.outcome)})
-    exits.append({"label": "Choose another time column (the repeats question)", "decision": None})
+    exits.append({"label": "Choose another time column (the repeats question)", "decision": None,
+                  "target": toward("repeat_kind")})
     raise Refusal(
         "reading_unsettled",
         f"Combining by the first, last or change takes each unit's values from a particular record, "
@@ -409,7 +423,7 @@ def _temporal_needs_time_points_as_rows(decision: SetTemporal, ctx: Any) -> None
     if not decision.temporal:
         return
     if decision.time_column is not None and _unknown(decision.time_column, ctx):
-        raise _no_such_column(decision.time_column)
+        raise _no_such_column(decision.time_column, question="temporal")
     structure = artifact(ctx, "structure")
     if decision.time_column or time_column(state, structure):
         return
@@ -520,7 +534,7 @@ def _answers_in_order(decision: Any, ctx: Any) -> None:
         "not_yet",
         f"{name[:1].upper()}{name[1:]} comes before this one and is not answered yet; the "
         f"questions are asked in order because each later one depends on the earlier answers.",
-        exits=[{"label": f"Answer {name} first", "decision": None}],
+        exits=[{"label": f"Answer {name} first", "decision": None, "target": toward(first.key)}],
     )
 
 
@@ -589,7 +603,7 @@ def decide_now_refusal(question: str, steps: Any, ctx: Any) -> Refusal | None:
             "not_yet",
             f"Waiting for {name}: the held-out rows are drawn last, once every answer that decides "
             f"who is in is recorded, so they cannot be drawn early.",
-            exits=[{"label": f"Answer {name} first", "decision": None}])
+            exits=[{"label": f"Answer {name} first", "decision": None, "target": toward(held[0])}])
     first_look = next((k for k in held if k in QUESTIONS
                        and QUESTIONS[k].stage in BEFORE_FIRST_LOOK), None)
     if first_look is not None:
@@ -598,7 +612,8 @@ def decide_now_refusal(question: str, steps: Any, ctx: Any) -> Refusal | None:
             "not_yet",
             f"Waiting for {name}: a later question is decided early only from First look, which "
             f"opens once your data and your question are answered.",
-            exits=[{"label": f"Answer {name} first", "decision": None}])
+            exits=[{"label": f"Answer {name} first", "decision": None,
+                    "target": toward(first_look)}])
     computing = [s for s in NEEDS.get(question, ()) if _stage_status(ctx, s) != "fresh"]
     if computing:
         return Refusal(
@@ -613,7 +628,7 @@ def decide_now_refusal(question: str, steps: Any, ctx: Any) -> Refusal | None:
                 "not_yet",
                 f"Waiting for {name}: this card reads that answer, so it cannot be decided before "
                 f"it.",
-                exits=[{"label": f"Answer {name} first", "decision": None}])
+                exits=[{"label": f"Answer {name} first", "decision": None, "target": toward(key)}])
     return None
 
 
@@ -644,7 +659,7 @@ def _seal_needs_grain(decision: Any, ctx: Any) -> None:
         "not_yet",
         "The held-out rows are drawn by the grain answer, and whether a unit can appear in more "
         "than one row is not answered yet.",
-        exits=[{"label": f"Answer {name} first", "decision": None}],
+        exits=[{"label": f"Answer {name} first", "decision": None, "target": toward("grain")}],
     )
 
 

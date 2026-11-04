@@ -12,6 +12,7 @@ import type { DecisionRecord, ProjectView, QuestLog } from "../api/schema";
 import { Header } from "../components/Header";
 import { JobChips } from "../components/JobChips";
 import { HeldFamiliesContext, type HeldFamilies } from "../components/record/ask/ChoiceQuestions";
+import { OpenCard, type ExitTarget } from "../components/record/target";
 import { ManuscriptOverlay, ManuscriptRail, kit as k, newestSeq, useManuscriptRail } from "../kit";
 import { Link, classicPath } from "../router";
 import { StageFocusProvider, useStageFocus } from "../state/focus";
@@ -130,6 +131,8 @@ function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log
   };
   const request = nav.requested && nav.stage === shown ? { line: nav.line, n: nav.n } : null;
   const fitting = fit.kind === "running" ? (heldFor(log.fit) ? `fitting, ${heldFor(log.fit)}` : "fitting") : null;
+  /** A way forward's card (G12; record/target.ts): a request, as the quest line's or a link's. */
+  const openTarget = (t: ExitTarget) => openStage(t.stage, t.key ?? undefined);
 
   return (
     <div className={q.screen}>
@@ -147,31 +150,33 @@ function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log
         ) : null}
       </Header>
       <StageLine log={log} shown={shown} onOpen={openStage} answers={answers} fitting={fitting} />
-      <div className={`${k.zones} ${q.zones}`}>
-        <div className={k.zoneRail} data-kit>
-          <ManuscriptRail count={sections?.count ?? null} open={rail.open} setOpen={rail.setOpen} />
+      <OpenCard.Provider value={openTarget}>
+        <div className={`${k.zones} ${q.zones}`}>
+          <div className={k.zoneRail} data-kit>
+            <ManuscriptRail count={sections?.count ?? null} open={rail.open} setOpen={rail.setOpen} />
+          </div>
+          <div className={k.zoneCard}>
+            <HeldFamiliesContext.Provider value={heldFamilies}>
+              <StageCard
+                key={shown}
+                pid={pid}
+                log={log}
+                stage={stage}
+                answers={answers}
+                fit={fit}
+                onOpenStage={openStage}
+                request={request}
+                arrival={arrival}
+                onOpenManuscript={() => rail.setOpen(true)}
+              />
+            </HeldFamiliesContext.Provider>
+            <ManuscriptOverlay methods={sections} open={rail.open} setOpen={rail.setOpen} onOpen={openKind} />
+          </div>
+          <div className={k.zoneCanvas}>
+            <Tapestry pid={pid} view={view} log={log} shown={shown} fit={fit} methods={sections} onOpenKind={openKind} />
+          </div>
         </div>
-        <div className={k.zoneCard}>
-          <HeldFamiliesContext.Provider value={heldFamilies}>
-            <StageCard
-              key={shown}
-              pid={pid}
-              log={log}
-              stage={stage}
-              answers={answers}
-              fit={fit}
-              onOpenStage={openStage}
-              request={request}
-              arrival={arrival}
-              onOpenManuscript={() => rail.setOpen(true)}
-            />
-          </HeldFamiliesContext.Provider>
-          <ManuscriptOverlay methods={sections} open={rail.open} setOpen={rail.setOpen} onOpen={openKind} />
-        </div>
-        <div className={k.zoneCanvas}>
-          <Tapestry pid={pid} view={view} log={log} shown={shown} fit={fit} methods={sections} onOpenKind={openKind} />
-        </div>
-      </div>
+      </OpenCard.Provider>
     </div>
   );
 }

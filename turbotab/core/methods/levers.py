@@ -47,6 +47,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 
 from turbotab.core.methods.exposure_form import rcs_basis, rcs_knots, spline_names
+from turbotab.core.exit_target import toward
 
 HARRELL_SMALL = 30  # below this effective size, 3 knots
 HARRELL_LARGE = 100  # above it, 5 knots; 4 between
@@ -838,7 +839,7 @@ def _levers_are_prediction(decision: Any, ctx: Any) -> None:
         "rows they are reported from, and an imbalance correction would change the comparison you want: "
         "declare the form of each study factor instead.",
         exits=[{"label": "Declare the form of what you study (the functional-form question)",
-                "decision": None},
+                "decision": None, "target": toward("form")},
                {"label": "Make the purpose prediction", "decision": SetPurpose(purpose="prediction")}])
 
 
@@ -894,7 +895,7 @@ def _levers_fit_the_task(decision: Any, ctx: Any) -> None:
                 exits=[{"label": "Keep every predictor linear",
                         "decision": decision.model_copy(update={"forms": "none"})},
                        {"label": "Choose the elastic net in the selection question",
-                        "decision": None}])
+                        "decision": None, "target": toward("set_selection")}])
 
 
 def _register_validators() -> None:

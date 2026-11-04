@@ -822,8 +822,9 @@ def test_5_the_export_refuses_while_the_plan_is_open(inference):
     error = r.json()["error"]
     assert error["code"] == "plan_open"
     assert error["message"].startswith("The analysis plan is still open")
+    # Fit sits at the end of the Models stage's flowchart, so that stage is the card it opens (G12).
     assert error["exits"] == [{"label": "Press Fit on the analysis flowchart; it locks the plan",
-                               "decision": None}]
+                               "decision": None, "target": {"stage": "models", "key": None}}]
     assert inference["view"]["state"]["plan_locked"] is True
 
 

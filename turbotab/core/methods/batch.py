@@ -35,6 +35,8 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from turbotab.core.exit_target import toward
+
 CONV = 1e-4  # sva's it.sol convergence
 MAX_ITERATIONS = 10_000  # sva has no cap; this one only stops a loop that cannot end
 NYGAARD = "Nygaard, Rødland & Hovig 2016"
@@ -665,7 +667,7 @@ def confounding_refusal(column: str, target: str | None) -> Any:
         f"`{column}` is perfectly confounded with `{target}`: every batch holds one outcome level, "
         f"so batch and outcome cannot be told apart and no model can estimate either. This is "
         f"refused under both purposes.",
-        exits=[{"label": "Choose another outcome", "decision": None},
+        exits=[{"label": "Choose another outcome", "decision": None, "target": toward("target")},
                {"label": f"`{column}` is not a batch: read it as an ordinary column",
                 "decision": {"kind": "set_batch", "column": column, "method": "not_a_batch"}}])
 
@@ -725,11 +727,13 @@ def _batch_answer_fits(decision: Any, ctx: Any) -> None:
     target = getattr(state, "target", None)
     if columns is not None and decision.column not in columns:
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
-                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                              "target": toward("set_batch")}])
     if decision.column == target:
         raise Refusal("batch_is_the_outcome", f"`{decision.column}` is the outcome; a batch is a "
                       f"column the samples were measured in.",
-                      exits=[{"label": "Choose the batch column", "decision": None}])
+                      exits=[{"label": "Choose the batch column", "decision": None,
+                              "target": toward("set_batch")}])
     if decision.method == "not_a_batch":
         return
     if decision.column in _confounded(ctx):

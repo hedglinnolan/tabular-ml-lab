@@ -31,6 +31,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from turbotab.core.exit_target import toward
+
 # The attestation the "these participants" answer records, word for word (AUDIT_REPORT §5 WP10.1).
 ATTESTATION = "unweighted, sample-only estimand; standard errors ignore strata and PSUs"
 
@@ -351,7 +353,8 @@ def _names_real_columns(decision: Any, ctx: Any) -> None:
         unknown = [c for c in named.values() if c and (c not in columns or c == ROW_ID)]
         if unknown:
             raise Refusal("unknown_column", f"This dataset has no column named `{unknown[0]}`.",
-                          exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                          exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                                  "target": toward("survey")}])
     if decision.estimand != "population":
         return
     state = _state(ctx)
@@ -371,7 +374,8 @@ def _names_real_columns(decision: Any, ctx: Any) -> None:
         if column == target:
             raise Refusal("design_is_outcome",
                           f"`{column}` is the outcome, so it cannot be part of the survey design.",
-                          exits=[{"label": "Name another column", "decision": None}])
+                          exits=[{"label": "Name another column", "decision": None,
+                                  "target": toward("survey")}])
         if roles.get(column) in ("exposure", "covariate", "energy"):
             raise Refusal(
                 "design_is_predictor",
@@ -379,7 +383,7 @@ def _names_real_columns(decision: Any, ctx: Any) -> None:
                 f"{slot.replace('_', ' ')} describes how people were sampled and cannot also be "
                 f"a predictor.",
                 exits=[{"label": f"Give `{column}` the design role (the column roles)",
-                        "decision": None}])
+                        "decision": None, "target": toward("roles")}])
 
 
 def _weight_is_a_number(decision: Any, ctx: Any) -> None:
@@ -393,7 +397,8 @@ def _weight_is_a_number(decision: Any, ctx: Any) -> None:
             raise Refusal("weight_not_numeric",
                           f"`{column}` holds {info.get('dtype')} values; a survey weight is the "
                           f"number of people a row represents.",
-                          exits=[{"label": "Name the numeric weight column", "decision": None}])
+                          exits=[{"label": "Name the numeric weight column", "decision": None,
+                                  "target": toward("survey")}])
 
 
 def _names_its_units(decision: Any, ctx: Any) -> None:
@@ -411,7 +416,7 @@ def _names_its_units(decision: Any, ctx: Any) -> None:
         "partial_design",
         f"No {what} is named. Weights correct the estimate, not its interval: the intervals would "
         f"treat {units}, and where people were sampled in clusters they are too narrow.",
-        exits=[{"label": f"Name the {what} column", "decision": None},
+        exits=[{"label": f"Name the {what} column", "decision": None, "target": toward("survey")},
                {"label": "My table has no such column; record that", "decision": attested}])
 
 

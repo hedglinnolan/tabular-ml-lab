@@ -383,9 +383,11 @@ def test_r4_such_a_modifier_is_refused_at_declaration_with_its_way_forward():
     assert refused.value.code == "modifier_stratum_not_estimable"
     assert refused.value.message.startswith(
         "`region` = `west` has 1 row, so `fiber`'s effect within it cannot be estimated.")
+    # It opens the modification question's card (G12).
     assert refused.value.exits == [{"label": "Choose another modifier (one whose every stratum "
                                              "holds the study factor's contrast and the outcome's "
-                                             "both kinds)", "decision": None}]
+                                             "both kinds)", "decision": None,
+                                    "target": {"stage": "models", "key": "modification"}}]
     with pytest.raises(d.Refusal) as none:
         d.validate({"kind": "set_modification", "modifier": "grp"}, ctx)
     assert "`grp` = `b` has no event among its 40 rows" in none.value.message

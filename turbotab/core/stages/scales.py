@@ -40,6 +40,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
 from turbotab.core.graph import Bundle, StageContext
+from turbotab.core.exit_target import toward
 
 COEFFICIENT_LABELS = {"omega_total": "ω-total", "omega_hierarchical": "ω-hierarchical",
                       "test_retest_icc": "test–retest ICC(3,1)",
@@ -222,7 +223,8 @@ def codes_in_values(spec: Any, frame: pd.DataFrame, state: Any, store: Any = Non
     from turbotab.core.scales import codes_beyond, score_range
 
     again = {"label": f"Recode the codes to missing (the findings' code repair), then answer the "
-                      f"scales question for `{spec.name}` again", "decision": None}
+                      f"scales question for `{spec.name}` again", "decision": None,
+             "target": toward(stage="data")}
     for where, columns in (("items", spec.items),
                            ("retest", spec.retest if len(spec.retest) == len(spec.items) else [])):
         outside = _outside(frame, columns, spec.low, spec.high)
@@ -254,7 +256,7 @@ def codes_in_values(spec: Any, frame: pd.DataFrame, state: Any, store: Any = Non
                                       f"settled, and the calibration regresses them on the score "
                                       f"as amounts, so the correction is not computed.",
                          [{"label": "Answer the scales question again (it asks for the reading)",
-                           "decision": None}])
+                           "decision": None, "target": toward("set_scales")}])
         found_codes = codes_beyond(x.to_numpy(dtype=float))
         if found_codes:
             return Codes("reference", f"`{column}`, the reference measure, holds "

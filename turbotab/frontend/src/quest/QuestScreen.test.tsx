@@ -260,6 +260,60 @@ describe("a card's recorded answer in the shell", () => {
     expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "preview");
     expect(screen.queryByTestId("stage-record")).toBeNull();
   });
+
+  /**
+   * G12 (the owner's Q3): a refused press's way forward that names no decision names the card it
+   * opens (`target`, served as core/exit_target.py serves it), and pressing it in the shell opens
+   * that card: its stage, with its line brought into view and focused, as a "Waiting for" link
+   * does. The lines named are the engine's own (the contract log's).
+   */
+  const ELSEWHERE = { stage: "question", key: "purpose" };
+  const HERE = { stage: "data", key: "join_files" };
+  const TARGETED = {
+    error: {
+      code: "not_yet",
+      message: "Your goal comes before this one.",
+      exits: [
+        { label: "Answer the purpose question first", decision: null, target: ELSEWHERE },
+        { label: "Join another file", decision: null, target: HERE },
+        { label: "Keep the answers as they are", decision: null },
+      ],
+    },
+  } as unknown as Refusal;
+
+  async function refusedWithTargets() {
+    for (const t of [ELSEWHERE, HERE]) {
+      expect(MODELS_OPEN.stages.find((x) => x.key === t.stage)!.lines.map((l) => l.key)).toContain(t.key);
+    }
+    lensOpen();
+    const option = await previewDietary();
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(TARGETED));
+    fireEvent.keyDown(option, { key: "Enter" });
+    await screen.findByTestId("refusal");
+  }
+
+  it("opens the card a refused press's way forward names in another stage, its line focused", async () => {
+    await refusedWithTargets();
+    fireEvent.click(screen.getByRole("button", { name: "Answer the purpose question first" }));
+    await waitFor(() => expect(card()).toBe("card-question"));
+    await waitFor(() => expect(screen.getByTestId("line-purpose")).toHaveFocus());
+  });
+
+  it("opens the line a way forward names in the stage shown, and closes the refusal", async () => {
+    await refusedWithTargets();
+    fireEvent.click(screen.getByRole("button", { name: "Join another file" }));
+    await waitFor(() => expect(screen.getByTestId("line-join_files")).toHaveFocus());
+    expect(card()).toBe("card-data");
+    expect(screen.queryByTestId("refusal")).toBeNull();
+  });
+
+  it("leaves a way forward with no target as it was: it closes the refusal and opens nothing", async () => {
+    await refusedWithTargets();
+    fireEvent.click(screen.getByRole("button", { name: "Keep the answers as they are" }));
+    await waitFor(() => expect(screen.queryByTestId("refusal")).toBeNull());
+    expect(card()).toBe("card-data");
+    expect(screen.getByTestId("line-join_files")).not.toHaveFocus();
+  });
 });
 
 /**

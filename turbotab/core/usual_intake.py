@@ -67,6 +67,8 @@ from __future__ import annotations
 import re
 from typing import Any, Sequence
 
+from turbotab.core.exit_target import toward
+
 EPISODIC_SHARE = 0.05  # zero recalls above this share rank the two-part model first (a convention)
 MIN_REPEATERS = 2  # MIXTRAN v2.1: "at least two subjects with at least two positive recalls"
 
@@ -305,7 +307,8 @@ def _columns_exist(decision: Any, ctx: Any) -> None:
     unknown = [c for c in named if c not in columns or c == ROW_ID]
     if unknown:
         raise Refusal("unknown_column", f"This dataset has no column named {_and(unknown)}.",
-                      exits=[{"label": "Name the columns again", "decision": None},
+                      exits=[{"label": "Name the columns again", "decision": None,
+                              "target": toward("set_usual_intake")},
                              {"label": "Leave usual intake out", "decision": _none(decision)}])
 
 
@@ -317,11 +320,13 @@ def _for_inference(decision: Any, ctx: Any) -> None:
         return
     if state.lens is not None and "dietary" not in state.lens:
         raise Refusal("not_dietary", NOT_DIETARY,
-                      exits=[{"label": "Add the dietary lens", "decision": None},
+                      exits=[{"label": "Add the dietary lens", "decision": None,
+                              "target": toward("lens")},
                              {"label": "Leave usual intake out", "decision": _none(decision)}])
     if state.purpose == "prediction":
         raise Refusal("not_for_prediction", PREDICTION,
-                      exits=[{"label": "Change the purpose to inference", "decision": None},
+                      exits=[{"label": "Change the purpose to inference", "decision": None,
+                              "target": toward("purpose")},
                              {"label": "Leave usual intake out", "decision": _none(decision)}])
 
 
@@ -338,7 +343,8 @@ def _consumers_are_named(decision: Any, ctx: Any) -> None:
         "cannot say who the consumers are. Name a column that says who ever consumes it (a "
         "food-frequency answer), or estimate for the whole population.",
         exits=[{"label": "Estimate for the whole population", "decision": whole},
-               {"label": "Name the column that marks consumers", "decision": None}])
+               {"label": "Name the column that marks consumers", "decision": None,
+                "target": toward("set_usual_intake")}])
 
 
 def _cutoff_fits_the_reference(decision: Any, ctx: Any) -> None:

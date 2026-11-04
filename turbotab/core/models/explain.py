@@ -72,6 +72,8 @@ from typing import Any, Callable, Literal, Mapping, NamedTuple, Sequence
 import numpy as np
 import pandas as pd
 
+from turbotab.core.exit_target import toward
+
 # ── the leash's words (asserted verbatim) ────────────────────────────────────
 
 DESCRIBES = ("These explanations describe how each fitted model turns its inputs into "
@@ -1817,7 +1819,7 @@ def _explanations_are_never_effects(decision: Any, ctx: Any) -> None:
         "explanation describes the fitted model's predictions and is never reported as an effect "
         f"estimate ({MOLNAR_PITFALLS}: \"making unjustified causal interpretations\").",
         exits=[keep, {"label": "Report the declared estimate from the coefficient table",
-                      "decision": None}])
+                      "decision": None, "target": toward(stage="results")}])
 
 
 def _explained_columns_are_predictors(decision: Any, ctx: Any) -> None:

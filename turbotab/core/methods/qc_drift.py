@@ -49,6 +49,8 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from turbotab.core.exit_target import toward
+
 DEGREE = 2
 SPANS = tuple(float(s) for s in np.round(np.arange(0.30, 1.0001, 0.05), 2))
 MIN_QC = 5  # QCs per batch the curve is fit to (Broadhurst et al. 2018)
@@ -558,7 +560,7 @@ def run_reference_rows(frame: pd.DataFrame, plan: QCPlan,
             if problems:
                 raise Refusal("qc_too_sparse", " ".join(problems),
                               exits=[{"label": "Set the QC rows aside without correcting drift",
-                                      "decision": None}])
+                                      "decision": None, "target": toward(stage="data")}])
             idx = np.flatnonzero(keep)
             fit = qc_rlsc(values[:, idx], inj, degree=plan.degree, span=plan.span)
             values[:, idx] = fit.corrected
@@ -840,7 +842,8 @@ def _qc_pqn_needs_the_qcs(decision: Any, ctx: Any) -> None:
         raise Refusal("qc_rows_unsettled",
                       "PQN against the pooled QCs needs the QC injections named first: answer the "
                       "finding about pooled QC rows, then choose this normalization.",
-                      exits=[{"label": "Answer the pooled-QC finding first", "decision": None}])
+                      exits=[{"label": "Answer the pooled-QC finding first", "decision": None,
+                              "target": toward(stage="data")}])
 
 
 # ── what the working table, the cohort and the design read ───────────────────

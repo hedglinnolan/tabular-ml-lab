@@ -39,6 +39,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Literal, Mapping, Sequence
 
+from turbotab.core.exit_target import toward
+
 Rows = Literal["training", "analyzed"]
 
 ALONE_AFTER_WHOS_IN = "The outcome · opens after Who's in"
@@ -101,13 +103,15 @@ def alone_gate(state: Any, drew: bool) -> dict[str, Any] | None:
         if drew:
             return None
         return {"line": AFTER_THE_DRAW, "exits": [{"label": "Decide which rows to hold out",
-                                                    "decision": None}]}
+                                                    "decision": None, "target": toward("split")}]}
     if _get(state, "split") is not None and _get(state, "purpose") is not None:
         return None
     if _get(state, "purpose") is None:  # an unanswered goal is the strictest case: Estimate
         return {"line": ALONE_AFTER_WHOS_IN, "exits": [{"label": "Choose the goal",
-                                                         "decision": None}]}
-    return {"line": ALONE_AFTER_WHOS_IN, "exits": [{"label": "Answer Who's in", "decision": None}]}
+                                                         "decision": None,
+                                                         "target": toward("purpose")}]}
+    return {"line": ALONE_AFTER_WHOS_IN, "exits": [{"label": "Answer Who's in", "decision": None,
+                                                    "target": toward(stage="whos_in")}]}
 
 
 def beside_gate(state: Any, pressed: bool, drew: bool) -> dict[str, Any] | None:
@@ -122,11 +126,15 @@ def beside_gate(state: Any, pressed: bool, drew: bool) -> dict[str, Any] | None:
         if drew:
             return None
         return {"line": AFTER_THE_DRAW, "exits": [{"label": "Decide which rows to hold out",
-                                                    "decision": None}]}
+                                                    "decision": None, "target": toward("split")}]}
     if _get(state, "purpose") is not None and serving_gate(state, pressed) is None:
         return None
-    label = "Choose the goal" if _get(state, "purpose") is None else "Press Fit"
-    return {"line": BESIDE_AFTER_FIT, "exits": [{"label": label, "decision": None}]}
+    unchosen = _get(state, "purpose") is None
+    label = "Choose the goal" if unchosen else "Press Fit"
+    # Fit is pressed at the end of the analysis flowchart, beside the Models card.
+    where = toward("purpose") if unchosen else toward(stage="models")
+    return {"line": BESIDE_AFTER_FIT, "exits": [{"label": label, "decision": None,
+                                                 "target": where}]}
 
 
 def rows_read(state: Any) -> Rows:

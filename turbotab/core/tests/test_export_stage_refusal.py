@@ -138,8 +138,9 @@ def test_before_fit_the_open_plan_comes_first_and_the_refusal_is_said_beside_it(
     error = walk["open"].json()["error"]
     assert error["code"] == "plan_open"
     assert error["message"].endswith(f" {SAID}")
+    # Fit sits at the end of the Models stage's flowchart, so that stage is the card it opens (G12).
     assert error["exits"][0] == {"label": "Press Fit on the analysis flowchart; it locks the plan",
-                                 "decision": None}
+                                 "decision": None, "target": {"stage": "models", "key": None}}
     assert _ways(error["exits"][1:]) == [(label, ["ridge", key]) for label, key in OFFERED]
 
 

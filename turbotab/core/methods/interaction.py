@@ -49,6 +49,8 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
+from turbotab.core.exit_target import toward
+
 POST_HOC = "suggested by data inspection"
 KNOL = "Knol & VanderWeele 2012, Int J Epidemiol 41:514"
 HOSMER = "Hosmer & Lemeshow 1992, Epidemiology 3:452"
@@ -1258,22 +1260,26 @@ def _modifier_is_declarable(decision: Any, ctx: Any) -> None:
         raise Refusal("modification_for_inference",
                       "Under prediction no effect is estimated, so no effect modifier is declared; "
                       "the families learn what the predictors do together.",
-                      exits=[{"label": "Change the purpose to inference", "decision": None}])
+                      exits=[{"label": "Change the purpose to inference", "decision": None,
+                              "target": toward("purpose")}])
     exposure = bound_exposure(state)
     if exposure is None:
         raise Refusal("estimand_first",
                       "Effect modification is of one declared study factor's effect: declare "
                       "what you study and its effect first.",
-                      exits=[{"label": "Answer the question on what you study and its effect", "decision": None}])
+                      exits=[{"label": "Answer the question on what you study and its effect", "decision": None,
+                              "target": toward("estimand")}])
     columns = _columns_of(ctx)
     if columns is not None and (decision.modifier not in columns or decision.modifier == ROW_ID):
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.modifier}`.",
-                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                              "target": toward("modification")}])
     if decision.modifier in (exposure, getattr(state, "target", None)):
         raise Refusal("modifier_is_exposure_or_outcome",
                       f"`{decision.modifier}` is the {'exposure' if decision.modifier == exposure else 'outcome'};"
                       f" a modifier is another column.",
-                      exits=[{"label": "Choose another column", "decision": None}])
+                      exits=[{"label": "Choose another column", "decision": None,
+                              "target": toward("modification")}])
     if decision.exposure not in (None, exposure):
         raise Refusal("not_the_exposure",
                       f"The declared study factor is `{exposure}`, not `{decision.exposure}`.",
@@ -1342,7 +1348,8 @@ def _strata_hold_the_effect(decision: Any, ctx: Any) -> None:
             f"{'; '.join(problems)[0].upper()}{'; '.join(problems)[1:]}. A modifier needs every "
             f"stratum to carry the effect of what you study.",
             exits=[{"label": "Choose another modifier (one whose every stratum holds the "
-                             "study factor's contrast and the outcome's both kinds)", "decision": None}])
+                             "study factor's contrast and the outcome's both kinds)", "decision": None,
+                    "target": toward("modification")}])
 
 
 def _modifier_records_when(decision: Any, ctx: Any) -> Any:

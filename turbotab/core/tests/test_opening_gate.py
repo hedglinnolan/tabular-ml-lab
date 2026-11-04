@@ -57,7 +57,9 @@ def test_the_opening_is_refused_while_a_noticing_is_open_and_says_where_to_triag
     assert "held-out rows open once" in r.message and "1 is still open" in r.message
     assert "Results" in r.message
     to_triage, keep = r.exits
-    assert to_triage == {"label": "Triage the open noticings in Results", "decision": None}
+    # It opens the stage the triage stands in (G12).
+    assert to_triage == {"label": "Triage the open noticings in Results", "decision": None,
+                         "target": {"stage": t.stage, "key": None}}
     # The other way through is the triage's own "Confirm all", and it is accepted as it stands.
     assert keep["decision"] == {"kind": "confirm_sweep", "stage": "results", "sweep": "noticings",
                                 "lines": []}
@@ -151,7 +153,10 @@ def test_keeping_an_act_on_it_disposition_does_not_open_the_rows_until_it_is_set
     assert r.code == "triage_open"
     assert "1 marked \"act on it\" is not acted on yet: Age is written as text" in r.message
     decide, limit = r.exits
-    assert decide == {"label": "Decide: Age is written as text", "decision": None}
+    # Deciding it opens the noticing's own line, where the triage says it is decided (G12).
+    item = next(i for i in after.items if i.id == "binary_text__age")
+    assert decide == {"label": "Decide: Age is written as text", "decision": None,
+                      "target": {"stage": item.stage, "key": item.id}}
     assert limit["label"] == "Record as a limitation: Age is written as text"
     # The exit is a disposition of that noticing alone, accepted as it stands.
     taken = _confirm(log, after, limit["decision"]["lines"])

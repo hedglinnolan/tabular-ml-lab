@@ -80,6 +80,7 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core import claims, decisions
 from turbotab.core.decisions import ProjectState, Refusal, Revert, SetSplit
 from turbotab.core.custom_sound import LabeledQuestion
+from turbotab.core.exit_target import toward
 from turbotab.core.models.validation import ValidationPlan, validation_plan
 
 BasisState = Literal["grouped", "one_row_per_unit", "abandoned", "undetermined"]
@@ -2105,13 +2106,14 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
     spec = state.split
     if spec is None:
         raise Refusal("no_seal", "No rows are held out yet, so there is nothing to open.",
-                      exits=[{"label": "Choose how many rows to hold out", "decision": None}])
+                      exits=[{"label": "Choose how many rows to hold out", "decision": None,
+                              "target": toward("split")}])
     if spec.cut_point is None:
         hold = [{"label": f"Hold out {USUAL:.0%} first",
                  # The validation answer (WP9) is kept; only the holdout changes.
                  "decision": SetSplit(**{**spec.model_dump(), "holdout": USUAL})}]
     else:  # a cut-point holds rows out: a fit that holds none is not the current one
-        hold = [{"label": "Run the fit again", "decision": None}]
+        hold = [{"label": "Run the fit again", "decision": None, "target": toward(stage="models")}]
     if not decisions.holds_out(spec):
         raise Refusal("nothing_sealed",
                       "Every row trains under cross-validation alone, so there are no held-out rows "
@@ -2132,7 +2134,7 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
                 f"The models were not fitted for the current answers. {failed} The held-out rows "
                 f"open only on a finished, current fit.",
                 exits=[{"label": "Change the answer behind it, or run the fit again",
-                        "decision": None}],
+                        "decision": None, "target": toward(stage="models")}],
             )
         raise Refusal(
             "fit_not_fresh",
@@ -2180,7 +2182,8 @@ def _the_opening_waits_for_the_triage(decision: Any, ctx: Any) -> None:
             "The held-out rows open once, after every open noticing is settled, and the open "
             "noticings could not be read just now, so the rows stay sealed. Try again once the "
             "project's stages have settled.",
-            exits=[{"label": "Triage the open noticings in Results", "decision": None}],
+            exits=[{"label": "Triage the open noticings in Results", "decision": None,
+                    "target": toward(stage="results")}],
         ) from error
     if t is None or getattr(t, "passed", False):
         return
@@ -2196,7 +2199,8 @@ def _the_opening_waits_for_the_triage(decision: Any, ctx: Any) -> None:
             f"The held-out rows open once, after every open noticing is settled. "
             f"{_noticings(len(blocking))} must be resolved first: "
             f"{_named(blocking)}.",
-            exits=[{"label": f"Decide: {i.summary}", "decision": None} for i in blocking])
+            exits=[{"label": f"Decide: {i.summary}", "decision": None,
+                    "target": toward(stage=i.stage, key=i.id)} for i in blocking])
     waiting = [i for i in items if getattr(i, "recorded", None) is None]
     if waiting:
         n = len(waiting)
@@ -2211,14 +2215,16 @@ def _the_opening_waits_for_the_triage(decision: Any, ctx: Any) -> None:
             f"{'is' if n == 1 else 'are'} still open, each with its recommended disposition: "
             f"{named}. Triage {'it' if n == 1 else 'them'} in {where} first, so each is decided "
             f"before any held-out score is seen.",
-            exits=[{"label": f"Triage the open noticings in {where}", "decision": None},
+            exits=[{"label": f"Triage the open noticings in {where}", "decision": None,
+                    "target": toward(stage=stage)},
                    {"label": "Keep the recommended dispositions", "decision": confirm}])
     unacted = [i for i in items if getattr(i, "recorded", None) == "act_on_it"]
     if unacted:
         n = len(unacted)
         exits: list[dict[str, Any]] = []
         for i in unacted:
-            exits.append({"label": f"Decide: {i.summary}", "decision": None})
+            exits.append({"label": f"Decide: {i.summary}", "decision": None,
+                          "target": toward(stage=i.stage, key=i.id)})
             exits.append({"label": f"Record as a limitation: {i.summary}", "decision": {
                 "kind": "confirm_sweep", "stage": stage, "sweep": "noticings",
                 "lines": [{"id": i.line, "key": i.id, "value": "could_bias"}]}})
@@ -2296,7 +2302,8 @@ def _reseal_needs_an_opened_seal(decision: Any, ctx: Any) -> None:
         "nothing_to_reseal",
         "The held-out rows are not opened, so nothing needs a re-seal: change the held-out rows "
         "question, and they are drawn again before anything is scored on them.",
-        exits=[{"label": "Change the held-out rows question", "decision": None}],
+        exits=[{"label": "Change the held-out rows question", "decision": None,
+                "target": toward("split")}],
     )
 
 
@@ -2413,7 +2420,8 @@ def _the_scheme_needs_a_draw(decision: Any, ctx: Any) -> None:
         "The validation scheme compares the models on the training rows, and which rows are held "
         "out is not decided yet: the scheme set for you comes with that answer, and can be "
         "changed after it.",
-        exits=[{"label": "Answer the held-out rows question first", "decision": None}])
+        exits=[{"label": "Answer the held-out rows question first", "decision": None,
+                "target": toward("split")}])
 
 
 def _a_scheme_after_the_opening_is_recorded(decision: Any, ctx: Any) -> None:

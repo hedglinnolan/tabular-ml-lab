@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { RefusalError, api } from "../api/client";
 import type { ProjectView, Refusal } from "../api/schema";
 import { SERVED } from "./fixtures/stages";
+import { OpenCard } from "./record/target";
 import { StageRefusal, besideCard, refusalOf, waysForward } from "./StageRefusal";
 
 function wrap(node: ReactNode) {
@@ -159,5 +160,64 @@ describe("StageRefusal", () => {
     wrap(<StageRefusal pid="p" refusal={refusal} />);
     fireEvent.click(screen.getByTestId("stage-refusal-exit"));
     expect(await screen.findByTestId("refusal")).toHaveTextContent(refused.error.message);
+  });
+});
+
+/**
+ * G12 (the owner's Q3): a way forward that names no decision names the card it opens (`target`,
+ * core/exit_target.py, served as `{stage, key}`), and in the quest shell, which opens cards
+ * (`OpenCard`), it is a press that opens that card. R's way forward that names none is given one in
+ * the served shape; with no target, or where no shell opens cards, it is said in words as before.
+ */
+describe("StageRefusal's ways forward that name their card", () => {
+  const refusal = SERVED.R.refusal!;
+  const told = waysForward(refusal).find((x) => !x.decision)!;
+  const target = { stage: "data", key: null };
+  const targeted = { ...refusal, exits: refusal.exits.map((x) => (x.decision ? x : { ...x, target })) };
+
+  it("keeps each way forward's target as the engine serves it", () => {
+    expect(waysForward(targeted).find((x) => !x.decision)).toEqual({ ...told, target });
+    expect(besideCard(targeted).told).toEqual([{ ...told, target }]);
+  });
+
+  it("is a press that opens the card it names, where the shell opens cards and the card records", () => {
+    const open = vi.fn();
+    const decide = vi.spyOn(api, "decide");
+    wrap(
+      <OpenCard.Provider value={open}>
+        <StageRefusal pid="p" refusal={targeted} recordHere={false} />
+      </OpenCard.Provider>,
+    );
+    const note = screen.getByTestId(`stage-refusal-${refusal.stage}`);
+    // Its words are the refusal's alone; the way forward is the press, not a sentence beside it.
+    expect(note.querySelector("p")!.textContent).toBe(refusal.message);
+    const press = screen.getByRole("button", { name: told.label });
+    expect(press).toHaveAttribute("data-target", "data");
+    fireEvent.click(press);
+    expect(open).toHaveBeenCalledWith(target);
+    expect(decide).not.toHaveBeenCalled();
+    // The decision is still the card's to offer: no press records it here.
+    expect(screen.getAllByRole("button")).toEqual([press]);
+  });
+
+  it("is a press beside the decisions where the stage records", () => {
+    const open = vi.fn();
+    wrap(
+      <OpenCard.Provider value={open}>
+        <StageRefusal pid="p" refusal={targeted} />
+      </OpenCard.Provider>,
+    );
+    expect(screen.getAllByTestId("stage-refusal-exit").map((b) => b.textContent)).toEqual([
+      shown(refusal.exits[0]!.label as string),
+    ]);
+    fireEvent.click(screen.getByTestId("stage-refusal-to"));
+    expect(open).toHaveBeenCalledWith(target);
+  });
+
+  it("is said in words where no shell opens cards", () => {
+    wrap(<StageRefusal pid="p" refusal={targeted} recordHere={false} />);
+    const note = screen.getByTestId(`stage-refusal-${refusal.stage}`);
+    expect(note.textContent).toBe(`${refusal.message} ${told.label}.`);
+    expect(screen.queryAllByRole("button")).toEqual([]);
   });
 });

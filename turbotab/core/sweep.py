@@ -57,6 +57,7 @@ from turbotab.core.decisions import (
     register_completion,
     sweep_key,
 )
+from turbotab.core.exit_target import toward
 from turbotab.core.materiality import (
     Movement,
     Noticing,
@@ -806,6 +807,13 @@ def _ctx(ctx: Any, name: str) -> Any:
     return ctx.get(name) if isinstance(ctx, Mapping) else getattr(ctx, name, None)
 
 
+def _after(stage: str) -> dict[str, Any] | None:
+    """The stage after ``stage`` among the seven, as a way forward's target; None after the last."""
+    keys = [key for key, _ in STAGES]
+    i = keys.index(stage)
+    return toward(stage=keys[i + 1]) if i + 1 < len(keys) else None
+
+
 def _confirm_the_defaults(d: ConfirmSweep, log: QuestLog) -> ConfirmSweep:
     stage = next(s for s in log.stages if s.key == d.stage)
     name = STAGE_NAMES[d.stage]
@@ -813,11 +821,15 @@ def _confirm_the_defaults(d: ConfirmSweep, log: QuestLog) -> ConfirmSweep:
     waiting = [l for l in confirms if l.status == "waiting"]
     if waiting:
         names = [w.name for l in waiting for w in l.waiting_for] or [l.name for l in waiting]
+        # The card of the first answer named: the earlier question waited for, else the line.
+        first = next((w for l in waiting for w in l.waiting_for), None)
+        to = (toward(stage=first.stage, key=first.key) if first is not None
+              else toward(stage=d.stage, key=waiting[0].key))
         raise Refusal(
             "sweep_waits",
             f"Some choices set for you in {name} wait for {', '.join(dict.fromkeys(names))}; "
             f"they are confirmed together once it is answered.",
-            exits=[{"label": f"Answer {names[0]}", "decision": None}])
+            exits=[{"label": f"Answer {names[0]}", "decision": None, "target": to}])
     current = sweep_lines(stage)
     if not current:
         raise Refusal(
@@ -825,7 +837,8 @@ def _confirm_the_defaults(d: ConfirmSweep, log: QuestLog) -> ConfirmSweep:
             f"{name} holds no choice set for you whose alternative would change a number here"
             + (", other than those you answered yourself" if confirms else "")
             + ", so there is nothing to confirm.",
-            exits=[{"label": f"Continue past {name}", "decision": None}])
+            exits=[{"label": f"Continue past {name}", "decision": None,
+                    "target": _after(d.stage)}])
     if d.lines and sorted(d.lines, key=lambda l: l.key) != sorted(current, key=lambda l: l.key):
         shown = {(l.key, l.value) for l in d.lines}
         moved = [l.key for l in current if (l.key, l.value) not in shown]
@@ -847,7 +860,8 @@ def _confirm_the_triage(d: ConfirmSweep, t: Triage) -> ConfirmSweep:
             + ("the held-out rows open" if t.stage == "results" else "the plan is fixed")
             + ", and that has happened: each is decided on its own now, as made after the "
             + ("held-out scores were seen." if t.stage == "results" else "estimates were seen."),
-            exits=[{"label": f"Decide: {i.summary}", "decision": None}
+            exits=[{"label": f"Decide: {i.summary}", "decision": None,
+                    "target": toward(stage=i.stage, key=i.id)}
                    for i in t.items if i.recorded is None])
     if d.stage != t.stage:
         raise Refusal(
@@ -862,7 +876,8 @@ def _confirm_the_triage(d: ConfirmSweep, t: Triage) -> ConfirmSweep:
             "blocker_open",
             f"{len(blocking)} noticing{'s' if len(blocking) > 1 else ''} must be resolved before "
             f"the rest are triaged: {'; '.join(i.summary for i in blocking)}.",
-            exits=[{"label": f"Decide: {i.summary}", "decision": None} for i in blocking])
+            exits=[{"label": f"Decide: {i.summary}", "decision": None,
+                    "target": toward(stage=i.stage, key=i.id)} for i in blocking])
     if not t.items:
         raise Refusal("nothing_to_confirm", "No noticing is open, so there is nothing to triage.",
                       exits=[{"label": "Continue", "decision": None}])

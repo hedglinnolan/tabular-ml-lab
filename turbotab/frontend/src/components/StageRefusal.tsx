@@ -4,13 +4,16 @@
  * words and its ways forward, on the RefusalNote pattern (record/Refusal.tsx). A way forward that
  * is a decision is a press that records it, and the stage computes again for the answers it then
  * reads; one that names no decision is said in words after the refusal's, since no press here can
- * carry it out. Where the card is the one place a choice is recorded (the quest shell's tapestry:
- * FOUNDATION §1, Stage's `recordHere`), the refusal is said as the stage says a preview's refusal
- * there (`besideCard`): no way forward is a press, and one that is a decision is not said either,
- * since the card offers it and its label names a choice ("`age` is an amount"), which said as a
- * sentence would read as a fact. No "Try again" (StageRetry): the refusal is for the current
- * answers, so running them again refuses again. No way forward confirms a column's role with other
- * readings in one press (BLUEPRINT §14 rule 2; besideAsk.ts `confirmsRoleInBlock`).
+ * carry it out, unless it names the card it opens (`target`, record/target.ts) and the quest shell
+ * opens cards: then it is a press that opens that card (G12). Where the card is the one place a
+ * choice is recorded (the quest shell's tapestry: FOUNDATION §1, Stage's `recordHere`), the refusal
+ * is said as the stage says a preview's refusal there (`besideCard`): no way forward is a press
+ * that records, and one that is a decision is not said either, since the card offers it and its
+ * label names a choice ("`age` is an amount"), which said as a sentence would read as a fact; a
+ * way forward that opens its card records nothing, so it is a press there too. No "Try again"
+ * (StageRetry): the refusal is for the current answers, so running them again refuses again. No
+ * way forward confirms a column's role with other readings in one press (BLUEPRINT §14 rule 2;
+ * besideAsk.ts `confirmsRoleInBlock`).
  */
 import { Fragment, useState, type ReactNode } from "react";
 import { isRefusalError } from "../api/client";
@@ -20,6 +23,7 @@ import { Prose } from "./Prose";
 import { besideAsk, confirmsRoleInBlock } from "./record/besideAsk";
 import { FailureNote, RefusalNote } from "./record/Refusal";
 import r from "./record/Refusal.module.css";
+import { targetName, targetOf, useOpenTarget } from "./record/target";
 
 /** A stage's refusal in words, as its status serves it. */
 export type StageRefused = NonNullable<StageStatus["refusal"]>;
@@ -32,7 +36,8 @@ export function refusalOf(status: StageStatus | undefined): StageRefused | null 
 }
 
 /** Its ways forward, each a label and a decision or none, as the engine serves them
- *  (core/graph.py `_way_forward`); one whose decision is in no shape the decision model reads is
+ *  (core/graph.py `_way_forward`), with the card one that names no decision opens where it names
+ *  one (`target`, record/target.ts); one whose decision is in no shape the decision model reads is
  *  not offered, nor one that confirms a role with other readings. */
 export function waysForward(refusal: StageRefused): RefusalExit[] {
   const ways: RefusalExit[] = [];
@@ -41,7 +46,8 @@ export function waysForward(refusal: StageRefused): RefusalExit[] {
     if (typeof label !== "string") continue;
     const decided = typeof decision === "object" && decision !== null && typeof (decision as { kind?: unknown }).kind === "string";
     if (decision != null && !decided) continue;
-    const way = { label, decision: decided ? (decision as RefusalExit["decision"]) : null };
+    const target = targetOf(served);
+    const way = { label, decision: decided ? (decision as RefusalExit["decision"]) : null, ...(target ? { target } : {}) };
     if (!confirmsRoleInBlock(way)) ways.push(way);
   }
   return ways;
@@ -78,7 +84,9 @@ function useWayForward(pid: string) {
 
 /** "<lead> <the refusal's words> <after> <each way forward that is no decision>.", then a press
  *  for each way forward that is a decision; with `recordHere` false, the refusal's words as the
- *  card leaves them (`besideCard`) and no press. */
+ *  card leaves them (`besideCard`) and no press that records. A way forward that is no decision
+ *  but names the card it opens is, where the shell opens cards, a press that opens it instead of a
+ *  sentence (G12): it records nothing, so it is a press with `recordHere` false too. */
 export function StageRefusal({
   pid,
   refusal,
@@ -98,11 +106,15 @@ export function StageRefusal({
   testId?: string;
 }) {
   const way = useWayForward(pid);
+  const opener = useOpenTarget();
   const ways = waysForward(refusal);
   const presses = recordHere ? ways.filter((x) => x.decision) : [];
-  const { message, told: said } = recordHere
+  const { message, told } = recordHere
     ? { message: refusal.message, told: ways.filter((x) => !x.decision) }
     : besideCard(refusal);
+  const opens = told.map((x) => ({ x, open: opener(x) }));
+  const said = opens.filter((o) => !o.open).map((o) => o.x);
+  const to = opens.flatMap(({ x, open }) => (open ? [{ x, open, target: targetOf(x)! }] : []));
   return (
     <div
       className={r.refusal}
@@ -123,7 +135,7 @@ export function StageRefusal({
           </Fragment>
         ))}
       </p>
-      {presses.length ? (
+      {presses.length || to.length ? (
         <div className={r.exits}>
           {presses.map((x) => (
             <button
@@ -133,6 +145,18 @@ export function StageRefusal({
               disabled={way.pending}
               onClick={() => way.take(x.decision as Decision)}
               data-testid="stage-refusal-exit"
+            >
+              <Prose text={x.label} />
+            </button>
+          ))}
+          {to.map(({ x, open, target }) => (
+            <button
+              key={x.label}
+              type="button"
+              className={r.ghost}
+              onClick={open}
+              data-testid="stage-refusal-to"
+              data-target={targetName(target)}
             >
               <Prose text={x.label} />
             </button>
