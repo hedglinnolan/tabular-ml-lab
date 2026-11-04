@@ -12,17 +12,19 @@
  * none, the default itself, from its value) and what another choice would change, and any can be
  * opened to change it; under Predict, Who's in's draw waits for that sweep (§3, "two departures").
  * Results, once reached, has W1-G's ResultsCards in place of its lines, mounted once
- * (src/quest/contracts.ts). First look lists every noticing with the stage that decides it. For
- * the record sits collapsed at the foot (GET /record); Write-up's checklist below it lists what the
- * author still owes for each item answered in part (GET /checklist). The one primary action is at
- * the very foot (FOUNDATION §1); a disabled one says why and links to what it waits for. Continue
- * goes on to the next open line a card can answer, naming it where that is not the next stage;
- * under Predict open noticings hold it in no stage but the triage's own, and the foot, or Fit's
- * beside the flowchart, says how many wait for the triage in Results (log.ts). Under Estimate the
- * triage of the open noticings (cards/TriageCard.tsx) is drawn at Models' end, after its Confirm
- * sweep, before For the record and the foot: before the plan's lock and the analysis flowchart
- * beside the card (§7; G05). While it is unconfirmed, the foot beside Fit says that Fit fixes the
- * plan and the noticings above are confirmed first (log.ts `triageBeforeFit`).
+ * (src/quest/contracts.ts). First look opens on its guide (src/quest/firstlook: its beats, or the
+ * question of a look its gallery asks to decide now), then lists every noticing with the stage
+ * that decides it. For the record sits collapsed at the foot (GET /record); Write-up's checklist
+ * below it lists what the author still owes for each item answered in part (GET /checklist). The
+ * one primary action is at the very foot (FOUNDATION §1); a disabled one says why and links to
+ * what it waits for. Continue goes on to the next open line a card can answer, naming it where
+ * that is not the next stage; under Predict open noticings hold it in no stage but the triage's
+ * own, and the foot, or Fit's beside the flowchart, says how many wait for the triage in Results
+ * (log.ts). Under Estimate the triage of the open noticings (cards/TriageCard.tsx) is drawn at
+ * Models' end, after its Confirm sweep, before For the record and the foot: before the plan's lock
+ * and the analysis flowchart beside the card (§7; G05). While it is unconfirmed, the foot beside
+ * Fit says that Fit fixes the plan and the noticings above are confirmed first (log.ts
+ * `triageBeforeFit`).
  *
  * A stage opened by a request (the quest line, a "Waiting for" link, a noticing's lever, the foot's
  * link) brings the line it names, else its open line, into view and gives it focus (§1, the
@@ -60,6 +62,7 @@ import { DECLARATION_CARDS, DECLARATION_DEFAULTS } from "./cards/predict";
 import { columnOf, recordable } from "./cards/renderers";
 import { TriageCard } from "./cards/TriageCard";
 import { FootSlot } from "./contracts";
+import { FirstLookGuide } from "./firstlook";
 import {
   type FitPosition,
   type Hint,
@@ -306,7 +309,10 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
         </div>
 
         {stage.key === "first_look" && stage.reached ? (
-          <Noticed log={log} answers={answers} noticings={noticings} onOpenStage={onOpenStage} />
+          <>
+            <FirstLookGuide pid={pid} log={log} />
+            <Noticed log={log} answers={answers} noticings={noticings} onOpenStage={onOpenStage} />
+          </>
         ) : null}
 
         {results ? (

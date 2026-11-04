@@ -4,10 +4,13 @@
  * the kit's canvas head, and under Predict it shows no fit until Fit is pressed (§7: what waits is
  * what is shown; log.ts `fitWithheld`); at Models' end it is the analysis flowchart (today's
  * lineage view) with Fit at its end (§7); in Results it is W1-G's ResultsTapestry inside the kit's
- * canvas; in Write-up the manuscript at full width, in the export bundle's sections (P8). Nothing
- * is recorded from the tapestry: the card's foot is the one action (FOUNDATION §1), so the stage
- * draws no record button and no refusal's ways forward, and leaves a refusal's readings to the card
- * that asks them (StageProps `recordHere`).
+ * canvas; in Write-up the manuscript at full width, in the export bundle's sections (P8); at First
+ * look its gallery (src/quest/firstlook), which gives way to today's stage while an option of a
+ * question asked from it is pointed at. No choice is recorded from the tapestry: the card's foot is
+ * the one action (FOUNDATION §1), so the stage draws no record button and no refusal's ways
+ * forward, and leaves a refusal's readings to the card that asks them (StageProps `recordHere`).
+ * The one record made here is a look, not a choice: opening one of the outcome's views in First
+ * look's gallery records it as looked at (`view_outcome`, FOUNDATION §5 rule 6).
  */
 import type { MethodsSections } from "../api/m3-types";
 import type { ProjectView, QuestLog } from "../api/schema";
@@ -15,6 +18,7 @@ import { Stage } from "../components/stage/Stage";
 import { ManuscriptBody, kit as k } from "../kit";
 import { useStageFocus, type StageFocus } from "../state/focus";
 import { waitingPredictorColumns } from "./cards/roles/roles";
+import { FirstLookGallery } from "./firstlook";
 import { FitControl } from "./Fit";
 import { fitWithheld, type FitPosition } from "./log";
 import { ResultsTapestry } from "./results";
@@ -54,6 +58,15 @@ export function Tapestry({
     return (
       <section className={`${k.msColumn} ${q.tapestry}`} data-kit aria-label="The manuscript" data-testid="tapestry-writeup">
         {methods ? <ManuscriptBody methods={methods} onOpen={onOpenKind} /> : <p className={k.note}>Reading the methods…</p>}
+      </section>
+    );
+  }
+  // First look: its gallery, except while an option of a question asked from it is pointed at,
+  // which today's stage previews as it previews any option (FIRST_LOOK_BRIEF §4.4).
+  if (shown === "first_look" && focus.kind !== "option") {
+    return (
+      <section className={`${k.canvas} ${q.tapestry}`} data-kit aria-label="First look" data-testid="tapestry-first_look">
+        <FirstLookGallery pid={pid} view={view} log={log} />
       </section>
     );
   }
