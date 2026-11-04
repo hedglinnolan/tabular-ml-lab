@@ -150,9 +150,10 @@ def test_under_estimate_fit_waits_for_the_open_noticings_triage_and_locks_once_i
     named = "; ".join(f"{i['summary'].strip().rstrip('.')} ({i['label'].lower()})" for i in still)
     assert error["message"] == (
         f"Fit waits: pressing it locks the analysis plan, and the open noticings are triaged "
-        f"before the plan is locked. {n} {'is' if n == 1 else 'are'} still open, each with its "
-        f"recommended disposition: {named}. Triage {'it' if n == 1 else 'them'} in Models first, "
-        f"so each is decided before any estimate is seen.")
+        f"before the plan is locked. {n} {'is' if n == 1 else 'are'} still open, "
+        f"{'with its' if n == 1 else 'each with its'} recommended disposition: {named}. "
+        f"Triage {'it' if n == 1 else 'them'} in Models first, "
+        f"so {'it is' if n == 1 else 'each is'} decided before any estimate is seen.")
     assert error["exits"] == [{"label": "Triage the open noticings in Models", "decision": None},
                               {"label": "Keep the recommended dispositions", "decision": CONFIRM}]
     nothing_pressed_or_locked(client, pid, before)

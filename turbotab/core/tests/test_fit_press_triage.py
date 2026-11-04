@@ -52,9 +52,9 @@ def test_one_noticing_with_no_recorded_disposition_holds_fit_with_the_triage_as_
              "could_bias", recorded="could_bias")))
     assert isinstance(refused, Refusal) and refused.code == "triage_open"
     assert refused.message == (
-        f"{LEAD} 1 is still open, each with its recommended disposition: `gender` is two-level "
+        f"{LEAD} 1 is still open, with its recommended disposition: `gender` is two-level "
         f"text (`female`, `male`) (doesn't change your numbers here). Triage it in Models first, "
-        f"so each is decided before any estimate is seen.")
+        f"so it is decided before any estimate is seen.")
     assert refused.exits == [{"label": "Triage the open noticings in Models", "decision": None},
                              {"label": "Keep the recommended dispositions", "decision": CONFIRM}]
 

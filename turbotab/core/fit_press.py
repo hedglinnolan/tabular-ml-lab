@@ -338,9 +338,10 @@ def triage_refusal(t: Any) -> Any:
     named = "; ".join(f"{_said(i.summary)} ({i.label.lower()})" for i in waiting)
     return Refusal(
         "triage_open",
-        f"{PRESS_WAITS_FOR_TRIAGE} {n} {'is' if n == 1 else 'are'} still open, each with its "
-        f"recommended disposition: {named}. Triage {'it' if n == 1 else 'them'} in {where} first, "
-        f"so each is decided before any estimate is seen.",
+        f"{PRESS_WAITS_FOR_TRIAGE} {n} {'is' if n == 1 else 'are'} still open, "
+        f"{'with its' if n == 1 else 'each with its'} recommended disposition: {named}. Triage "
+        f"{'it' if n == 1 else 'them'} in {where} first, so "
+        f"{'it is' if n == 1 else 'each is'} decided before any estimate is seen.",
         exits=[{"label": f"Triage the open noticings in {where}", "decision": None},
                {"label": "Keep the recommended dispositions",
                 "decision": {"kind": "confirm_sweep", "stage": stage, "sweep": "noticings",
