@@ -3696,6 +3696,12 @@ _CONFIRMATIONS = ("confirm_role", "confirm_reading", "confirm_readings")
 _ROLE_READERS = {"energy adjustment": ("energy_adjustment", "reads"),
                  "survey answer": ("survey", "reads"),
                  "exclusion rules": ("exclusions", "read")}
+# The earlier answer of a slot that records no rule or no adjustment, as a revert returns to it
+# (``_role_reader_returned``): whether the slot's value is that answer, and the words naming what
+# it does ("Keep every row" records no rules; "Do not adjust for energy" the method "none").
+# Either survey answer is a survey answer, so it keeps its name.
+_RECORDS_NONE = {"energy adjustment": (lambda held: held.method == "none", "no energy adjustment"),
+                 "exclusion rules": (lambda held: not held, "keeping every row")}
 
 
 def _undoes_a_confirmation(decision: Any, ctx: Any) -> bool:
@@ -3730,7 +3736,8 @@ def _role_reader_returned(decision: Any, ctx: Any, what: str) -> list[dict[str, 
     (:func:`_taken`); else none. Its label says what the revert does: withdraws the answer where the
     slot is then empty, returns to the earlier answer where one of it is still live (``fold`` keeps
     the latest live word: the Router records the slot's first answer, the card's adjustment, no
-    rules, the sample's estimate, before any change)."""
+    rules, the sample's estimate, before any change), named by what it does where it records no
+    rule or no adjustment (:data:`_RECORDS_NONE`), as no earlier rules or adjustment exist."""
     slot = _ROLE_READERS[what][0]
     record = _record_in_force(ctx, slot)
     records = _records_in(ctx)
@@ -3747,8 +3754,11 @@ def _role_reader_returned(decision: Any, ctx: Any, what: str) -> list[dict[str, 
         return []
     if not then.roles or _roles_newly_unsettled(returned, then).get(what):
         return []
-    label = (f"Return to the earlier {what} first" if getattr(returned, slot, None) is not None
-             else f"Withdraw the {what} first")
+    held = getattr(returned, slot, None)
+    empty = _RECORDS_NONE.get(what)
+    label = (f"Withdraw the {what} first" if held is None else
+             f"Return to {empty[1]} first" if empty is not None and empty[0](held) else
+             f"Return to the earlier {what} first")
     return _taken([{"label": label, "decision": revert}], ctx)
 
 
@@ -5711,9 +5721,10 @@ def _censored_named(ctx: Any) -> list[str]:
 
 
 # The fewest detected values a single censoring-aware fill fits its censored normal on: on a column
-# with fewer it sets every blank to half the smallest detected value, with no fit
-# (``missing.BelowDetectionFill``, ``omics.LogScaleCensoredFill``, which keep the same number as a
-# literal; ``tests/test_below_detection_exit_says_what_it_records.py`` holds them to this one).
+# with fewer it sets every blank to half the smallest detected value (that value itself where it
+# is below zero), with no fit (``missing.BelowDetectionFill``, ``omics.LogScaleCensoredFill``,
+# which keep the same number as a literal;
+# ``tests/test_below_detection_exit_says_what_it_records.py`` holds them to this one, at 3 and 2).
 CENSORED_FIT_MIN_DETECTED = 3
 
 
@@ -5759,17 +5770,28 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
         return
     how = ("multiple imputation reads them as missing at random" if decision.strategy ==
            "multiple_imputation" else "the median fill places them in the middle of the distribution")
-    # The censoring-aware exit keeps the answer's strategy, so its words follow it: within multiple
-    # imputation each blank is drawn below the limit given the outcome; a single fill sets each to
-    # one expected value below the limit from a censored normal fitted without the outcome, or, on
-    # a column with fewer than CENSORED_FIT_MIN_DETECTED detected values, to half the smallest
-    # (``missing.BelowDetectionFill``, ``omics.LogScaleCensoredFill``).
-    aware = ("a censored-normal draw below the limit, given the outcome"
-             if decision.strategy == "multiple_imputation" else
-             f"the expected value below the limit under a censored-normal fit, or half the "
-             f"smallest detected value where a column has fewer than {CENSORED_FIT_MIN_DETECTED} "
-             f"detected values" if inference else
-             "the expected value below the limit, fit in each training fold")
+    # The censoring-aware exit keeps the answer's strategy, so under inference its words follow it
+    # (``_missing_fits_the_purpose``, which runs first, refuses multiple imputation under
+    # prediction): within multiple imputation each blank is drawn below the limit given the
+    # outcome; a single fill sets each to one expected value below the limit from a censored normal
+    # fitted without the outcome (``missing.BelowDetectionFill``, ``omics.LogScaleCensoredFill``).
+    # The normalization that chooses between them may be recorded after this answer, so the words
+    # name both fallbacks with no fit: half the smallest detected value on a column with fewer
+    # than CENSORED_FIT_MIN_DETECTED of them, that value itself where it is below zero (the
+    # own-scale fill's ``limit / 2 if limit > 0 else limit``), and half it where the detected
+    # values are all equal and a log2 normalization (``omics.LOGGED``) includes any censored
+    # column, so that every one is filled on the log scale (``pipeline.detect_step``); on the own
+    # scale equal values are refused (``missing.censored_fill_refusal``).
+    if not inference:
+        aware = "the expected value below the limit, fit in each training fold"
+    elif decision.strategy == "multiple_imputation":
+        aware = "a censored-normal draw below the limit, given the outcome"
+    else:
+        aware = (f"the expected value below the limit under a censored-normal fit, or, with no "
+                 f"fit, half the smallest detected value (the value itself where it is negative) "
+                 f"where a column has fewer than {CENSORED_FIT_MIN_DETECTED} detected values, or "
+                 f"has every detected value equal and a log2 normalization includes any of these "
+                 f"columns")
     # Half the minimum is customary only at 10% below the limit or less (Lubin et al. 2004); the
     # share is of the participants' values, zeros recoded as non-detections included (MS7 repair).
     from turbotab.core.methods.omics import CENSORED_CUSTOMARY_MAX, censored_share_of

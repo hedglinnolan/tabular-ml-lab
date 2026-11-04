@@ -21,6 +21,17 @@ the metabolomics pack flags columns detected on one or two participants as left-
 says both, at the threshold the fills keep: at 3 detected values each fill is E[X | X < L] under its
 censored normal (scipy, as above, on the log scale through ``scipy.stats.lognorm``), and at 2 it is
 L / 2 (4.0 and 9.0 detected: 2.0).
+
+The verifier's R1-P1 (repair round 2): two reachable edges of that fallback. On the own scale a
+smallest detected value below zero (a table logged before upload) is the fill itself, not its half
+(``limit / 2 if limit > 0 else limit``: -1.0 and 2.0 detected fill -1.0). And where a log2
+normalization includes any of the censored columns, every one of them is filled on the log scale
+(``pipeline.detect_step``: one ``LogScaleCensoredFill`` over them all), which sets a column whose
+detected values are all equal to half that value with no fit (4.0 three times: 2.0); on the own
+scale the same column is refused, as a censored normal on equal values has no finite maximum
+(σ → 0 raises the likelihood without bound), so no half is claimed there. The label states both,
+the log2 normalizations named by their own step labels (``omics.STEP_LABELS``; log-CPM is not
+one).
 """
 from __future__ import annotations
 
@@ -36,11 +47,13 @@ from turbotab.core.decisions import ProjectState, Refusal, SetMissing, validate
 LIMIT = -0.5  # negative, so the censored normal is fitted on the column's own scale
 
 
-# The label a single fill's exit reads under inference: the fit, and its fallback at the threshold
-# the fills keep (the tests below, both ways).
+# The label a single fill's exit reads under inference: the fit, and its fallback with no fit, at
+# the threshold the fills keep and where a log2 normalization sends equal values to it, a negative
+# smallest value kept as it is (the tests below, both ways).
 SINGLE_FILL = ("Censoring-aware: the expected value below the limit under a censored-normal fit, "
-               "or half the smallest detected value where a column has fewer than 3 detected "
-               "values")
+               "or, with no fit, half the smallest detected value (the value itself where it is "
+               "negative) where a column has fewer than 3 detected values, or has every detected "
+               "value equal and a log2 normalization includes any of these columns")
 
 
 def ctx(purpose: str) -> dict:
@@ -179,5 +192,81 @@ def test_below_three_detected_values_each_fill_is_half_the_smallest_detected_val
     assert fills(detected_on([4.0, 9.0])) == {"own": 2.0, "log": 2.0}
     assert fills(detected_on([4.0])) == {"own": 2.0, "log": 2.0}
     assert first_exit("inference", "impute", acknowledged=True)["label"] == SINGLE_FILL
-    assert SINGLE_FILL.endswith("half the smallest detected value where a column has fewer than "
-                                "3 detected values")
+    assert "half the smallest detected value (the value itself where it is negative) where a " \
+           "column has fewer than 3 detected values" in SINGLE_FILL
+
+
+def own_fill(frame: pd.DataFrame) -> float:
+    """The own-scale censoring-aware fill's one value for the blanks of ``frame``'s column."""
+    from turbotab.core.methods.missing import BelowDetectionFill
+
+    blank = frame["m"].isna().to_numpy()
+    values = BelowDetectionFill(["m"], "censoring_aware").fit(frame).transform(frame)["m"]
+    values = values.to_numpy()[blank]
+    assert np.unique(values).size == 1
+    return float(values[0])
+
+
+def test_below_three_detected_values_a_negative_smallest_value_is_the_fill_itself():
+    """Detected at -1.0 and 2.0 (a table logged before upload; no log2 normalization takes a column
+    at or below zero, so the fill is the own-scale one), every blank is set to the smallest
+    detected value itself, -1.0 by construction, not its half; at 0.0 the value and its half agree,
+    and a positive smallest value is halved (the test above). The label says so."""
+    assert own_fill(detected_on([-1.0, 2.0])) == -1.0
+    assert own_fill(detected_on([-1.0])) == -1.0
+    assert own_fill(detected_on([0.0, 2.0])) == 0.0
+    assert own_fill(detected_on([0.5, 2.0])) == 0.25
+    assert first_exit("inference", "impute", acknowledged=True)["label"] == SINGLE_FILL
+    assert "half the smallest detected value (the value itself where it is negative)" in SINGLE_FILL
+
+
+def equal_and_varied() -> pd.DataFrame:
+    """`m` detected three times at 4.0 and `k` at 4.0, 6.0 and 9.0, every other row a blank."""
+    return pd.DataFrame({"m": detected_on([4.0, 4.0, 4.0])["m"],
+                         "k": detected_on([4.0, 6.0, 9.0])["m"]})
+
+
+@pytest.mark.parametrize("method", ["log2", "pqn_log2", "qc_pqn_log2"])
+def test_where_a_log2_normalization_includes_a_column_equal_values_are_halved_with_no_fit(method):
+    """A log2 normalization (its own step label says log2) that includes `k` alone: the detection
+    step fills every censored column on the log scale, `m` too, so `m`'s three equal detected
+    values (no fit has a finite maximum on them) set its blanks to 4.0 / 2 with no fit, while `k`,
+    whose values differ, is fitted (E[X | X < 4] under the log-normal, scipy). The label says so."""
+    from turbotab.core.methods.omics import STEP_LABELS, LogScaleCensoredFill
+    from turbotab.core.models.pipeline import detect_step
+
+    assert "log2" in STEP_LABELS[method][0].lower() and "log2" in STEP_LABELS[method][1]
+    step = detect_step(SimpleNamespace(normalization={"method": method, "columns": ["k"]},
+                                       censored={"method": "censoring_aware",
+                                                 "columns": ["m", "k"]}))
+    assert isinstance(step, LogScaleCensoredFill) and list(step.columns) == ["m", "k"]
+    frame = equal_and_varied()
+    filled = step.fit(frame).transform(frame)
+    assert set(filled["m"][frame["m"].isna()]) == {2.0}
+    k = filled["k"][frame["k"].isna()]
+    assert np.unique(k).size == 1
+    assert k.iloc[0] == pytest.approx(scipy_log_fill(frame["k"].to_numpy(), 4.0), rel=1e-5)
+    assert first_exit("inference", "impute", acknowledged=True)["label"] == SINGLE_FILL
+    assert SINGLE_FILL.endswith(", or has every detected value equal and a log2 normalization "
+                                "includes any of these columns")
+
+
+@pytest.mark.parametrize("method", [None, "log_cpm", "log_cpm_tmm"])
+def test_without_a_log2_normalization_equal_values_are_refused_not_halved(method):
+    """No normalization, or log-CPM (its step label says log-CPM, not log2): the fill is the
+    own-scale one, which refuses `m`'s three equal detected values (a censored normal on them has
+    no finite maximum: σ → 0 raises the likelihood without bound), so the label claims no half
+    there."""
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.methods.missing import BelowDetectionFill
+    from turbotab.core.methods.omics import STEP_LABELS
+    from turbotab.core.models.pipeline import detect_step
+
+    if method is not None:
+        assert "log2" not in " ".join(STEP_LABELS[method]).lower()
+    step = detect_step(SimpleNamespace(
+        normalization=None if method is None else {"method": method, "columns": ["m", "k"]},
+        censored={"method": "censoring_aware", "columns": ["m", "k"]}))
+    assert isinstance(step, BelowDetectionFill) and step.method == "censoring_aware"
+    with pytest.raises(StageRefusal, match="cannot be filled censoring-aware"):
+        step.fit(equal_and_varied())
