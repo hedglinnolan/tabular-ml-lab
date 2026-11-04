@@ -4,9 +4,11 @@
 Before the opening the fit declares that the final model's held-out score will be the result, and
 states no number. Once the held-out rows are opened with a final family named, the result is the
 held-out score the first opening recorded for that family on its metric (``at_opening``), said in
-the past tense with the number in it, and with the final family's held-out interval only while the
-scores served beside it are the opening's (``at_opening.current``): after a fit changed after the
-opening, a re-seal, or rows drawn and opened again, the score stays and no interval is given.
+the past tense with the number in it. Its fields carry the final family's held-out interval only
+while the scores served beside it are the opening's (``at_opening.current``): after a fit changed
+after the opening, a re-seal, or rows drawn and opened again, the score stays and no interval is
+given. The sentence states no interval: it is Table 2's caption, beside a result row that gives
+none (``export.tables.performance``).
 
 Every truth here is constructed: a served fit with two families' held-out scores and intervals, the
 first in fit order not the final one, and an ``open_seal`` record naming the second with scores of
@@ -21,6 +23,7 @@ from datetime import datetime, timezone
 from turbotab.core import decisions as d
 from turbotab.core import seal
 from turbotab.core.decisions import DecisionRecord
+from turbotab.core.export import tables
 from turbotab.core.models.selection import declared_result, mark_final, result_at_opening
 from turbotab.core.tests.test_sentence_precision import table
 
@@ -94,10 +97,35 @@ def test_after_the_opening_the_result_is_the_score_the_opening_recorded_for_the_
     # The final family's recorded score, not the first family's in fit order.
     assert result["estimate"] == 342.068 and result["estimate"] != AT_OPENING["linear"]["mse"]
     assert (result["ci_low"], result["ci_high"]) == (311.42, 372.7)
-    assert result["sentence"] == opened_sentence(
-        f" (95% interval {table(311.42)} to {table(372.7)}).")
+    assert result["sentence"] == opened_sentence(".")
     assert "will be" not in result["sentence"]
     assert out["final_model"] == "elastic_net"  # the other fields stand as mark_final left them
+
+
+def test_table_2s_caption_states_no_interval_beside_the_result_row_that_gives_none():
+    """P1: the performance table's caption is the declared result's sentence, and its row labeled
+    the result gives the opening's score with no interval (``export.tables.performance``), so the
+    sentence states none, opening current or not. The final family's own held-out row beside it
+    still gives the constructed interval while the opening is current."""
+    current = seal.reported_result(opened_log(), opened=True, changed=False)
+    changed = seal.reported_result(
+        [*opened_log(), record(6, d.SetSplit(holdout=0.25, seed=0, folds=10), post_seal=True)],
+        opened=True, changed=True)
+    assert current["current"] is True and changed["current"] is False
+    for at in (current, changed):
+        fit = result_at_opening({**served_fit(), "at_opening": at}, at)
+        [t] = tables.performance(fit)
+        assert t.caption == fit["result"]["sentence"]
+        [row] = [r for r in t.rows if r["role"] == tables.RESULT]
+        assert row["key"] == "result/holdout/mse" and row["estimate"] == 342.068
+        assert row["ci_low"] is None and row["ci_high"] is None
+        for low, high in ((311.42, 372.7), (312.9, 373.5)):
+            assert f"interval {table(low)} to {table(high)}" not in t.caption
+        assert "% interval" not in t.caption
+        if at["current"]:
+            assert (fit["result"]["ci_low"], fit["result"]["ci_high"]) == (311.42, 372.7)
+            own = next(r for r in t.rows if r["key"] == "elastic_net/holdout/mse")
+            assert (own["ci_low"], own["ci_high"]) == (311.42, 372.7)
 
 
 def test_after_a_change_after_the_opening_the_score_stays_and_no_interval_is_given():

@@ -901,13 +901,15 @@ def result_at_opening(out: dict[str, Any], at: Mapping[str, Any] | None) -> dict
     metric (``at``, the served fit's ``at_opening``; ``seal.reported_result``, audit WP16), said in
     the past tense with the number in it.
 
-    Its interval is the final family's served held-out interval, given only while the scores served
-    beside it are the opening's (``at["current"]``) and the family's served score is the recorded
-    one; after a fit changed after the opening, a re-seal, or rows drawn and opened again, the score
-    stays and no interval is given, since the opening records scores, not intervals. A family the
-    opening recorded no score for reports no result. Before any opening, after one that named no
-    family (records from before the rule), and for a result on any other basis, the fit's own
-    declared result stands.
+    Its interval (``ci_low``, ``ci_high``) is the final family's served held-out interval, given
+    only while the scores served beside it are the opening's (``at["current"]``) and the family's
+    served score is the recorded one; after a fit changed after the opening, a re-seal, or rows
+    drawn and opened again, the score stays and no interval is given, since the opening records
+    scores, not intervals. The sentence states no interval: it is the export's performance table
+    caption, beside a result row that gives the opening's score alone
+    (``export.tables.performance``). A family the opening recorded no score for reports no result.
+    Before any opening, after one that named no family (records from before the rule), and for a
+    result on any other basis, the fit's own declared result stands.
     """
     from turbotab.core.models.validation import score_words
 
@@ -943,11 +945,7 @@ def result_at_opening(out: dict[str, Any], at: Mapping[str, Any] | None) -> dict
         low, high = interval.get("ci_low"), interval.get("ci_high")
         if (low is not None and high is not None
                 and (named.get("holdout") or {}).get(metric) == value):
-            from turbotab.core.models.performance import LEVEL
-
             filled = {**filled, "ci_low": low, "ci_high": high}
-            tail = (f" ({float(interval.get('level') or LEVEL):.0%} interval {_num(low)} to "
-                    f"{_num(high)}).")
     out["result"] = {**filled, "estimate": value,
                      "sentence": (f"{declared}, so its held-out {label} at the opening (decision "
                                   f"#{at['seq']}) is the result: {_num(value)}{rows}{tail}")}
