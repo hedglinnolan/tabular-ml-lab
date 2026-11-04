@@ -113,6 +113,22 @@ def _feature_lines(log: DecisionLog) -> list:
     return [line for line in methods_text(log.records()).lines if line.kind == "set_feature_table"]
 
 
+def _locked(path, orientation: str, *before) -> DecisionLog:
+    """A log under inference with the table answered ``orientation``, ``before`` recorded, and the
+    plan then locked."""
+    log = _log(path)
+    _said(log, SetTarget(column="bmi"))
+    _said(log, SetPurpose(purpose="inference"))
+    _said(log, SetOrientation(orientation=orientation))
+    for decision in before:
+        _said(log, decision)
+    _said(log, LockPlan(plan={}, digest="ab" * 32))
+    return log
+
+
+AFTER = "After the estimates were seen, for the features-in-rows table, "
+
+
 def test_a_feature_table_reading_is_in_force_only_while_the_table_is_turned(tmp_path):
     """FT1: the features-in-rows reading (a turn check's exit) says how a turned table reads, and
     the oriented stage turns the table only on `feature_major` (``stages.working.oriented_stage``).
@@ -146,15 +162,10 @@ def test_after_the_lock_a_feature_table_reading_on_an_unturned_table_changes_not
     """After the lock nothing is folded out, but a features-in-rows reading recorded while no answer
     turns the table, and turning none since, changed nothing the analysis is (the oriented stage
     reads it only to turn the table), so it is no fork and writes no sentence, nor does its revert
-    (``provenance.never_applied``). Recorded while the table is turned, it is a change made after
+    (``provenance.never_read``). Recorded while the table is turned, it is a change made after
     the estimates were seen, and kept so; one the table is turned for later is in force."""
     def locked(orientation: str, at: str) -> DecisionLog:
-        log = _log(tmp_path / at)
-        _said(log, SetTarget(column="bmi"))
-        _said(log, SetPurpose(purpose="inference"))
-        _said(log, SetOrientation(orientation=orientation))
-        _said(log, LockPlan(plan={}, digest="ab" * 32))
-        return log
+        return _locked(tmp_path / at, orientation)
 
     plain = locked("sample_major", "plain")
     reading = _said(plain, SetFeatureTable(label="feature_id"))
@@ -173,3 +184,92 @@ def test_after_the_lock_a_feature_table_reading_on_an_unturned_table_changes_not
     first = _said(later, SetFeatureTable(label="feature_id"))
     _said(later, SetOrientation(orientation="feature_major"))
     assert [(line.record_id, line.in_force) for line in _feature_lines(later)] == [(first.id, True)]
+
+
+def test_after_the_lock_a_feature_table_reading_read_at_any_moment_is_a_fork(tmp_path):
+    """A features-in-rows reading recorded after the lock changed the analysis when the table was
+    turned at some moment while it was the reading in force, whatever the orientation when it was
+    recorded or now (``provenance.never_read``): recorded on a turned table and then answered back
+    to one row per sample, or recorded unturned and turned and turned back, it is a change made
+    after the estimates were seen, kept so and not in force, and so is its revert. One superseded
+    before any answer turned the table was read at no moment, so it writes no sentence beside the
+    reading that was. Truth: the orientation answers each log is built with (the oriented stage
+    turns the table only on `feature_major`, ``stages.working.oriented_stage``)."""
+    def said(log: DecisionLog) -> list[tuple[str, bool, bool]]:
+        return [(line.record_id, line.in_force, line.sentence.startswith(AFTER))
+                for line in _feature_lines(log)]
+
+    then = _locked(tmp_path / "then", "feature_major")
+    read_then = _said(then, SetFeatureTable(label="feature_id"))
+    _said(then, SetOrientation(orientation="sample_major"))
+    assert said(then) == [(read_then.id, False, True)]
+
+    turned_first = _locked(tmp_path / "turned_first", "sample_major")
+    _said(turned_first, SetOrientation(orientation="feature_major"))
+    read_turned = _said(turned_first, SetFeatureTable(label="feature_id"))
+    _said(turned_first, SetOrientation(orientation="sample_major"))
+    assert said(turned_first) == [(read_turned.id, False, True)]
+
+    between = _locked(tmp_path / "between", "sample_major")
+    read_between = _said(between, SetFeatureTable(label="feature_id"))
+    _said(between, SetOrientation(orientation="feature_major"))  # the table turns with it
+    _said(between, SetOrientation(orientation="sample_major"))
+    assert said(between) == [(read_between.id, False, True)]
+
+    superseded = _locked(tmp_path / "superseded", "sample_major")
+    _said(superseded, SetFeatureTable(label="feature_id"))  # replaced before any turn
+    read_last = _said(superseded, SetFeatureTable(label="other"))
+    _said(superseded, SetOrientation(orientation="feature_major"))
+    assert said(superseded) == [(read_last.id, True, True)]
+
+    withdrawn = _locked(tmp_path / "withdrawn", "feature_major")
+    read_withdrawn = _said(withdrawn, SetFeatureTable(label="feature_id"))
+    undone = _said(withdrawn, Revert(decision_id=read_withdrawn.id))
+    assert undone.sentence and said(withdrawn) == [(read_withdrawn.id, False, True)]
+    assert undone.id in [line.record_id for line in methods_text(withdrawn.records()).lines]
+
+
+def test_the_plan_export_lists_after_the_lock_only_the_readings_the_methods_state(tmp_path):
+    """The exported plan lists each decision made after the estimates were seen and says each is
+    marked so in the methods (``plan_lock.plan_text``), so it leaves out a features-in-rows reading
+    read at no moment since it was recorded (``provenance.never_read``), and its revert: recorded
+    after the lock on a table no answer turns, or before the lock and reverted after it, neither is
+    listed or counted. A reading read at some moment after the lock is listed and counted. Truth:
+    the decisions each log is built with, and their orientation answers."""
+    from turbotab.core.plan_lock import plan_document
+
+    counted = "made after the estimates were seen, listed with it and marked so in the methods."
+
+    def listed(log: DecisionLog) -> tuple[list[int], str]:
+        records = log.records()
+        document = plan_document(records)
+        seqs = [entry["seq"] for entry in document.after_estimates]
+        stated = [line.seq for line in methods_text(records).lines if line.after_estimates]
+        assert seqs == stated  # "marked so in the methods"
+        return seqs, document.text
+
+    plain = _locked(tmp_path / "plain", "sample_major")
+    reading = _said(plain, SetFeatureTable(label="feature_id"))
+    seqs, text = listed(plain)
+    assert seqs == [] and counted not in text
+    _said(plain, Revert(decision_id=reading.id))
+    seqs, text = listed(plain)
+    assert seqs == [] and counted not in text
+
+    before = _locked(tmp_path / "before", "sample_major", SetFeatureTable(label="feature_id"))
+    early = next(r for r in before.records() if r.decision.kind == "set_feature_table")
+    _said(before, Revert(decision_id=early.id))
+    seqs, text = listed(before)
+    assert seqs == [] and counted not in text
+
+    turned = _locked(tmp_path / "turned", "feature_major")
+    forked = _said(turned, SetFeatureTable(label="feature_id"))
+    seqs, text = listed(turned)
+    assert seqs == [forked.seq] and text.endswith(f" 1 decision was {counted}")
+
+    superseded = _locked(tmp_path / "superseded", "sample_major")
+    _said(superseded, SetFeatureTable(label="feature_id"))  # replaced before any turn
+    read = _said(superseded, SetFeatureTable(label="other"))
+    turn = _said(superseded, SetOrientation(orientation="feature_major"))
+    seqs, text = listed(superseded)
+    assert seqs == [read.seq, turn.seq] and text.endswith(f" 2 decisions were {counted}")

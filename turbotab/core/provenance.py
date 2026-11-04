@@ -24,10 +24,10 @@ decisions out, but only those superseded before anything was seen:
   fork and writes no sentence, nor does a revert of it; nor does one recorded after that moment
   that the goal holds now, whatever the goal was when it was recorded, since the methods never
   state a held answer as applied (W1-R round 2, ruling R-d); nor does a features-in-rows reading
-  that applied neither when it was recorded nor now (:data:`UNREAD_UNLESS_APPLIED`). An answer in
-  force at that moment and held by the goal now stays in the plan as declared, which is what the
-  lock fixed, with one added sentence: it is not applied under the goal as it stands
-  (:func:`not_applied_sentence`).
+  in force at no moment from its record on, the table unturned while it stood, nor its revert
+  (:func:`never_read`). An answer in force at that moment and held by the goal now stays in the
+  plan as declared, which is what the lock fixed, with one added sentence: it is not applied under
+  the goal as it stands (:func:`not_applied_sentence`).
 * **Restated.** An in-force sentence that says what another answer does to it (under the surveyed
   population, each chosen family's estimator or block, the substitution band, the calibration;
   MS4) is restated on the answers as they stand (:func:`restated`; ``voice.restate``), so the
@@ -58,7 +58,7 @@ APPLIES: dict[str, Callable[[Any, Any], bool]] = {
     "set_feature_table": lambda d, state: state.orientation == "feature_major",
 }
 # Of those, the kinds the analysis reads only where they apply, so one recorded after something was
-# seen that applied neither then nor now changed nothing (:func:`never_applied`): the
+# seen and in force at no moment from its record on changed nothing (:func:`never_read`): the
 # features-in-rows reading, which the oriented stage reads only to turn the table (and, unturned,
 # to say how it would turn).
 UNREAD_UNLESS_APPLIED: tuple[str, ...] = ("set_feature_table",)
@@ -158,36 +158,24 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
     does once its condition holds. A revert of an answer recorded by ``since`` that applied when
     it was recorded withdraws an answer of the plan as declared, which is a change made whatever
     the goal is now, so it is not one (W1-R round 3, SE-m5). So is an answer the analysis reads
-    only where it applies (:data:`UNREAD_UNLESS_APPLIED`) that applied neither when it was
-    recorded nor on the answers as they stand, and a revert of one: a features-in-rows reading
-    while no answer turns the table. An opening and a re-seal are events, never one."""
+    only where it applies that was in force at no moment from its record on, and a revert of one
+    (:func:`never_read`). An opening and a re-seal are events, never one."""
     ordered = sorted(records, key=lambda r: r.seq)
     try:
-        state = decisions.fold(ordered)
+        now = decisions.fold(ordered).model_dump()
     except Refusal:
         return set()
-    now = state.model_dump()
     by_id = {r.id: r for r in ordered}
     at = {r.id: i for i, r in enumerate(ordered)}
-    out: set[str] = set()
+    out = never_read(ordered, since)
     for record in ordered:
         if record.seq <= since:
             continue
         answer = record
         while answer is not None and isinstance(answer.decision, Revert):
             answer = by_id.get(answer.decision.decision_id)
-        if answer is None or answer.decision.kind in EVENTS:
+        if answer is None or answer.decision.kind in (*EVENTS, *UNREAD_UNLESS_APPLIED):
             continue
-        if answer.decision.kind in UNREAD_UNLESS_APPLIED:
-            applies = APPLIES[answer.decision.kind]
-            if not applies(answer.decision, state):
-                try:
-                    recorded = decisions.fold(ordered[:at[answer.id] + 1])
-                except Refusal:
-                    continue
-                if not applies(answer.decision, recorded):
-                    out.add(record.id)
-                    continue
         holds = decisions._HOLDS.get(answer.decision.kind)
         if holds is None or holds(answer.decision, now):
             continue
@@ -200,6 +188,40 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
         except Refusal:
             continue
         if not holds(answer.decision, then):
+            out.add(record.id)
+    return out
+
+
+def never_read(records: Sequence[Any], since: int) -> set[str]:
+    """Ids of the records after ``since`` (a seq) that record an answer of a kind the analysis reads
+    only where it applies (:data:`UNREAD_UNLESS_APPLIED`), or revert one, when that answer was in
+    force (:func:`in_force`) on no prefix of the log from its own record through the whole: a
+    features-in-rows reading while no answer turned the table, superseded or withdrawn before one
+    did. The analysis read such an answer at no moment, so neither it nor a revert of it is a fork
+    (:func:`never_applied`), and the plan's export does not list it as a decision made after the
+    estimates were seen (``plan_lock.plan_document``). One in force at any moment from its record
+    on is a change, whatever the orientation when it was recorded or now; so is a revert of it."""
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        decisions.fold(ordered)
+    except Refusal:
+        return set()
+    by_id = {r.id: r for r in ordered}
+    at = {r.id: i for i, r in enumerate(ordered)}
+    read: dict[str, bool] = {}
+    out: set[str] = set()
+    for record in ordered:
+        if record.seq <= since:
+            continue
+        answer = record
+        while answer is not None and isinstance(answer.decision, Revert):
+            answer = by_id.get(answer.decision.decision_id)
+        if answer is None or answer.decision.kind not in UNREAD_UNLESS_APPLIED:
+            continue
+        if answer.id not in read:
+            read[answer.id] = any(answer.id in in_force(ordered[:i + 1])
+                                  for i in range(at[answer.id], len(ordered)))
+        if not read[answer.id]:
             out.add(record.id)
     return out
 
@@ -306,5 +328,5 @@ def _with(sentence: str, added: str | None) -> str:
 
 
 __all__ = ["APPLIES", "MethodsLine", "MethodsText", "UNREAD_UNLESS_APPLIED", "held_by_goal",
-           "in_force", "methods_text", "never_applied", "not_applied_sentence", "restated",
-           "seen_from"]
+           "in_force", "methods_text", "never_applied", "never_read", "not_applied_sentence",
+           "restated", "seen_from"]

@@ -35,7 +35,10 @@ So the plan is locked before any inference estimate is displayed:
   registration.
 * **After.** Every later decision is marked ``after_estimates`` and its sentence says "After the
   estimates were seen, …" (``decisions.disclose``); the methods text keeps the plan as declared and
-  every change after it (``turbotab.core.provenance``).
+  every change after it (``turbotab.core.provenance``), and the export lists those changes. A
+  features-in-rows reading the analysis read at no moment from its record on, the table unturned
+  while it stood, is no change, so neither the methods nor the export states it or its revert
+  (``provenance.never_read``).
 * **Wording.** The lock says what was declared in the software before estimates were displayed.
   It is never called prespecified or preregistered (MODELING_SEQUENCE §1 row 12): the analyst may
   have seen the data, and nothing was registered outside the software.
@@ -168,7 +171,7 @@ def plan_document(records: Sequence[Any]) -> PlanExport:
     read): once locked, the plan the lock recorded and the lock's own time; before, the plan in
     force and the time of the last decision it holds. The hash covers every field but itself and
     the text, which quotes it."""
-    from turbotab.core.provenance import in_force
+    from turbotab.core.provenance import in_force, never_read
 
     ordered = sorted(records, key=lambda r: r.seq)
     lock = current_lock(ordered)
@@ -177,8 +180,11 @@ def plan_document(records: Sequence[Any]) -> PlanExport:
         held = [r for r in ordered if r.seq < lock.seq]
         status, at, through = "locked", lock.at, lock.seq
         # Each later decision made after an estimate was shown (one made while nothing had been
-        # shown under the lock is not marked so; ``ProjectService.decide``).
-        later = [r for r in ordered if r.seq > lock.seq and r.after_estimates and r.sentence]
+        # shown under the lock is not marked so; ``ProjectService.decide``), but a reading the
+        # analysis never read, which the methods leave out too (``provenance.never_read``).
+        unread = never_read(ordered, lock.seq)
+        later = [r for r in ordered if r.seq > lock.seq and r.after_estimates and r.sentence
+                 and r.id not in unread]
     else:
         plan = plan_of(decisions.fold(ordered))
         held, later = ordered, []

@@ -8,6 +8,16 @@ sections and words (``GET …/methods/sections``); answered as features in rows,
 the reading's sentence is said in force; answered back as samples, it is folded out again. The
 table: the untargeted metabolomics sample supplied turned round (features in rows), opened through
 the real server.
+
+After a seen lock the methods fold nothing out, but a reading recorded on a table no answer turns,
+and withdrawn before one does, is read at no moment, so neither the methods nor the exported plan
+(``GET …/plan``: ``plan_lock.plan_document``, which the bundle's ``analysis_plan.json`` holds too)
+states it or its revert, and the plan's count of decisions made after the estimates were seen
+leaves both out. One recorded on the turned table
+is listed and counted, and stays so, not in force, once the table is answered back as samples
+(``provenance.never_read``). The lock is recorded in the project's log as the server records one
+after estimates were shown under prediction (``seen="prediction"``; the routing gate), so no fit
+is run; every other decision is posted to the real server.
 """
 from __future__ import annotations
 
@@ -52,7 +62,8 @@ def _said(client, pid, record_id) -> tuple[list, list]:
     return lines, entries
 
 
-def test_a_feature_table_reading_is_said_only_while_the_table_is_turned(client, tmp_path):
+def _opened(client, tmp_path) -> str:
+    """The untargeted metabolomics sample turned round (features in rows), its lens answered."""
     m = pd.read_csv(SAMPLES / "metabolomics_untargeted.csv").set_index("sample_id")
     turned = m.select_dtypes("number").T
     turned.index.name = "feature_id"
@@ -61,6 +72,11 @@ def test_a_feature_table_reading_is_said_only_while_the_table_is_turned(client, 
     pid = open_by_path(client, source)
     wait_for(client, pid, {"ingest": "fresh"})
     _answer(client, pid, "lens", {"kind": "set_lens", "lenses": ["metabolomics"]})
+    return pid
+
+
+def test_a_feature_table_reading_is_said_only_while_the_table_is_turned(client, tmp_path):
+    pid = _opened(client, tmp_path)
 
     # A turn exit pressed on a table no answer has turned: recorded, and said nowhere.
     recorded = _post(client, pid, {"kind": "set_feature_table", "label": "feature_id",
@@ -84,3 +100,71 @@ def test_a_feature_table_reading_is_said_only_while_the_table_is_turned(client, 
     # Answered back as samples: folded out again.
     _post(client, pid, {"kind": "set_orientation", "orientation": "sample_major"})
     assert _said(client, pid, reading["id"]) == ([], [])
+
+
+COUNTED = "made after the estimates were seen, listed with it and marked so in the methods."
+
+
+def _later(client, pid) -> tuple[list[int], list[int], str]:
+    """The seqs the exported plan lists as made after the estimates were seen, the seqs of the
+    served methods' lines so marked, and the plan's text."""
+    plan = client.get(f"/api/projects/{pid}/plan")
+    assert plan.status_code == 200, plan.text[:600]
+    methods = client.get(f"/api/projects/{pid}/methods").json()
+    return ([e["seq"] for e in plan.json()["after_estimates"]],
+            [line["seq"] for line in methods["lines"] if line["after_estimates"]],
+            plan.json()["text"])
+
+
+def _counts(text: str, n: int) -> bool:
+    """Whether the plan's text counts ``n`` decisions made after the estimates were seen."""
+    if n == 0:
+        return COUNTED not in text
+    return f" {n:,} decision{'s were' if n != 1 else ' was'} {COUNTED}" in text
+
+
+def _reading(response: dict) -> dict:
+    return next(r for r in reversed(response["decisions"])
+                if r["decision"]["kind"] == "set_feature_table")
+
+
+def test_after_a_seen_lock_the_plan_lists_a_reading_only_once_the_table_turned(client, tmp_path):
+    from turbotab.core.decisions import LockPlan
+    from turbotab.core.plan_lock import digest
+
+    pid = _opened(client, tmp_path)
+    _answer(client, pid, "orientation", {"kind": "set_orientation", "orientation": "sample_major"})
+    client.app.state.service.log(pid).append(
+        LockPlan(plan={}, digest=digest({}), seen="prediction"))
+    listed, stated, text = _later(client, pid)
+    assert listed == stated == [] and _counts(text, 0)
+
+    # A turn exit pressed on the unturned table, then withdrawn: neither listed nor counted.
+    unread = _reading(_post(client, pid, {"kind": "set_feature_table", "label": "feature_id",
+                                          "annotations": []}))
+    assert unread["after_estimates"] is True and unread["sentence"]
+    listed, stated, text = _later(client, pid)
+    assert listed == stated == [] and _counts(text, 0)
+    undone = _post(client, pid, {"kind": "revert", "decision_id": unread["id"]})["decisions"][-1]
+    assert undone["decision"]["kind"] == "revert" and undone["sentence"]
+    listed, stated, text = _later(client, pid)
+    assert listed == stated == [] and _counts(text, 0)
+
+    # Turned after the lock, the table reads by the reading recorded then: listed and counted.
+    wait_for(client, pid, {"oriented": "fresh"})
+    turn = _post(client, pid, {"kind": "set_orientation", "orientation": "feature_major"})
+    turn = turn["decisions"][-1]
+    read = _reading(_post(client, pid, {"kind": "set_feature_table", "label": "feature_id",
+                                        "annotations": []}))
+    assert read["sentence"].startswith("After the estimates were seen, for the features-in-rows")
+    listed, stated, text = _later(client, pid)
+    assert listed == stated == [turn["seq"], read["seq"]] and _counts(text, 2)
+
+    # Answered back as samples: the reading is a change made after the estimates were seen, kept.
+    back = _post(client, pid, {"kind": "set_orientation", "orientation": "sample_major"})
+    back = back["decisions"][-1]
+    listed, stated, text = _later(client, pid)
+    assert listed == stated == [turn["seq"], read["seq"], back["seq"]] and _counts(text, 3)
+    lines = client.get(f"/api/projects/{pid}/methods").json()["lines"]
+    assert [(line["record_id"], line["in_force"]) for line in lines
+            if line["kind"] == "set_feature_table"] == [(read["id"], False)]
