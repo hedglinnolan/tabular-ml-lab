@@ -5,22 +5,35 @@
  * `fit_lock` for a fit estimated at 1,800 s), so the estimate on the button is the engine's words.
  * A fit the engine refused in words (StageStatus.refusal, the audit's G04) is said beneath Fit with
  * its ways forward that name no decision in words (a decision is the card's), on the statuses the
- * engine serves (components/fixtures/stages.json).
+ * engine serves (components/fixtures/stages.json). A press of Fit the engine refused is said so too,
+ * once where it is the fit's own refusal, and while what it answered stands: no decision recorded
+ * since, and the fit's refusal unchanged.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { api, RefusalError } from "../api/client";
-import type { FitLock, QuestLog, Refusal, StageStatus } from "../api/schema";
+import { keys } from "../api/queries";
+import type { DecisionRecord, FitLock, ProjectView, QuestLog, Refusal, StageStatus } from "../api/schema";
 import { SERVED } from "../components/fixtures/stages";
 import { plain } from "../kit";
+import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { FitControl } from "./Fit";
 import { CONTRACT } from "./fixtures/contract";
 import { fitPosition, heldFor } from "./log";
 
 const BASE = CONTRACT.logs.results_reached.log;
 const { held, pressed, estimate_seconds } = CONTRACT.fit_locks;
+const PID = "p";
+const FIXTURES = import.meta.glob<M3Fixture>("../mocks/fixtures/m3-nhanes-inference.json", { eager: true, import: "default" });
+const JOURNEY = Object.values(FIXTURES)[0]!;
+/** The project as the server serves it at Fit: the NHANES journey under Estimate, its models
+ *  chosen, its plan not locked yet (the last view the capture holds before its `lock_plan`). */
+const VIEW = ((): ProjectView => {
+  const before = viewsOf(JOURNEY).filter((v) => v.decisions.every((id) => JOURNEY.log[id]?.decision.kind !== "lock_plan"));
+  return expandView(JOURNEY, before[before.length - 1]!, PID, "2026-10-17T00:00:00Z");
+})();
 
 /** The sample log with Models complete and the given lock. */
 function logWith(lock: FitLock): QuestLog {
@@ -50,9 +63,35 @@ function fitStatus(status: StageStatus["status"], progress: number | null): Stag
   };
 }
 
-function wrap(node: ReactNode) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+/** A query cache as the app's (nothing refetches unasked), holding the project's view. */
+function client(): QueryClient {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  qc.setQueryData(keys.view(PID), VIEW);
+  return qc;
+}
+
+function wrap(node: ReactNode, qc = client()) {
   return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+}
+
+/** Fit pressed with the plan not locked yet (the engine's `unlocked` lock), over the fit's status
+ *  `fit`, and refused with `refusal`, settled: what is said beneath Fit then (`said`), and Fit drawn
+ *  again over a new status of the fit (`redraw`). */
+async function pressedOver(fit: StageStatus, refusal: Refusal) {
+  vi.spyOn(api, "pressFit").mockRejectedValue(new RefusalError(refusal));
+  const qc = client();
+  const log = logWith(CONTRACT.fit_locks.unlocked);
+  const view = wrap(<FitControl pid={PID} log={log} fit={fit} />, qc);
+  await userEvent.setup().click(screen.getByTestId("fit"));
+  await waitFor(() => expect(qc.getMutationCache().getAll().map((m) => m.state.status)).toEqual(["error"]));
+  const said = () => within(screen.getByTestId("fit-position")).queryAllByRole("alert").map((a) => a.textContent);
+  const redraw = (next: StageStatus) =>
+    view.rerender(
+      <QueryClientProvider client={qc}>
+        <FitControl pid={PID} log={log} fit={next} />
+      </QueryClientProvider>,
+    );
+  return { qc, said, redraw };
 }
 
 describe("Fit, held", () => {
@@ -223,5 +262,87 @@ describe("Fit, a press the engine refused", () => {
     const second = await pressRefused(new Error("The server stopped."));
     expect(second.alert.textContent).toBe("The server stopped.");
     expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+  });
+
+  const OPEN_SAID = `${plain(OPEN.error.message)} ${TRIAGE_IN_MODELS}.`;
+
+  it("says the triage's refusal no longer once the triage is confirmed, though the quest log reads the same", async () => {
+    // The person takes the way past where the triage is drawn, at Models' end on this same screen:
+    // its Confirm all records the decision the refusal's own way forward names, each noticing as the
+    // engine recommends (core/sweep.py `_confirm_the_triage`), worded by `confirm_sentence`. A
+    // noticing recorded to act on stays open in the quest log for its own decision (core/sweep.py
+    // `cover_noticings`; core/tests/test_confirm_sweep.py, `note__SEQN`), so the log can read the
+    // same; the project's decisions do not.
+    const p = await pressedOver(fitStatus("fresh", 1), OPEN);
+    expect(p.said()).toEqual([OPEN_SAID]);
+    const last = VIEW.decisions[VIEW.decisions.length - 1]!;
+    const confirmed: DecisionRecord = {
+      id: "triage-confirmed",
+      seq: last.seq + 1,
+      at: "2026-10-17T00:00:01Z",
+      note: null,
+      sentence: "The open noticings were triaged in Models: 1 to act on.",
+      post_seal: false,
+      after_estimates: false,
+      recorded_by: "you",
+      early: null,
+      decision: {
+        kind: "confirm_sweep",
+        stage: "models",
+        sweep: "noticings",
+        lines: [{ id: "finding:binary_text__gender", key: "binary_text__gender", value: "act_on_it", basis: null }],
+      },
+    };
+    expect(OPEN.error.exits[1]!.decision).toMatchObject({ kind: "confirm_sweep", stage: "models", sweep: "noticings" });
+    act(() => {
+      p.qc.setQueryData<ProjectView>(keys.view(PID), (v) => v && { ...v, decisions: [...v.decisions, confirmed] });
+    });
+    await waitFor(() => expect(p.said()).toEqual([]));
+    expect(screen.getByTestId("fit")).toBeEnabled();
+  });
+
+  it("keeps saying it while nothing it answered moved: the view read again the same, the fit computing beside it", async () => {
+    // Under Estimate a fit not held may compute before the press, its progress mirrored onto its
+    // status (api/events.ts `applyJob`); a re-read of the view that brings the same decisions keeps
+    // them as they were (the query cache's structural sharing).
+    const p = await pressedOver(fitStatus("running", 0.4), OPEN);
+    expect(p.said()).toEqual([OPEN_SAID]);
+    await act(async () => {
+      p.qc.setQueryData<ProjectView>(keys.view(PID), structuredClone(p.qc.getQueryData<ProjectView>(keys.view(PID))!));
+      await new Promise((settled) => setTimeout(settled, 20)); // the cache tells its observers on a later tick
+    });
+    p.redraw(fitStatus("running", 0.5));
+    expect(p.said()).toEqual([OPEN_SAID]);
+  });
+
+  describe("over a fit the engine refused", () => {
+    // Under Estimate a press is refused, while the fit or a stage it waits on is refused, with that
+    // stage's own refusal as the fit's status serves it, its code, words and ways forward
+    // (server/service.py `press_fit`; turbotab/server/tests/test_fit_press_holds_api.py), which Fit
+    // says beneath it already.
+    const fit: StageStatus = { ...SERVED.R, stage: "fit", refusal: { ...SERVED.R.refusal!, stage: "fit" } };
+    const own = fit.refusal!;
+    const told = own.exits.find((x) => x.decision === null)!;
+    const FIT_SAID = `${own.message} ${String(told.label)}.`;
+    // The status types its ways forward loosely; the press serves the same ones.
+    const AS_PRESSED: Refusal = { error: { code: own.code, message: own.message, exits: own.exits as Refusal["error"]["exits"] } };
+
+    it("says the fit's own refusal once", async () => {
+      const p = await pressedOver(fit, AS_PRESSED);
+      expect(p.said()).toEqual([FIT_SAID]);
+      expect(screen.getByTestId("fit-refusal").textContent).toBe(FIT_SAID);
+    });
+
+    it("says a press refused otherwise beside it", async () => {
+      // The fit's status as last read, and a press the server refused on a newer state: the triage's.
+      const p = await pressedOver(fit, BLOCKING);
+      expect(p.said()).toEqual([FIT_SAID, `${plain(BLOCKING.error.message)} ${plain(BLOCKING.error.exits[0]!.label)}`]);
+    });
+
+    it("says neither once the fit is refused no more, a stage run again with no decision recorded", async () => {
+      const p = await pressedOver(fit, AS_PRESSED);
+      p.redraw(fitStatus("fresh", 1));
+      expect(p.said()).toEqual([]);
+    });
   });
 });

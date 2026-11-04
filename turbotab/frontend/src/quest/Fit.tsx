@@ -6,12 +6,13 @@
  * refused in words (StageStatus.refusal: its own, or the refusal of the stage it waits on) is said
  * beneath Fit as the shell's stage says a refusal (StageRefusal's `besideCard`), and so is a press
  * of Fit the engine refused (`refusedPress`): no way forward is a press, and one that is a decision
- * is not said either, since in the quest shell a choice is recorded on the card.
+ * is not said either, since in the quest shell a choice is recorded on the card. A press's refusal
+ * is said while what it answered stands (`PressedOn`), and not again where it is the fit's own.
  */
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { isRefusalError } from "../api/client";
-import { useCancelFit, useJobs, usePressFit } from "../api/queries";
-import type { QuestLog, Refusal, StageStatus } from "../api/schema";
+import { useCancelFit, useJobs, usePressFit, useProjectView } from "../api/queries";
+import type { DecisionRecord, QuestLog, Refusal, StageStatus } from "../api/schema";
 import { stageLabel } from "../components/JobChips";
 import { besideCard, finish, refusalOf, type StageRefused } from "../components/StageRefusal";
 import { Plain, kit as k } from "../kit";
@@ -29,17 +30,22 @@ export function FitControl({
 }) {
   const press = usePressFit(pid);
   const cancel = useCancelFit(pid);
+  const decisions = useProjectView(pid).data?.decisions;
+  const [pressedOn, setPressedOn] = useState<PressedOn | null>(null);
   const job = useJobs(pid, fit?.job_id && (fit.status === "running" || fit.status === "queued") ? [fit.job_id] : [])[0]?.data;
   const pos = fitPosition(log, fit);
-  const failure = press.error ?? cancel.error;
-  const said = failure
-    ? isRefusalError(failure)
-      ? failure === press.error
-        ? refusedPress(failure.refusal)
-        : failure.refusal.error.message
-      : failure.message
-    : null;
   const refused = refusalOf(fit);
+  const stands = pressedOn !== null && pressedOn.decisions === decisions && pressedOn.refused === refused;
+  const pressSaid = press.error
+    ? isRefusalError(press.error)
+      ? stands
+        ? refusedPress(press.error.refusal, refused)
+        : null
+      : press.error.message
+    : null;
+  const said =
+    pressSaid ??
+    (cancel.error ? (isRefusalError(cancel.error) ? cancel.error.refusal.error.message : cancel.error.message) : null);
 
   if (pos.kind === "press") {
     return (
@@ -47,7 +53,10 @@ export function FitControl({
         <button
           type="button"
           className={k.primary}
-          onClick={() => press.mutate()}
+          onClick={() => {
+            setPressedOn({ decisions, refused });
+            press.mutate();
+          }}
           disabled={press.isPending}
           data-testid="fit"
         >
@@ -109,14 +118,31 @@ export function FitControl({
   return null;
 }
 
+/** What a press of Fit was answered on: the project's decisions and the fit's refusal as they
+ *  stood when it was pressed. A refused press's ways past are decisions (the triage's Confirm all
+ *  among them, drawn at Models' end on this same screen) or a change in the fit's refusal (a stage
+ *  run again), so the press's refusal is said while both stand and no longer once either moves;
+ *  Fit is pressed again to ask again. The quest log is not compared: a noticing the triage
+ *  records to act on stays open there for its own decision (core/sweep.py `cover_noticings`), so
+ *  the log can read the same after the triage is confirmed, and a stage finishing beside the press
+ *  moves the log with no decision recorded. The query cache keeps a value the same while a read
+ *  brings it unchanged, and the fit's refusal with it while only its progress moves
+ *  (api/events.ts `applyJob`). */
+interface PressedOn {
+  decisions: DecisionRecord[] | undefined;
+  refused: StageRefused | null;
+}
+
 /** A refused press of Fit, said beneath it as the fit's own refusal is (`FitRefusal`): its words
  *  and each way forward that names no decision, in sentences, none a press. Under Estimate and
  *  Describe the open noticings' triage holds the press until it is confirmed (core/fit_press.py
  *  `triage_refusal`): its way forward that names no decision says where the triage is (the shell
  *  draws it at Models' end), and its "Keep the recommended dispositions", a decision, is the
  *  triage card's Confirm all to record, not said here. A refusal with no way forward is its words
- *  alone. */
-function refusedPress(refusal: Refusal): string {
+ *  alone. A press refused with the fit's own refusal, its code and words those of the refusal the
+ *  fit's status serves (`shown`), is not said again: `FitRefusal` says it. */
+function refusedPress(refusal: Refusal, shown: StageRefused | null): string | null {
+  if (shown && shown.code === refusal.error.code && shown.message === refusal.error.message) return null;
   const { message, told } = besideCard({ stage: "fit", ...refusal.error });
   return told.length ? [finish(message), ...told.map((x) => finish(x.label))].join(" ") : message;
 }
