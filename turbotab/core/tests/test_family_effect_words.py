@@ -19,10 +19,20 @@ statsmodels' least squares on the design written out here: the members together 
 covariates) for the joint fit, each member alone (and with the covariates) for feature-wise
 regression. What each model is adjusted for is read off the design that reproduces its rows: its
 columns as the raw columns they come from (`sex_male` is `sex`'s), the row's own member aside.
+
+The repair round (the verifier's B1 and M1): the export's Table 2 (``results/table2.csv`` and
+``.md``) wrote each row of a joint model as adjusted for every member, its own among them; now
+each row's cell is the design that reproduces its estimate, its own member aside, and a single
+exposure's and feature-wise regression's cells are the served columns as they were. Beside
+feature-wise regression testing some members or none, the multiplicity sentence said nothing of
+the joint fit; now its sentence follows, under its name, as it does with every member tested.
 """
 from __future__ import annotations
 
+import csv
+import io
 import re
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -105,6 +115,14 @@ def _raw(columns: list[str]) -> set[str]:
     return {RAW.get(c, c) for c in columns}
 
 
+def _raw_order(columns: list[str]) -> list[str]:
+    """The raw columns of ``columns`` as the served order names them: `sex` (`sex_male`) after
+    `age`, as the answers list the covariates (``COVARIATES``), then the rest."""
+    raw = _raw(columns)
+    return [*(c for c in COVARIATES if c in raw), *(c for c in dict.fromkeys(
+        RAW.get(x, x) for x in columns) if c not in COVARIATES)]
+
+
 def _recorded(models: list[str], method: str):
     """The family {`fiber`, `sugar`} under ``models`` with ``method`` recorded: the estimand's
     method, or (none) the multiplicity slot ``set_multiplicity`` writes."""
@@ -120,6 +138,35 @@ def _recorded(models: list[str], method: str):
 def _sequence(out: dict, family: str) -> dict:
     index = next(i for i, f in enumerate(out["effects"]["families"]) if f["family"] == family)
     return ef.sequence(out["effects"], index)
+
+
+LABEL = {"crude": "Without covariates", "model_2": "Model 2 (primary)", "model_3": "Model 3"}
+
+
+def _table2(out: dict) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """``results/table2.csv``'s rows by key and ``results/table2.md``'s lines, as the bundle writes
+    them from the served effects (``export.bundle.contents``: ``tables.results_tables``, then
+    ``to_csv`` and ``markdown``)."""
+    from turbotab.core.export import tables
+
+    st = out["state"]
+    source = SimpleNamespace(purpose=st.purpose, state=st,
+                             artifact=lambda k: out["effects"] if k == "effects" else None)
+    (table, *_) = (t for t in tables.results_tables(source) if t.name == "table2")
+    rows = {r["key"]: r for r in csv.DictReader(io.StringIO(tables.to_csv(table)))}
+    return rows, tables.markdown(table, tables.headers_for(table)).splitlines()
+
+
+def _md_row(lines: list[str], label: str, cell: str, term: str) -> None:
+    """A Markdown row of ``term`` under ``label`` whose cell is ``cell`` (one per family: the
+    Markdown draws no family column, so two families' rows can read alike)."""
+    assert [x for x in lines if x.startswith(f"| {label} | {cell} | 400 | {term} | ")], (
+        label, cell, term)
+
+
+def _served(fit: dict) -> str:
+    """The cell as the export wrote every row before the repair: the model's served columns."""
+    return ", ".join(fit["adjusted_for"]) or "nothing"
 
 
 @pytest.fixture(scope="module")
@@ -206,6 +253,29 @@ def test_a_joint_fits_multiplicity_sentence_says_the_members_were_fit_together(j
         assert claim not in out["effects"]["methods"], claim
 
 
+def test_a_joint_fits_exported_table_2_says_each_row_adjusted_for_the_other_member(joint):
+    """The verifier's B1: ``results/table2.csv`` and ``.md`` wrote each row of the linear model as
+    adjusted for "fiber, sugar" beside the covariates, so `fiber`'s estimate was said adjusted for
+    `fiber`. Each row is statsmodels' one fit of glucose on both members (and the model's
+    covariates), so what its estimate is adjusted for is that design without its own member: the
+    other member and the covariates, in the served order, in the CSV and the Markdown alike."""
+    frame, out = joint
+    rows, lines = _table2(out)
+    for key, adjust in DESIGN.items():
+        together = _fit(frame, ["fiber", "sugar", *adjust])
+        for m, other in (("fiber", "sugar"), ("sugar", "fiber")):
+            row = rows[f"linear/{key}/{m}"]
+            assert float(row["estimate"]) == pytest.approx(together[m], rel=1e-9), (key, m)
+            cell = row["adjusted_for"]
+            assert set(cell.split(", ")) == _raw(["fiber", "sugar", *adjust]) - {m}, (key, m)
+            want = {"crude": [other], "model_2": [*COVARIATES, other],
+                    "model_3": [*COVARIATES, other, *FURTHER]}[key]
+            assert cell == ", ".join(want), (key, m, cell)
+            assert row["model"] == LABEL[key]
+            _md_row(lines, LABEL[key], cell, m)
+    assert not [x for x in lines if re.search(r"\| [^|]*\bfiber\b[^|]* \| 400 \| fiber \|", x)]
+
+
 def test_three_members_of_a_joint_fit_are_each_said_adjusted_for_the_others(tmp_path):
     """{`fiber`, `sugar`, `supplement`} under the linear model: each row is statsmodels' one fit of
     glucose on the three (and the model's covariates), so each estimate is adjusted for the 2
@@ -251,6 +321,18 @@ def test_a_category_member_of_a_joint_fit_is_named_by_its_column(tmp_path):
     assert sequence["crude"]["note"] == (
         "STROBE 16a's estimate without the covariates; the study factors `fiber` and `arm` are in "
         "it together, so each is adjusted for the other.")
+    # The export's Table 2 (the verifier's B1): `arm_y`'s row is `arm`'s, so its cell is the
+    # design without `arm` (the covariates and `fiber`), and `fiber`'s without `fiber`.
+    rows, lines = _table2(out)
+    for key, adjust in DESIGN.items():
+        for c, other in (("arm_y", "fiber"), ("fiber", "arm")):
+            cell = rows[f"linear/{key}/{c}"]["adjusted_for"]
+            own = RAW.get(c, c)
+            assert set(cell.split(", ")) == _raw([*columns, *adjust]) - {own}, (key, c, cell)
+            assert cell == ", ".join([*{"crude": [], "model_2": COVARIATES,
+                                        "model_3": COVARIATES}[key], other,
+                                      *(FURTHER if key == "model_3" else [])]), (key, c, cell)
+            _md_row(lines, LABEL[key], cell, c)
 
 
 # ── one fit per member: silent ───────────────────────────────────────────────
@@ -279,6 +361,14 @@ def test_one_fit_per_member_keeps_every_word(apart):
     # Its methods text says each member alone, then with the covariates, as it did.
     assert out["effects"]["methods"].startswith(f"T{APART_WORDS[1:]}")
     assert out["effects"]["methods"].endswith(f" {EACH['fdr_bh']}")
+    # The export's Table 2: each row's cell is its model's served columns, as it was, the design
+    # that reproduces the row without its member (the verifier's B1, silent).
+    rows, lines = _table2(out)
+    for key, adjust in DESIGN.items():
+        for m in ("fiber", "sugar"):
+            cell = rows[f"featurewise/{key}/{m}"]["adjusted_for"]
+            assert cell == _served(sequence[key]) == (", ".join(_raw_order(adjust)) or "nothing")
+            _md_row(lines, LABEL[key] if key != "crude" else "Unadjusted", cell, m)
 
 
 # What feature-wise regression's methods text says of {`fiber`, `grp`, `arm`}: it tests `fiber`
@@ -339,6 +429,45 @@ def test_the_categories_feature_wise_regression_holds_are_never_said_fit_togethe
                 assert rows[c] == pytest.approx(together[c], rel=1e-9), (key, c)
         assert f"Under the linear model, {CATEGORY_JOINT_WORDS}" in methods, methods
     assert "with `grp` and `arm` fit together" not in methods
+    # The export's Table 2 (the verifier's B1). Each feature-wise model names two members, `grp`
+    # and `arm`, and `fiber`'s row is of neither, so its cell is the served columns, as it was: the
+    # design that reproduces it without `fiber` (silent). Each row of the linear model is the
+    # design without the row's own member: `grp_b`'s and `grp_c`'s are `grp`'s, `arm_y`'s `arm`'s.
+    rows, lines = _table2(out)
+    own = {"grp_b": "grp", "grp_c": "grp", "arm_y": "arm", "fiber": "fiber"}
+    for key, adjust in DESIGN.items():
+        cell = rows[f"featurewise/{key}/fiber"]["adjusted_for"]
+        assert cell == _served(featurewise[key]), key
+        assert set(cell.split(", ")) == _raw(adjust) | {"grp", "arm"}, key
+        if "linear" not in models:
+            continue
+        for c in [*held, "fiber"]:
+            cell = rows[f"linear/{key}/{c}"]["adjusted_for"]
+            design = {own.get(x, RAW.get(x, x)) for x in [*held, "fiber", *adjust]}
+            assert set(cell.split(", ")) == design - {own[c]}, (key, c, cell)
+            assert len(cell.split(", ")) == len(design) - 1, (key, c, cell)  # each named once
+            _md_row(lines, LABEL[key], cell, c)
+
+
+def test_a_single_exposures_exported_table_2_keeps_every_cell(tmp_path):
+    """Silent (the verifier's B1): the single exposure `fiber` under the linear model and
+    feature-wise regression. Each model's rows are statsmodels' glucose ~ `fiber` (and the
+    model's covariates) under either, its served columns name no member, and each row's cell in
+    ``results/table2.csv`` and ``.md`` is those columns, as it was: "nothing" without the
+    covariates, then the covariates."""
+    frame = FW._frame()
+    out = ef.run(frame, tmp_path, FW._state({"fiber": "exposure"}, ["linear", "featurewise"],
+                                            exposure="fiber"))
+    rows, lines = _table2(out)
+    for family in ("linear", "featurewise"):
+        sequence = _sequence(out, family)
+        for key, adjust in DESIGN.items():
+            row = rows[f"{family}/{key}/fiber"]
+            assert float(row["estimate"]) == pytest.approx(_fit(frame, ["fiber", *adjust])["fiber"],
+                                                           rel=1e-9), (family, key)
+            cell = row["adjusted_for"]
+            assert cell == _served(sequence[key]) == (", ".join(_raw_order(adjust)) or "nothing")
+            _md_row(lines, sequence[key]["label"], cell, "fiber")
 
 
 # ── both chosen ──────────────────────────────────────────────────────────────
@@ -402,6 +531,106 @@ def test_the_multiplicity_sentence_names_the_fit_under_each_method(method):
     assert est.multiplicity_statement(st, st.estimand, 2) == (
         f"Under the feature-wise regression, {EACH[method]} Under the linear model, "
         f"{JOINT[method]}")
+
+
+@pytest.mark.parametrize("models", [["featurewise", "linear"], ["linear", "featurewise"]])
+def test_beside_feature_wise_regression_testing_some_members_the_joint_fit_is_said_too(tmp_path,
+                                                                                     models):
+    """The verifier's M1: {`fiber`, `grp`}, in either order. Feature-wise regression tests `fiber`
+    alone (statsmodels' glucose ~ `fiber` and `grp`'s indicators, and the model's covariates),
+    `grp` a category it adjusts for; the linear model fits both together (statsmodels' one fit of
+    glucose on `grp`'s indicators and `fiber`), its rows with p-values and no q-value. The
+    sentence at the fit and at the effects stage, and the methods text it ends, said feature-wise
+    regression's 1 test alone, nothing of the joint fit; now the joint fit's sentence follows
+    under its name, as it does with every member tested."""
+    frame = FW._frame()
+    out = ef.run(frame, tmp_path, FW._family({"fiber": "exposure", "grp": "exposure"}, models))
+    featurewise, linear = _sequence(out, "featurewise"), _sequence(out, "linear")
+    for key, adjust in DESIGN.items():
+        (row,) = featurewise[key]["effects"]
+        want = _fit(frame, ["fiber", *FW.GRP, *adjust])["fiber"]
+        assert row["feature"] == "fiber" and row["estimate"] == pytest.approx(want, rel=1e-9)
+        assert row["q"] is not None, key
+        together = _fit(frame, [*FW.GRP, "fiber", *adjust])
+        rows = {r["feature"]: r for r in linear[key]["effects"]}
+        assert sorted(rows) == sorted([*FW.GRP, "fiber"]), key
+        for c, r in rows.items():
+            assert r["estimate"] == pytest.approx(together[c], rel=1e-9), (key, c)
+            assert r["p"] is not None and r["q"] is None, (key, c)
+    said = f"{FW.BH_ONE} Under the linear model, {JOINT['fdr_bh']}"
+    assert out["fit"]["estimand"]["multiplicity"] == said
+    assert out["effects"]["multiplicity"] == said
+    assert out["effects"]["methods"].endswith(f" {said}")
+
+
+# Feature-wise regression's sentence where it tested `fiber` and not `sugar`, as it was, under
+# each method (``estimand.tested_multiplicity_statement``).
+NOT_SUGAR = ("`sugar` is not estimable given the covariates: nothing of it is left once they are "
+             "projected out, so it is not tested.")
+SOME = {
+    "fdr_bh": (f"Feature-wise regression tested 1 of the 2 exposures (`fiber`); Benjamini–Hochberg "
+               f"q-values control the false-discovery rate across that 1 test ({BH}), and every "
+               f"exposure tested is shown, significant or not. {NOT_SUGAR}"),
+    "count_stated": (f"Feature-wise regression tested 1 of the 2 exposures (`fiber`); p-values are "
+                     f"not adjusted for multiplicity, and that 1 test is stated (customary for a "
+                     f"few declared nutrient hypotheses, {ROTHMAN}), with every exposure tested "
+                     f"shown. {NOT_SUGAR}"),
+    "none": (f"Feature-wise regression tested 1 of the 2 exposures (`fiber`), with no multiplicity "
+             f"control, recorded as a limitation: at p < 0.05 about 0 would pass by chance alone; "
+             f"every exposure tested is shown. {NOT_SUGAR}"),
+}
+NONE_TESTED = ("Feature-wise regression tested none of the 2 exposures, so no multiplicity method "
+               "was applied: `fiber` and `sugar` have no column of their names in the model "
+               "matrix, so none is tested.")
+
+
+@pytest.mark.parametrize("method", ["fdr_bh", "count_stated", "none"])
+def test_the_sentence_of_some_members_tested_or_none_names_the_joint_fit_beside_it(method):
+    """``estimand.tested_multiplicity_statement`` where feature-wise regression tested 1 of the 2
+    members, or none, under each method: beside the linear model, in either order, the joint fit's
+    sentence follows feature-wise regression's under its name (the verifier's M1); with no joint
+    model beside it (feature-wise regression alone, or beside the random forest, which has no
+    coefficient table), the sentence is as it was, byte for byte."""
+    from turbotab.core import estimand as est
+
+    members = ["fiber", "sugar"]
+    for tests, alone in ((est.FamilyTests(members, ["fiber"], [], ["sugar"], []), SOME[method]),
+                         (est.FamilyTests(members, [], [], [], members), NONE_TESTED)):
+        for models in (["featurewise"], ["featurewise", "random_forest"]):
+            st = _recorded(models, method)
+            assert est.tested_multiplicity_statement(st, st.estimand, tests) == alone, models
+        for models in (["featurewise", "linear"], ["linear", "featurewise"]):
+            st = _recorded(models, method)
+            assert est.tested_multiplicity_statement(st, st.estimand, tests) == (
+                f"{alone} Under the linear model, {JOINT[method]}"), models
+
+
+def test_the_sequence_sentence_says_the_joint_fit_after_every_feature_wise_model():
+    """``estimand.sequence_multiplicity_statement`` where the unadjusted model tested other members
+    than Model 2: the sentence is of Model 2, then each such model's tests, then, beside the
+    linear model, the joint fit's sentence under its name (the verifier's M1), where it said
+    nothing of it with some members tested, and with every member tested in Model 2 said it
+    between Model 2's and the unadjusted model's; with no joint model, as it was."""
+    from turbotab.core import estimand as est
+
+    members = ["fiber", "fib"]
+    some = est.FamilyTests(members, ["fiber"], [], ["fib"], [])
+    every = est.FamilyTests(members, members, [], [], [])
+    unadjusted = [("The unadjusted model", every)]
+    fewer = [("The unadjusted model", some)]
+    st = _recorded(["featurewise"], "fdr_bh")
+    assert est.sequence_multiplicity_statement(st, st.estimand, some, unadjusted) == FW.FIB_FAMILY
+    one = ("The unadjusted model tested 1 of the 2 exposures (`fiber`), with Benjamini–Hochberg "
+           "q-values across that 1 test.")
+    assert est.sequence_multiplicity_statement(st, st.estimand, every, fewer) == (
+        f"In Model 2, the primary, {EACH['fdr_bh']} {one}")
+    for models in (["featurewise", "linear"], ["linear", "featurewise"]):
+        st = _recorded(models, "fdr_bh")
+        assert est.sequence_multiplicity_statement(st, st.estimand, some, unadjusted) == (
+            f"{FW.FIB_FAMILY} Under the linear model, {JOINT['fdr_bh']}"), models
+        assert est.sequence_multiplicity_statement(st, st.estimand, every, fewer) == (
+            f"In Model 2, the primary, under the feature-wise regression, {EACH['fdr_bh']} {one} "
+            f"Under the linear model, {JOINT['fdr_bh']}"), models
 
 
 def test_three_members_fit_together_are_each_adjusted_for_the_others():

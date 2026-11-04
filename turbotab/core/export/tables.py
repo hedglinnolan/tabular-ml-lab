@@ -188,6 +188,27 @@ def _coef_row(key: str, base: Mapping[str, Any], row: Mapping[str, Any]) -> dict
     return out
 
 
+def _adjusted_for(columns: Sequence[str], term: Any, exposures: Sequence[str]) -> str:
+    """A Table 2 row's ``adjusted_for`` cell: the model's served columns, and where they name
+    several members of an exposure family (a joint model holds them together, each adjusted for
+    the others: ``effects.SequenceFit.adjusted_for``), without the member the row's ``term`` is of
+    (``estimand.primary_features``, as the shell's Estimate Results reads it), the other members
+    named in their place, so no row is said to be adjusted for its own member (the verifier's B1 on
+    pp2-family-effect-words). A single exposure's model names no member, and feature-wise
+    regression's names only a category it adjusts for and does not test, never the member its row
+    is of, so their cells are the served columns as they were."""
+    from turbotab.core.estimand import primary_features
+
+    names = [str(c) for c in columns]
+    members = [str(e) for e in exposures]
+    held = [c for c in names if c in members]
+    if len(held) > 1 and term is not None:
+        mine = [e for e in members if primary_features([str(term)], e, members)]
+        own = max(mine, key=len) if mine else None
+        names = [c for c in names if c != own]
+    return ", ".join(names) or "nothing"
+
+
 def table2(effects: Mapping[str, Any], target: str | None) -> list[Table]:
     """Table 2, its appendix, the marginal contrasts and the sensitivity analyses (module
     docstring), from the ``effects`` stage's artifact as served."""
@@ -196,25 +217,32 @@ def table2(effects: Mapping[str, Any], target: str | None) -> list[Table]:
     marg_rows: list[dict[str, Any]] = []
     sens_rows: list[dict[str, Any]] = []
     ratio = False
+    exposures = [str(e) for e in effects.get("exposures") or []]
     for family in effects.get("families") or []:
         fam, label = family.get("family"), family.get("label")
         for s in family.get("sequence") or []:
             inference = s.get("inference") or {}
             ratio = ratio or inference.get("scale") in RATIO_SCALES
+            columns = s.get("adjusted_for") or []
             base = {"family": label, "model": s.get("label"),
-                    "adjusted_for": ", ".join(s.get("adjusted_for") or []) or "nothing",
+                    "adjusted_for": _adjusted_for(columns, None, exposures),
                     "n": s.get("n_rows"), "covariance": inference.get("covariance"),
                     "note": s.get("note")}
+            # Each row's cell without its own member (:func:`_adjusted_for`).
             if s.get("effects"):
                 for r in s["effects"]:
-                    seq_rows.append(_coef_row(f"{fam}/{s.get('key')}/{r.get('feature')}", base, r))
+                    seq_rows.append(_coef_row(
+                        f"{fam}/{s.get('key')}/{r.get('feature')}",
+                        {**base, "adjusted_for": _adjusted_for(columns, r.get("feature"),
+                                                               exposures)}, r))
             else:
                 seq_rows.append({"key": f"{fam}/{s.get('key')}/-", **base, "term": None,
                                  "note": inference.get("refused") or s.get("note")})
             for r in s.get("comparison") or []:
                 seq_rows.append(_coef_row(
                     f"{fam}/{s.get('key')}/comparison/{r.get('feature')}",
-                    {**base, "model": s.get("comparison_label") or f"{s.get('label')}, comparison",
+                    {**base, "adjusted_for": _adjusted_for(columns, r.get("feature"), exposures),
+                     "model": s.get("comparison_label") or f"{s.get('label')}, comparison",
                      "note": None}, r))
         for d in family.get("diagnostics") or []:
             for r in d.get("change") or []:

@@ -44,7 +44,8 @@ def test_with_the_family_that_reports_more_chosen_first_each_is_said_by_name(tmp
     unadjusted model, Model 2 and Model 3, the linear model in the unadjusted model alone (its
     Models 2 and 3 singular). The methods text was feature-wise regression's alone; now each
     family's under its name, the linear model's refusals in their words, then the family's
-    multiplicity sentence, as in the other order."""
+    multiplicity sentence, as in the other order: feature-wise regression's of its models, then
+    the linear model's, which it left unsaid (pp2-family-effect-words, the verifier's M1)."""
     frame = T._fib_frame()
     out = ef.run(frame, tmp_path, T._family({"fiber": "exposure", "fib": "exposure"},
                                             ["featurewise", "linear"], amounts=T.FIB_AMOUNTS))
@@ -58,7 +59,7 @@ def test_with_the_family_that_reports_more_chosen_first_each_is_said_by_name(tmp
         assert row["estimate"] == pytest.approx(float(together.params[row["feature"]]), rel=1e-9)
     assert out["effects"]["methods"] == (
         f"Under the feature-wise regression, {T.SEQUENCE}{T.MODEL_3}{T.APART}{T.BENCHMARKED} "
-        f"{LINEAR_FIB} {T.FIB_FAMILY}")
+        f"{LINEAR_FIB} {T.FIB_FAMILY}{T.BESIDE_LINEAR}")
 
 
 def test_with_the_family_that_reports_nothing_chosen_second_each_is_said_by_name(tmp_path):
