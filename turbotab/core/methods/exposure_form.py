@@ -1545,16 +1545,32 @@ class FormsArtifact(_Card):
     beside: str | None
 
 
-# What the card says is reported beside the estimate of what you study, whichever shape is kept
-# (:func:`check_shape`; the quintiles beside an exposure's spline, :func:`design_forms`).
-BESIDE = ("Whichever shape you keep for what you study, the other is set in your plan as its check "
-          "and reported beside the estimate: with a straight line, the same model with a "
-          "restricted cubic spline in its place and its test of whether the relation bends, "
-          "unless the missing values are multiply imputed (their copies follow the line, so that "
-          "check is not made); with a restricted cubic spline, the straight line's one "
-          "coefficient. Quintiles are produced "
-          "beside a restricted cubic spline of what you study, their boundaries and reference "
-          "stated, with the p for linear trend (customary).")
+def beside_words(state: Any, needs: Sequence[Mapping[str, Any]]) -> str | None:
+    """What the card says is set beside the estimate of what you study, for the case at hand: only
+    where the card asks the form of a single declared exposure (``needs``' "exposure" entry), since
+    a check is set for no other column (:func:`check_shape`: an exposure family's members and a
+    two-valued exposure are stated, never asked) and the quintiles are produced only beside its
+    spline (:func:`design_forms`). Whichever of a straight line and a restricted cubic spline is
+    kept, the other is its check; where the missing values' answer is multiple imputation, the
+    line's check is said to be refused on imputed copies, as the effects stage refuses it
+    (:func:`check_imputed_refusal`). None where no single exposure is asked."""
+    column = next((str(n["column"]) for n in needs if n.get("role") == "exposure"), None)
+    if column is None:
+        return None
+    from turbotab.core.decisions import missing_strategy
+
+    imputed = (" (not made where values are multiply imputed: copies imputed for the line cannot "
+               "test its bend, and the line's estimate stands)"
+               if missing_strategy(state) == "multiple_imputation" else "")
+    return (f"Whichever of the two shapes you keep for `{column}`, the other is set in your plan as "
+            f"its check and reported beside the estimate, never in its place: with a straight "
+            f"line, the same model with a restricted cubic spline in its place and its test of "
+            f"whether the relation bends{imputed}; with a restricted cubic spline, the straight "
+            f"line's one coefficient. Quintiles are produced beside a restricted cubic spline of "
+            f"`{column}`, their boundaries and reference stated, with the p for linear trend "
+            f"(customary).")
+
+
 FORMS_READS = ("purpose", "target", "task", "event", "estimand", "adjustment", "clusters",
                "energy_adjustment", "scales", "findings", "batch", "categorical", "lens",
                "missing", "aggregation", "outcome_order", "roles", "roles_unconfirmed",
@@ -1608,7 +1624,7 @@ def forms_card(state: Any, frame: pd.DataFrame | None, info: Mapping[str, Any] |
             "rule": rule_words(k, n_eff, task), "needs": entries, "stated": stated,
             "waiting": plan["waiting"],
             "answer": ({"kind": "set_forms", "forms": answer} if answer else None),
-            "beside": (BESIDE if purpose == "inference" else None)}
+            "beside": (beside_words(state, entries) if purpose == "inference" else None)}
     return FormsArtifact.model_validate(card).model_dump(mode="json")
 
 
@@ -2314,15 +2330,20 @@ def check_imputed_refusal(method: str | None) -> str:
     the plan's copies (``Imputations.method``, chained equations, or SMC-FCS for a yes/no or
     time-to-event outcome) were imputed for the straight line it fits, never with the spline in
     the model, which is how the fit imputes a declared spline (``missing.imputation_plan``); a
-    spline fit on them reads values that follow the line, its test of a bend biased toward none,
-    as passive imputation's is (``missing.PASSIVE_CAUTION``). One sentence, the methods text's."""
+    spline fit on them reads values that follow the line, so it cannot test the bend (its test is
+    biased toward none, as passive imputation's is, ``missing.PASSIVE_CAUTION``). The estimate
+    stands: Model 2 is the straight line's, pooled over the copies, whatever the check. One
+    sentence, the methods text's. For batch 1 the check stays refused (the orchestrator's ruling
+    of 2026-11-04 on the verifier's M1); copies drawn for it by SMC-FCS with the spline in the
+    substantive model, its test pooled by D1, are queued, not built."""
     how = {"chained_equations": " (by chained equations)",
            "smcfcs": " (by SMC-FCS, with the straight line in its model)"}.get(str(method), "")
     return (f"under multiple imputation the plan's copies were imputed for the straight line it "
-            f"fits{how}, so the values they fill follow that line and a spline fit on them would "
-            f"have its test of a bend biased toward none (Bartlett, Seaman, White & Carpenter "
-            f"2015); copies imputed with the spline in the model (SMC-FCS) are not drawn for the "
-            f"check.")
+            f"fits{how}, so the values they fill follow that line and a spline fit on them cannot "
+            f"test whether the relation bends (its test is biased toward no bend: Bartlett, "
+            f"Seaman, White & Carpenter 2015); copies imputed with the spline in the model "
+            f"(SMC-FCS) are not drawn for the check, and the estimate stands: the straight "
+            f"line's, pooled over the plan's copies.")
 
 
 def check_test(table: Any, names: Sequence[str]) -> dict[str, Any] | None:
@@ -3296,7 +3317,7 @@ __all__ = [
     "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "SPLINE_MIN_KNOTS",
     "SPLINE_MIN_VALUES",
     "TREND_LABEL",
-    "BESIDE", "CHECK_KEPT", "CHECK_POINTS", "check_curve", "check_imputed_refusal",
+    "CHECK_KEPT", "CHECK_POINTS", "beside_words", "check_curve", "check_imputed_refusal",
     "check_knots_rule", "check_methods",
     "check_refused", "check_shape", "check_test", "line_check_caption", "spline_check_caption",
     "with_check_spline",

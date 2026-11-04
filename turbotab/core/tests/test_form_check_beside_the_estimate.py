@@ -140,6 +140,73 @@ def test_with_a_mass_at_zero_the_straight_line_still_leads_and_non_consumers_apa
     assert ef.proposal("exposure", "inference", 5, mass_at_zero=True) == {"form": "linear"}
 
 
+CHECK_WORDS = (
+    "Whichever of the two shapes you keep for `fiber`, the other is set in your plan as its check "
+    "and reported beside the estimate, never in its place: with a straight line, the same model "
+    "with a restricted cubic spline in its place and its test of whether the relation "
+    "bends{imputed}; with a restricted cubic spline, the straight line's one coefficient.")
+QUINTILE_WORDS = (" Quintiles are produced beside a restricted cubic spline of `fiber`, their "
+                  "boundaries and reference stated, with the p for linear trend (customary).")
+IMPUTED_WORDS = (" (not made where values are multiply imputed: copies imputed for the line "
+                 "cannot test its bend, and the line's estimate stands)")
+
+
+def test_the_card_says_a_check_is_set_beside_the_estimate_only_where_one_can_be():
+    """The verifier's round-1 B2, both ways. Where the card asks the form of a single declared
+    exposure, its sentence beside the options says what the plan sets beside the estimate, for
+    that column, with the multiple-imputation proviso only where the missing values' answer is
+    multiple imputation (the effects stage refuses the line's check on imputed copies). Silent where
+    no check can be set: an exposure family (each member a straight line, stated) and a two-valued
+    exposure (entered as recorded, no form asked) have no check and no spline beside which
+    quintiles are produced, so the card says neither. Before this repair every card under
+    inference promised the check."""
+    frame = straight(n=400, seed=3)
+    for missing, imputed in (("complete_case", ""),
+                             (d.MissingSpec(strategy="multiple_imputation"), IMPUTED_WORDS)):
+        st = numeric_state(missing=missing)
+        card = ef.forms_card(st, frame, _info(frame), frame["glucose"], "regression")
+        assert "fiber" in {n["column"] for n in card["needs"] if n["role"] == "exposure"}
+        assert card["beside"] == CHECK_WORDS.format(imputed=imputed) + QUINTILE_WORDS
+    # A two-valued exposure: stated, never asked; the confounders' forms still are.
+    roles = {**est_f.ROLES, "fiber": "covariate", "supplement": "exposure"}
+    st = est_f.state(target="glucose", task="regression", measure="mean_difference",
+                     exposure="supplement", roles=roles)
+    card = ef.forms_card(st, frame, _info(frame), frame["glucose"], "regression")
+    assert {s["column"]: s["why"] for s in card["stated"]}["supplement"] == (
+        "2 distinct values: it enters as recorded")
+    assert card["needs"] and all(n["role"] == "confounder" for n in card["needs"])
+    assert card["beside"] is None
+    # An exposure family: each member stated as a straight line, none asked.
+    family = frame.assign(n1=np.random.default_rng(31).normal(10, 2, len(frame)))
+    roles = {**est_f.ROLES, "n1": "exposure"}
+    st = est_f.state(target="glucose", task="regression", measure="mean_difference", roles=roles,
+                     family=True, multiplicity="fdr_bh", models=["featurewise"])
+    card = ef.forms_card(st, family, _info(family), family["glucose"], "regression")
+    assert {"fiber", "n1"} <= {s["column"] for s in card["stated"]}
+    assert card["needs"] and all(n["role"] == "confounder" for n in card["needs"])
+    assert card["beside"] is None
+
+
+def test_the_form_cards_one_liner_says_what_the_card_proposes():
+    """The verifier's round-1 B3: the FORM teaching one-liner said "a spline by default". It now
+    says what the card proposes, read off the card itself: a straight line for what you study, its
+    spline the plan's check, and a spline for a continuous covariate, in plain words
+    (``test_plain_words`` scans it) and within the one-liner's budget (``test_word_budgets``)."""
+    from turbotab.core import plain, teaching
+
+    frame = straight(n=400, seed=3)
+    card = ef.forms_card(numeric_state(), frame, _info(frame), frame["glucose"], "regression")
+    proposed = {n["role"]: n["proposal"] for n in card["needs"]}
+    assert proposed["exposure"] == {"form": "linear"}
+    assert proposed["confounder"]["form"] == "spline"
+    assert proposed["confounder"]["knots_rule"] == "harrell"
+    one_liner = teaching.entry("form").one_liner
+    assert one_liner == ("Declared before estimates, on the final scale: a straight line for "
+                         "what you study, its spline the check; splines for continuous "
+                         "covariates.")
+    assert plain.forbidden_terms(one_liner) == []
+
+
 def test_predicts_ranking_and_a_confounders_are_unchanged():
     """Silent where it should be: under prediction the spline still leads for every role (it nests
     the line), and a confounder's ranking under inference is the one it was."""
@@ -300,6 +367,41 @@ def test_a_yes_no_outcome_checks_the_line_by_the_logistic_models_chi_square(tmp_
     assert test["p"] == pytest.approx(float(wald.pvalue), rel=1e-4)
 
 
+def test_a_diagnostic_that_raises_leaves_model_2_and_the_check_standing(tmp_path, monkeypatch):
+    """The verifier's round-1 B1: the stage's diagnostics fail (here made to raise) while the plan
+    sets a check. Each analysis beside the estimates says why it could not be made and takes
+    nothing down with it: the diagnostics say they were not assessed, and Model 2 and the check
+    both stand, statsmodels' (the straight line kept: the spline's test; a spline kept: the line's
+    one coefficient). Before this repair the diagnostics' own local overwrote the check's, and the
+    stage crashed."""
+    from turbotab.core.stages import effects as eff
+
+    def raises(self, *args, **kwargs):
+        raise RuntimeError("a probe of the diagnostics")
+
+    monkeypatch.setattr(eff._Run, "diagnostics", raises)
+    frame = bent(n=400, seed=13)
+    truth = _statsmodels_check(frame)
+    out = run(frame, tmp_path / "line", numeric_state(exposure_forms={"fiber": LINE}))
+    family = out["effects"]["families"][0]
+    assert [(g["status"], g["reading"]) for g in family["diagnostics"]] == [
+        ("not_assessed", "Not assessed: a probe of the diagnostics")]
+    check = check_of(out["effects"])
+    assert check is not None
+    _assert_check_is_statsmodels(check, truth)
+    primary = next(r for r in model_two(out["effects"])["effects"] if r["feature"] == "fiber")
+    assert primary["estimate"] == pytest.approx(float(truth["line"].params["fiber"]), rel=1e-8)
+    spline = d.ExposureFormSpec(form="spline", knots=5, scale="raw")
+    out = run(frame, tmp_path / "spline", numeric_state(exposure_forms={"fiber": spline}))
+    assert out["effects"]["families"][0]["diagnostics"][0]["status"] == "not_assessed"
+    check = check_of(out["effects"])
+    assert check is not None and check["refused"] is None, check
+    assert check["line"]["estimate"] == pytest.approx(float(truth["line"].params["fiber"]),
+                                                      rel=1e-8)
+    assert {r["feature"] for r in model_two(out["effects"])["effects"]} == {
+        "fiber", "fiber'", "fiber''", "fiber'''"}
+
+
 # ── the check of a curve ─────────────────────────────────────────────────────
 
 
@@ -361,19 +463,27 @@ def test_with_multiple_imputation_answered_and_no_value_missing_the_check_is_mad
     assert check["test"]["p"] < 1e-6  # the bend, reported
 
 
+def imputed_refusal(how: str) -> str:
+    """The refusal's words under multiple imputation (the orchestrator's ruling on the verifier's
+    round-1 M1, batch 1): why (copies drawn under the line's model cannot test its bend) and that
+    the estimate stands."""
+    return (f"under multiple imputation the plan's copies were imputed for the straight line it "
+            f"fits {how}, so the values they fill follow that line and a spline fit on them cannot "
+            f"test whether the relation bends (its test is biased toward no bend: Bartlett, "
+            f"Seaman, White & Carpenter 2015); copies imputed with the spline in the model "
+            f"(SMC-FCS) are not drawn for the check, and the estimate stands: the straight "
+            f"line's, pooled over the plan's copies.")
+
+
 def test_the_refusal_under_multiple_imputation_is_one_sentence_that_names_how_the_copies_were_drawn():
-    """The words of the refusal (B1-V1): how the plan's copies were drawn, chained equations or
-    SMC-FCS with the line in its model, and the methods text quotes it whole (one sentence: no
-    period inside it splits it)."""
+    """The words of the refusal (B1-V1; round 1's M1, ruled a refusal in words for batch 1): how
+    the plan's copies were drawn, chained equations or SMC-FCS with the line in its model, why a
+    spline on them cannot test the bend, and that the estimate stands; the methods text quotes it
+    whole (one sentence: no period inside it splits it)."""
     for method, how in (("chained_equations", "(by chained equations)"),
                         ("smcfcs", "(by SMC-FCS, with the straight line in its model)")):
         reason = ef.check_imputed_refusal(method)
-        assert reason == (
-            f"under multiple imputation the plan's copies were imputed for the straight line it "
-            f"fits {how}, so the values they fill follow that line and a spline fit on them would "
-            f"have its test of a bend biased toward none (Bartlett, Seaman, White & Carpenter "
-            f"2015); copies imputed with the spline in the model (SMC-FCS) are not drawn for the "
-            f"check.")
+        assert reason == imputed_refusal(how)
         assert ef.check_methods("fiber", "spline", refused=reason) == (
             f"The plan's check of the straight line was not made: {reason}")
         assert ef.check_refused("spline", reason) == (
@@ -414,9 +524,9 @@ def test_under_multiple_imputation_the_check_of_a_line_is_refused_and_the_primar
     check = check_of(out["effects"])
     assert check is not None
     assert (check["kept"], check["shape"], check["column"]) == ("linear", "spline", "fiber")
-    assert check["refused"] is not None and check["refused"].startswith(
-        "under multiple imputation the plan's copies were imputed for the straight line it fits "
-        "(by chained equations), so the values they fill follow that line")
+    # Served with its words (round 1's M1, ruled a refusal in words for batch 1): why, and that
+    # the estimate stands.
+    assert check["refused"] == imputed_refusal("(by chained equations)")
     assert check["test"] is None and check["knots"] is None and check["points"] == []
     assert check["caption"] == ("The plan's check of the straight line could not be made: "
                                 + check["refused"])
@@ -428,3 +538,10 @@ def test_under_multiple_imputation_the_check_of_a_line_is_refused_and_the_primar
                            ).fit().params["fiber"]) for copy in copies]
     primary = next(r for r in model_two(out["effects"])["effects"] if r["feature"] == "fiber")
     assert primary["estimate"] == pytest.approx(float(np.mean(slopes)), rel=1e-8)
+    # Model 2 is unaffected by the check's refusal: the same plan with no form declared for
+    # `fiber` (it enters as recorded, a straight line, and no check is set) gives the same Model 2,
+    # every row and its inference.
+    bare = run(frame, tmp_path / "bare", numeric_state(
+        missing=d.MissingSpec(strategy="multiple_imputation")))
+    assert check_of(bare["effects"]) is None
+    assert model_two(out["effects"]) == model_two(bare["effects"])

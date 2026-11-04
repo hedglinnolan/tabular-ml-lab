@@ -1339,8 +1339,9 @@ class _Run:
                                                    units)
             except Exception as exc:  # noqa: BLE001
                 self._unless_cancelled()
-                check = _diagnostic_check(family)
-                out.diagnostics = [Diagnostic(check=check, status="not_assessed", method="",
+                # Its own name: ``check`` holds the plan's check of the shape (``_check_setup``).
+                which = _diagnostic_check(family)
+                out.diagnostics = [Diagnostic(check=which, status="not_assessed", method="",
                                               reading=f"Not assessed: {exc}")]
             straight = None
             if curve is not None and "straight" not in failures:
