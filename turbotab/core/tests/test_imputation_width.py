@@ -367,16 +367,15 @@ def _one_level(text: bool, second: bool) -> tuple[pd.DataFrame, Variable]:
 def test_a_column_recorded_at_one_level_is_not_held_to_the_rule_and_one_of_two_levels_is(text):
     """The rule counts a model's events, or its effective size, over the levels its recorded values
     hold; one level has neither (``ModelSize.held``). A wide model (above 80 columns) whose `b` is
-    recorded at one level on 100 rows is drawn, short of nothing; the text column's blanks are
-    drawn as its one level. The same `b` with the other level on one row has 1 event on 81
-    parameters, and is refused."""
+    recorded at one level on 100 rows is drawn, short of nothing, its blanks as its one level. The
+    same `b` with the other level on one row has 1 event on 81 parameters, and is refused."""
     frame, variable = _one_level(text, second=False)
     width = 81 if text else 82  # text of one level adds no indicator; a 0/1 column adds one
     assert smcfcs.model_width(frame, [variable]).width == width > CAP
     drawn = impute(frame, [variable], m=3, iterations=1)
     assert drawn.imputed == {"b": 20}
-    if text:  # no model: the one level recorded
-        assert all(set(f["b"].iloc[100:]) == {"yes"} for f in drawn.frames)
+    # no model: the one level recorded
+    assert all(set(f["b"].iloc[100:]) == {"yes" if text else 1.0} for f in drawn.frames)
     frame, variable = _one_level(text, second=True)
     with pytest.raises(ImputationRefused) as refused:
         impute(frame, [variable], m=3, iterations=1)
