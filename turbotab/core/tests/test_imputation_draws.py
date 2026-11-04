@@ -193,8 +193,9 @@ def test_the_draw_s_covariance_is_mice_s_ridged_pseudo_inverse(design, factor, m
     It is scipy's ``pinvh`` of mice's ridged cross-product XᵀX + 10⁻⁵ diag(XᵀX), to 10⁻⁸ of its
     largest entry, on the wide design (where the base's Cholesky factor failed on this machine)
     and wherever the factor is refused (forced here, as a platform's float64 may refuse it), and
-    each zero column's coefficient is drawn with no variance and centered at 0. The base raised
-    LinAlgError on each."""
+    each zero column's coefficient is drawn with no variance and centered at 0, to 10⁻⁸ of the
+    largest coefficient (the same float64 bound as the covariance; a 10⁻¹⁰ bound tipped on Linux).
+    The base raised LinAlgError on each."""
     X, y = _wide_design() if design == "wide" else _full_rank_design()
     if factor == "no Cholesky factor":
         monkeypatch.setattr(np.linalg, "cholesky", _no_cholesky)
@@ -210,7 +211,7 @@ def test_the_draw_s_covariance_is_mice_s_ridged_pseudo_inverse(design, factor, m
     assert np.abs(R @ R.T - V).max() <= 1e-8 * np.abs(V).max()
     zero = np.flatnonzero(~X.any(axis=0))
     assert len(zero) == (3 if design == "wide" else 0)
-    assert np.abs(beta[zero]).max(initial=0.0) <= 1e-10 * np.abs(beta).max()
+    assert np.abs(beta[zero]).max(initial=0.0) <= 1e-8 * np.abs(beta).max()
 
 
 def test_where_the_cholesky_factor_exists_the_draw_is_the_base_s_bit_for_bit():
