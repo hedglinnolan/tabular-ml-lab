@@ -340,9 +340,10 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     answer's words (pp1f); and the sensitivity stage's one more when it came to name each exposure
     column of a plan wider than the lineage shows unfolded (PP2 N1); and the modification's one
     more at PP2's integration, the move PP1 left out when the chained equations that draw its
-    copies changed."""
+    copies changed; and one more each at PP2's second pass, when every censored draw came from a
+    censored-normal fit returned only at a certified maximum."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (42, 26, 22, 16, 13, 16, 8)
+    assert tuple(versions[s] for s in stages) == (43, 27, 23, 17, 14, 17, 9)

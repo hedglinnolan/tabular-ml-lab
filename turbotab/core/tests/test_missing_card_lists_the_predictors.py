@@ -276,9 +276,6 @@ def test_a_removed_feature_an_interaction_adjusts_for_stays_listed(tmp_path, ans
     assert listed(table.run(proposals_stage, state)) == want
 
 
-@pytest.mark.xfail(strict=True, reason="INBOX:1027 repair V2-1: the integrator adds 'modifications' "
-                                       "to the proposals Stage's reads (with its version bump); "
-                                       "then drop this marker")
 def test_declaring_a_removed_feature_the_modifier_rekeys_the_card():
     """So the stage's key changes when the removed `f1` is declared the modifier (the test above:
     its fresh card lists `f1`), or the card cached before it, which omits `f1`, is served."""

@@ -329,15 +329,20 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     participants and to set two-valued columns aside (PP1); and the sensitivity stage again when
     it came to name each exposure column of a plan wider than the lineage shows unfolded (PP2
     N1), and the modification stage when PP2's integration made the move PP1 left out, its copies
-    drawn by the chained equations PP1 changed."""
+    drawn by the chained equations PP1 changed; and, at PP2's second pass, the design when its
+    feature-wise steps came to say each value below detection is drawn within each imputation, the
+    fit and the stages that draw censored copies when every censored draw came from a certified
+    censored-normal fit (the fit also when the univariable screen came to test each term on its
+    rank's degrees of freedom), and the proposals stage when its missing-values card came to read
+    the modifications."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 42, 23)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (36, 43, 23)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (16, 26, 22, 16, 13)
-    assert (versions["modification"], versions["mattered"]) == (8, 3)
-    assert versions["proposals"] == 22
+            versions["secondary"], versions["scales"]) == (17, 27, 23, 17, 14)
+    assert (versions["modification"], versions["mattered"]) == (9, 3)
+    assert versions["proposals"] == 23
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:

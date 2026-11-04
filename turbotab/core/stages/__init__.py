@@ -484,9 +484,15 @@ def build_graph() -> Graph:
             # is counted out, where ``n_tests`` counted it), and a member whose codes-or-amounts
             # answer the fit waits for is not counted until it is recorded (its values' whole-
             # number facts handed to the card).
-            Stage("proposals", 22, ("working", "roles"),
+            # proposals 23 (PP2's second pass, the small-reads package): the missing-values card
+            # lists no feature a repair marked unusable unless a declared modification's model holds
+            # it (``proposals.answered_out``), so the stage reads the modifications. It does not
+            # read the missing-values answer: a stage's reads are also the Router's card
+            # dependencies (``sequence.card_reads``), and that read would hold the estimand question
+            # until the missing-values question is answered.
+            Stage("proposals", 23, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
-                   "sex_codings", "task", "event", "model_sequence", *WP17_READS),
+                   "sex_codings", "task", "event", "model_sequence", "modifications", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
@@ -637,7 +643,13 @@ def build_graph() -> Graph:
             # and refuses one whose declared form is not a straight line; the fit and every stage
             # after the design clone its pipelines, so a design cached before is computed again
             # rather than served, and with it every stage keyed on it (the fit's table among them).
-            Stage("design", 35, ("working", "split", "target_info"),
+            # design 36 (PP2's second pass, the featurewise-mi package): under inference with
+            # multiple imputation the feature-wise model's detect, log and impute steps say that its
+            # values below detection are not filled there but drawn within each imputation from a
+            # censored-normal model given the outcome, and the covariates only where the design has
+            # some (``pipeline.drawn_per_feature``), so a design cached before is computed again
+            # rather than served with the single fill's words, and with it every stage keyed on it.
+            Stage("design", 36, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),
@@ -856,7 +868,16 @@ def build_graph() -> Graph:
             # the answer's set of columns an exit may leave out, so a redundant covariate is named,
             # and only these are offered to leave out; a count of one is said in the singular, and
             # a figure below 0.05 to two significant digits.
-            Stage("fit", 42, ("working", "design", "split", "target_info", "cohort"),
+            # fit 43 (PP2's second pass, 2026-11-03): the feature-wise tests are pooled over
+            # multiple imputations drawn one study factor at a time, each from its own model given
+            # the outcome and the covariates (``methods.featurewise_mi``), and every censored draw,
+            # the chained equations' and the single censoring-aware fill's among them, comes from a
+            # censored-normal fit returned only at a certified maximum (``imputation.tobit_fit``,
+            # ``imputation.tobit_root``), refused in words where none is certified; the univariable
+            # screen tests each term on its rank's degrees of freedom, as lm and glm do
+            # (``variable_selection.univariable_p``). One past pp1f's 42, which the featurewise-mi
+            # package's own 42 was not.
+            Stage("fit", 43, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -977,7 +998,14 @@ def build_graph() -> Graph:
             # sensitivity 26 (PP2 N1): its exposures read the lineage unfolded, every matrix column
             # named as the coefficient table names it, so a plan wider than lineage.COLLAPSE_AT no
             # longer fails on an exposure named None.
-            Stage("sensitivity", 26, ("working", "design", "split", "target_info"),
+            # sensitivity 27, calibration 23, secondary 17, scales 14, effects 17, modification 9
+            # (PP2's second pass): as fit 43, their copies' censored draws coming from the certified
+            # censored-normal fit, which moves a draw on a full-rank design by about 1e-7 at most
+            # and more where a column was aliased or the likelihood had no maximum (refused now);
+            # the effects stage's declared model is refused in a later copy's words where that
+            # copy's table is refused, never served from copy 0, and its feature-wise tests are
+            # pooled over the copies drawn one study factor at a time, as the fit's are.
+            Stage("sensitivity", 27, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -1000,7 +1028,8 @@ def build_graph() -> Graph:
             # calibration 13 (resume integration 2): both calibration 12s (this one and the engine
             # residue's, beside sensitivity 15 above).
             # calibration 14: as sensitivity 16 above (its uncorrected estimate's table).
-            Stage("calibration", 22,
+            # calibration 23 (PP2's second pass): as sensitivity 27 above.
+            Stage("calibration", 23,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models", "purpose"),
@@ -1010,7 +1039,8 @@ def build_graph() -> Graph:
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
             # secondary 7: as sensitivity 16 above.
             # secondary 10: as sensitivity 19 above.
-            Stage("secondary", 16, ("working", "design", "split", "target_info"),
+            # secondary 17 (PP2's second pass): as sensitivity 27 above.
+            Stage("secondary", 17, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -1029,7 +1059,8 @@ def build_graph() -> Graph:
             # scales 5: as sensitivity 16 above (the uncorrected coefficient's table).
             # scales 6: as sensitivity 17 above.
             # scales 7: as sensitivity 18 above.
-            Stage("scales", 13, ("working", "design", "split", "target_info", "cohort"),
+            # scales 14 (PP2's second pass): as sensitivity 27 above.
+            Stage("scales", 14, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models", "purpose"),
                   label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
@@ -1079,7 +1110,8 @@ def build_graph() -> Graph:
             # each family's sequence under its name wherever two families report from different
             # models, whichever order they were chosen in, and gives a later model's refusal in
             # its words where that model was fit and its table refused.
-            Stage("effects", 16, ("working", "design", "split", "target_info"),
+            # effects 17 (PP2's second pass): as sensitivity 27 above.
+            Stage("effects", 17, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",
@@ -1144,7 +1176,8 @@ def build_graph() -> Graph:
             # complete numeric code declared a category enters as its indicators, and
             # smcfcs.refusal_before_drawing's width rule and words), so a modification cached by an
             # earlier tree, an intermediate feat/pp1-int tree among them, is computed again.
-            Stage("modification", 8, ("working", "design", "split", "target_info"),
+            # modification 9 (PP2's second pass): as sensitivity 27 above.
+            Stage("modification", 9, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models", "purpose"),
                   label="Estimating the declared effect modification", serves=ESTIMATE),
