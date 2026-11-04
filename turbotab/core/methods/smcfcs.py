@@ -2279,12 +2279,14 @@ def _left_out_columns_keep_the_energy_model(decision: Any, ctx: Any) -> None:
     exits = ([{"label": f"Leave out only {_listed([f'`{c}`' for c in rest])}" if rest
                else "Keep every predictor", "decision": way}]
              if not _PROBING.get() and accepted_exit(way, ctx) is not None else [])
+    # The label as the method table spells it, in quotation marks (one has parentheses of its
+    # own), and the answer "cannot drop" the columns, true under every method, those whose label
+    # says total energy leaves the model among them: the design still computes with it.
     raise Refusal(
         ENERGY_LEFT_OUT,
-        f"{_listed([f'`{c}`' for c in kept])} {'is' if one else 'are'} part of the energy "
-        f"adjustment ({label[:1].lower()}{label[1:]}), which cannot be computed without "
-        f"{'it' if one else 'them'}, so {'it' if one else 'they'} cannot be left out of the "
-        f"predictors.",
+        f"{_listed([f'`{c}`' for c in kept])} {'is' if one else 'are'} needed to compute the "
+        f"energy adjustment “{label}”, so the missing-values answer cannot drop "
+        f"{'it' if one else 'them'}.",
         exits=exits)
 
 

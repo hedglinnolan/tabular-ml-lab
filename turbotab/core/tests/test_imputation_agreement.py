@@ -342,8 +342,17 @@ def test_an_energy_column_the_energy_model_names_is_never_offered_to_leave_out(t
     assert _leavable(plain, ["kcal", "c1", "x"]) == ["kcal", "c1"]
 
 
-LEFT_OUT = ("`{c}` is part of the energy adjustment (standard (multivariate) model), which cannot "
-            "be computed without it, so it cannot be left out of the predictors.")
+LEFT_OUT = ("`{c}` is needed to compute the energy adjustment “Standard (multivariate) model”, so "
+            "the missing-values answer cannot drop it.")
+
+# Each method that computes an adjustment, with its label as the method table spells it.
+LABELS = {"standard": "Standard (multivariate) model",
+          "residual": "Willett residual model, total energy kept",
+          "residual_energy_dropped": "Willett residual model, total energy left out",
+          "density_multivariate": "Multivariate nutrient density model",
+          "density": "Nutrient density alone",
+          "partition": "Energy partition model",
+          "all_components": "All-components model"}
 
 
 def test_a_missing_values_answer_leaving_out_a_column_the_energy_model_needs_is_refused(tmp_path):
@@ -369,6 +378,31 @@ def test_a_missing_values_answer_leaving_out_a_column_the_energy_model_needs_is_
     plain = state.model_copy(update={"energy_adjustment": None})
     validate(SetMissing(strategy="complete_case", drop_columns=["kcal"]), ctx_of(
         plain, Ingested(path, tmp_path / "plain")))
+
+
+@pytest.mark.parametrize("method", list(LABELS))
+def test_the_energy_refusal_names_each_method_by_its_label_and_says_what_cannot_be_dropped(
+        tmp_path, method):
+    """Under each method that computes an energy adjustment on `kcal` and `x`, the refusal of an
+    answer dropping both names the method by its label as spelled, capitalized and in quotation
+    marks (no parentheses inside parentheses), and says the missing-values answer cannot drop
+    them, which holds where the method itself leaves total energy out of the model; under method
+    "none", which computes nothing, the same answer is accepted."""
+    _, path, state = _kcal_narrow(tmp_path, adjusted=True, kcal_once=False)
+    state = state.model_copy(update={"missing": None})
+
+    def with_(m: str) -> ProjectState:
+        return state.model_copy(update={
+            "energy_adjustment": state.energy_adjustment.model_copy(update={"method": m})})
+
+    answer = SetMissing(strategy="complete_case", drop_columns=["kcal", "x"])
+    with pytest.raises(Refusal) as refused:
+        validate(answer, ctx_of(with_(method), Ingested(path, tmp_path / "answer")))
+    assert refused.value.code == smcfcs.ENERGY_LEFT_OUT
+    assert refused.value.message == (
+        f"`kcal` and `x` are needed to compute the energy adjustment “{LABELS[method]}”, so the "
+        f"missing-values answer cannot drop them.")
+    validate(answer, ctx_of(with_("none"), Ingested(path, tmp_path / "none")))
 
 
 def test_the_log_residual_s_zero_is_a_refusal_in_words_with_the_model_without_the_log(tmp_path):
