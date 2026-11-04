@@ -11,9 +11,17 @@ propensity (PP2 follow-up: −1.51320 against −1.51294 on a served 2001–2004
 is completed with the cycle where the reading certainly reads it, and refused where it does not.
 
 Repair round 1: under prediction the scores' weight is built on the training rows, so the
-sentence reads the rows with the target recorded and says a branch only where every set of
-training rows takes it (P1); a cycle the roles adjust for is pooled by, its weight no longer k
-times the population (P3).
+sentence says a branch only where every set of training rows takes it (P1); a cycle the roles
+adjust for is pooled by, its weight no longer k times the population (P3).
+
+Repair round 2: the answer outlives a change of target (``decisions.SetSurvey`` holds on the goal
+only), and every later target, exclusion or split draws its training rows from the working
+table's, so under prediction the sentence reads the cycles of every row of the working table, not
+the rows the target of the moment records (B1); its rule says NCHS's rule in plain words, cited
+(M1). Only a column that certainly is a survey cycle (NCHS's ``SDDSRVYR``, or values that name
+NHANES releases by their years) is completed, refused with the way on naming it, or named as the
+cycle while the roles make it a predictor: a ``cycle_day`` the cycle reader takes by its name is
+not a cycle (B2).
 
 Every expected weight is NCHS's rule applied by hand to the constructed table's columns
 (NHANES Analytic Guidelines 2011–2016): §3.1.3, "When combining two or more 2-year cycles from
@@ -49,9 +57,13 @@ ALONE_WORDS = "weighted by `WTMEC4YR`, the four-year weight NCHS provides for 19
 # design-based cross-validation, ``stages.modeling.fit_designs``), so their cycles are counted.
 SCORED_DIVIDED_WORDS = ("each score weighted by `WTMEC2YR` divided by the number of cycles the "
                         "training rows hold in `SDDSRVYR`, by design-based")
-SCORED_RULE_WORDS = ("each score weighted by `WTMEC2YR` (or, on the 1999–2002 rows where "
-                     "1999–2000 is pooled, `WTMEC4YR`), pooled by NCHS's rule over the cycles the "
-                     "training rows hold in `SDDSRVYR`, by design-based")
+SCORED_RULE_WORDS = ("each score weighted by `WTMEC2YR`, or by `WTMEC4YR` doubled on the "
+                     "1999–2002 rows where the training rows pool 1999–2000 with another cycle, "
+                     "every weight then divided by the number of cycles the training rows hold in "
+                     "`SDDSRVYR` (NHANES Analytic Guidelines 2011–2016 §3.1.3–3.1.4), by "
+                     "design-based")
+# Release labels by their years, as NCHS names them (``methods.cycles.RELEASES``).
+LABELS = {1: "1999–2000", 2: "2001–2002", 3: "2003–2004"}
 SCORED_AS_IT_IS_WORDS = "each score weighted by `WTMEC2YR`, by design-based"
 
 
@@ -89,16 +101,19 @@ def _pool(cycles: tuple[int, ...], cycle: str = "SDDSRVYR", **extra: Any) -> pd.
     return frame
 
 
-def _by_hand(frame: pd.DataFrame) -> np.ndarray:
-    """NCHS's weight for the cycles ``frame`` pools (module docstring), from its columns."""
-    cycles = sorted(frame["SDDSRVYR"].unique())
+def _by_hand(frame: pd.DataFrame, cycle: str = "SDDSRVYR") -> np.ndarray:
+    """NCHS's weight for the cycles ``frame`` pools in ``cycle`` (module docstring), from its
+    columns; a cycle written by its years is read back to its release code (:data:`LABELS`)."""
+    release = {v: k for k, v in LABELS.items()}
+    codes = frame[cycle].map(lambda v: release.get(v, v))
+    cycles = sorted(codes.unique())
     k = len(cycles)
     w2, w4 = frame["WTMEC2YR"].to_numpy(float), frame["WTMEC4YR"].to_numpy(float)
     if k == 1:
         return w2
     if 1 not in cycles:
         return w2 / k  # §3.1.3
-    early = frame["SDDSRVYR"].isin([1, 2]).to_numpy()
+    early = codes.isin([1, 2]).to_numpy()
     return np.where(early, 2 * w4 / k, w2 / k)  # §3.1.4, Table F (k = 2: the four-year weight)
 
 
@@ -226,29 +241,41 @@ def _outcome_blank_in(frame: pd.DataFrame, cycle: int) -> pd.DataFrame:
     return out
 
 
-@pytest.mark.parametrize("cycles,words", [
-    ((1, 2, 3), SCORED_DIVIDED_WORDS),
-    ((1, 2), SCORED_AS_IT_IS_WORDS),
+@pytest.mark.parametrize("cycles,blank,words", [
+    ((1, 2, 3), 1, SCORED_RULE_WORDS),
+    ((1, 2), 1, SCORED_RULE_WORDS),
+    ((2, 3), 2, SCORED_DIVIDED_WORDS),
+    ((3,), None, SCORED_AS_IT_IS_WORDS),
 ])
-def test_under_prediction_a_cycle_without_the_outcome_is_not_said_to_weigh_the_scores(
-        cycles, words):
-    """The verifier's case (PP2 follow-up, repair round 1, P1): 1999–2000's outcome not
-    measured, under prediction, answered with the survey question's own option (``SDDSRVYR``
-    and ``WTMEC4YR``, 1999–2000 being in the table). The scores' rows are the training rows,
-    among the rows with the outcome recorded (the cohort), so 1999–2000 is not among them: by
-    hand, ``WTMEC2YR`` ÷ 2 on 2001–2004 (§3.1.3), and ``WTMEC2YR`` as it is on 2001–2002 alone.
-    The sentence says that weight; the package's first build said the four-year weight, which no
-    score row takes."""
-    frame = _outcome_blank_in(_pool(cycles), 1)
+def test_under_prediction_the_sentence_holds_for_a_target_set_after_the_answer(
+        cycles, blank, words):
+    """The verifier's case (PP2 follow-up, repair round 2, B1): under prediction, answered with
+    ``SDDSRVYR`` and ``WTMEC4YR`` (the survey question's own option where 1999–2000 is pooled)
+    while the outcome ``y`` is not measured in one cycle, then the target changed to ``yb``,
+    recorded on every row. The answer stands under the new target (it is held on the goal only),
+    so its sentence, authored once, must hold for the training rows of either. Each target's rows
+    take NCHS's weight for the cycles they hold, by hand: on 1999–2004, ``y``'s rows (2001–2004)
+    ``WTMEC2YR`` ÷ 2 and ``yb``'s Table F's 6-year weight; on 1999–2002, ``WTMEC2YR`` as it is
+    and the four-year weight; on 2001–2004 with ``y`` only in 2003–2004, ``WTMEC2YR`` as it is and
+    ÷ 2; on one cycle, ``WTMEC2YR`` as it is under both. The sentence names the branch every subset
+    of the working table's rows takes (the rule where 1999–2000 is pooled, the division where it
+    is not, the weight as it is on one cycle), the same whichever target it is authored under.
+    The repair round 1 build read the rows ``y`` records and said ``WTMEC2YR`` as it is, or ÷ the
+    cycles, on 1999–2002 and 1999–2004, which ``yb``'s rows do not take."""
+    frame = _pool(cycles, yb=lambda f: f["x"] + 1.0)
+    if blank is not None:
+        frame = _outcome_blank_in(frame, blank)
     state = _state(frame, purpose="prediction")
-    option = _offered(frame, state)
-    assert (option["cycle"], option["four_year_weight"]) == ("SDDSRVYR", "WTMEC4YR")
-    recorded = _recorded(frame, option, state)
-    rows = frame.index[frame["y"].notna()]
-    np.testing.assert_allclose(_score_weights(frame, recorded, state, rows),
-                               _by_hand(frame.loc[rows]), rtol=1e-12)
+    recorded = _recorded(frame, {**DESIGN, "cycle": "SDDSRVYR", "four_year_weight": "WTMEC4YR"},
+                         state)
     said = _said(frame, recorded, state)
-    assert words in said and "WTMEC4YR" not in said and "1999" not in said, said
+    assert words in said, said
+    for target in ("y", "yb"):
+        later = state.model_copy(update={"target": target})
+        rows = frame.index[frame[target].notna()]
+        np.testing.assert_allclose(_score_weights(frame, recorded, later, rows),
+                                   _by_hand(frame.loc[rows]), rtol=1e-12)
+        assert _said(frame, recorded, later) == said
 
 
 def test_under_prediction_a_pool_holding_1999_2000_is_said_by_the_rule_its_training_rows_take():
@@ -257,11 +284,15 @@ def test_under_prediction_a_pool_holding_1999_2000_is_said_by_the_rule_its_train
     question, keep or drop whole cycles), so the sentence states the rule, never one branch.
     Each set of training rows here takes its own weight, by hand: all three cycles Table F's
     6-year weight; 1999–2002 (a cut-point at 2003–2004) the four-year weight itself; 2001–2004
-    (1999–2000 excluded) ``WTMEC2YR`` ÷ 2; 1999–2000 alone its own 2-year weight."""
+    (1999–2000 excluded) ``WTMEC2YR`` ÷ 2; 1999–2000 and 2003–2004 (2001–2002 excluded) twice
+    the four-year weight ÷ 2 on 1999–2000's rows and ``WTMEC2YR`` ÷ 2 on the others (§3.1.4);
+    one cycle alone its own 2-year weight. The rule as the sentence words it (repair round 2, M1:
+    the four-year weight doubled where the training rows pool 1999–2000, every weight divided by
+    their cycles) gives each of these."""
     frame = _pool((1, 2, 3))
     state = _state(frame, purpose="prediction")
     recorded = _recorded(frame, _offered(frame, state), state)
-    for kept in ((1, 2, 3), (1, 2), (2, 3), (1,)):
+    for kept in ((1, 2, 3), (1, 2), (2, 3), (1, 3), (1,), (2,)):
         rows = frame.index[frame["SDDSRVYR"].isin(kept)]
         np.testing.assert_allclose(_score_weights(frame, recorded, state, rows),
                                    _by_hand(frame.loc[rows]), rtol=1e-12)
@@ -357,6 +388,80 @@ def test_a_cycle_the_roles_make_a_predictor_still_pools_the_weight(role):
     assert f"rows were {FOUR_YEAR_WORDS}, and standard errors" in _said(frame, recorded, state)
 
 
+def _cycle_day(frame: pd.DataFrame) -> np.ndarray:
+    """A day of the menstrual cycle, 1 to 12 down the rows: every value one an NHANES release code
+    could take, so only the column's name and the codes' being numbers can tell it from one."""
+    return np.arange(len(frame)) % 12 + 1
+
+
+@pytest.mark.parametrize("role", ["covariate", "exposure"])
+def test_a_predictor_the_cycle_reader_takes_by_its_name_alone_is_not_a_survey_cycle(role):
+    """PP2 follow-up, repair round 2, B2: one NHANES cycle (2003–2004) with a predictor
+    ``cycle_day`` (12 values), which the cycle reader takes by its name. It is not a survey cycle,
+    and nothing certifies it is (not NCHS's ``SDDSRVYR``, its values numbers rather than releases
+    by their years): naming it as the cycle is refused (``design_is_predictor``), as on the base,
+    and the answer with no cycle is recorded as given and fit on ``WTMEC2YR`` as it is (by hand,
+    one cycle's own weight), its sentence saying so. The repair round 1 build recorded the cycle
+    named, weighing each row by ``WTMEC2YR`` ÷ 12, and refused the answer with no cycle."""
+    frame = _pool((3,), cycle_day=_cycle_day)
+    state = _state(frame, {**ROLES, "cycle_day": role})
+    with pytest.raises(d.Refusal) as refused:
+        _recorded(frame, {**DESIGN, "cycle": "cycle_day"}, state)
+    assert refused.value.code == "design_is_predictor"
+    recorded = _recorded(frame, DESIGN, state)
+    assert recorded.cycle is None
+    np.testing.assert_allclose(_fit_weights(frame, recorded, state), _by_hand(frame), rtol=1e-12)
+    said = _said(frame, recorded, state)
+    assert "rows were weighted by `WTMEC2YR`, and standard errors" in said, said
+
+
+@pytest.mark.parametrize("case", ["cycle_day", "survey_cycle_codes"])
+def test_an_answer_with_no_cycle_is_kept_as_given_where_no_column_certainly_is_a_cycle(case):
+    """B2, the completion's silent side: where the only column the cycle reader takes is one by
+    its name alone, holding numbers, the answer with no cycle is recorded as given, fit on
+    ``WTMEC2YR`` as it is and said so. A time-axis ``cycle_day`` on one cycle (its own weight, by
+    hand): the repair round 1 build refused it, its only ways on dividing by 12 or leaving the
+    population. A ``survey_cycle`` coded 2 and 3 over 2001–2004: whether those codes are cycles
+    (rather than a phase or a visit) the values cannot say, so the weight is the one the answer
+    names, as on the base, and the sentence says no division (the survey question's own option
+    names ``survey_cycle`` as the cycle)."""
+    if case == "cycle_day":
+        frame = _pool((3,), cycle_day=_cycle_day)
+        state = _state(frame, {**ROLES, "cycle_day": "time"})
+    else:
+        frame = _pool((2, 3), cycle="survey_cycle")
+        state = _state(frame, {**{k: v for k, v in ROLES.items() if k != "SDDSRVYR"},
+                               "survey_cycle": "time"})
+    recorded = _recorded(frame, DESIGN, state)
+    assert recorded.cycle is None
+    np.testing.assert_allclose(_fit_weights(frame, recorded, state),
+                               frame["WTMEC2YR"].to_numpy(float), rtol=1e-12)
+    said = _said(frame, recorded, state)
+    assert "rows were weighted by `WTMEC2YR`, and standard errors" in said, said
+
+
+def test_a_predictor_whose_values_name_nhanes_releases_is_a_survey_cycle():
+    """B2, the guard's other side: a column ``cycle`` (the cycle stack's name) whose values name
+    NHANES releases by their years, adjusted for as a covariate, is a survey cycle whatever its
+    name: named as the cycle it is accepted, over 2001–2004 fit on ``WTMEC2YR`` ÷ 2 and over
+    1999–2004 with ``WTMEC4YR`` on Table F's 6-year weight (each by hand); the answer with no
+    cycle is refused with the way on that names it (it is not NCHS's ``SDDSRVYR``, so it is not
+    filled in)."""
+    roles = {**{k: v for k, v in ROLES.items() if k != "SDDSRVYR"}, "cycle": "covariate"}
+    for cycles, four in (((2, 3), None), ((1, 2, 3), "WTMEC4YR")):
+        frame = _labeled(_pool(cycles, cycle="cycle"), "cycle")
+        state = _state(frame, roles)
+        recorded = _recorded(frame, {**DESIGN, "cycle": "cycle", "four_year_weight": four}, state)
+        np.testing.assert_allclose(_fit_weights(frame, recorded, state),
+                                   _by_hand(frame, "cycle"), rtol=1e-12)
+    frame = _labeled(_pool((2, 3), cycle="cycle"), "cycle")
+    state = _state(frame, roles)
+    with pytest.raises(d.Refusal) as refused:
+        _recorded(frame, DESIGN, state)
+    assert refused.value.code == "name_the_cycle"
+    assert refused.value.exits[0]["label"] == "Pool by `cycle`"
+
+
 @pytest.mark.parametrize("slot,column,code", [
     ("weight", "WTMEC2YR", "design_is_predictor"),
     ("strata", "SDMVSTRA", "design_is_predictor"),
@@ -375,13 +480,19 @@ def test_a_weight_strata_or_psu_that_is_a_predictor_and_a_cycle_that_is_the_outc
     assert refused.value.code == code
 
 
+def _labeled(frame: pd.DataFrame, column: str) -> pd.DataFrame:
+    """``frame`` with ``column``'s release codes written as the releases' years."""
+    return frame.assign(**{column: frame[column].map(LABELS)})
+
+
 def test_a_pool_whose_cycle_the_reading_does_not_certainly_read_is_refused_with_its_ways_on():
-    """2001–2004 under a cycle column the cycle reader takes by its name but NCHS does not use
-    (``survey_cycle``), answered with no cycle: refused, saying the 2 values and the division
-    (interpolated from the column), with the ways on: pool by ``survey_cycle`` (which records and
-    fits ``WTMEC2YR`` ÷ 2, by hand) or these participants. Two columns that each pool are refused
-    too, each named."""
-    frame = _pool((2, 3), cycle="survey_cycle")
+    """2001–2004 under a cycle column NCHS does not name (``survey_cycle``) whose values name
+    NHANES releases by their years ("2001–2002", "2003–2004"), answered with no cycle: a survey
+    cycle, but not NCHS's release code, so it is not filled in; refused, saying the 2 values and
+    the division (interpolated from the column), with the ways on: pool by ``survey_cycle``
+    (which records and fits ``WTMEC2YR`` ÷ 2, by hand) or these participants. Two columns that
+    each pool are refused too, each named."""
+    frame = _labeled(_pool((2, 3), cycle="survey_cycle"), "survey_cycle")
     roles = {**{k: v for k, v in ROLES.items() if k != "SDDSRVYR"}, "survey_cycle": "time"}
     state = _state(frame, roles)
     with pytest.raises(d.Refusal) as refused:
@@ -399,7 +510,7 @@ def test_a_pool_whose_cycle_the_reading_does_not_certainly_read_is_refused_with_
     np.testing.assert_allclose(_fit_weights(frame, recorded, state),
                                frame["WTMEC2YR"].to_numpy(float) / 2, rtol=1e-12)
 
-    both = _pool((2, 3), survey_cycle=lambda f: f["SDDSRVYR"])
+    both = _pool((2, 3), survey_cycle=lambda f: f["SDDSRVYR"].map(LABELS))
     state = _state(both, {**ROLES, "survey_cycle": "time"})
     with pytest.raises(d.Refusal) as refused:
         _recorded(both, DESIGN, state)

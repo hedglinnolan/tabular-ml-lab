@@ -377,11 +377,15 @@ def _names_real_columns(decision: Any, ctx: Any) -> None:
             raise Refusal("design_is_outcome",
                           f"`{column}` is the outcome, so it cannot be part of the survey design.",
                           exits=[{"label": "Name another column", "decision": None}])
-        # The cycle says only which cycle's weight each row takes and how many are pooled
+        # A survey cycle says only which cycle's weight each row takes and how many are pooled
         # (``methods.survey.analysis_weights``), which adjusting for it (a secular trend, or the
         # exposure of a trend across cycles) does not contradict. Refusing it left a pool whose
         # cycle the roles adjust for with no answer that reaches NCHS's weight (PP2 follow-up SW2).
-        if slot != "cycle" and roles.get(column) in ("exposure", "covariate", "energy"):
+        # Only a column that certainly is one (:func:`is_survey_cycle`) is let through: a
+        # predictor the cycle reader takes by its name alone (``cycle_day``) is a predictor, and
+        # pooling by it would divide every weight by its values' count (repair round 2, B2).
+        if roles.get(column) in ("exposure", "covariate", "energy") and not (
+                slot == "cycle" and is_survey_cycle(column, _values_of(column, ctx))):
             raise Refusal(
                 "design_is_predictor",
                 f"`{column}` is a predictor ({roles[column]}); a survey "
@@ -483,6 +487,46 @@ def one_cycle_weight(name: str | None) -> bool:
     return bool(name) and bool(_ONE_CYCLE.match(str(name)))
 
 
+def names_a_release(value: Any) -> bool:
+    """Whether ``value`` names an NHANES release by its years ("2003–2004", "2017–March 2020",
+    "August 2021–August 2023": :func:`turbotab.core.methods.cycles.cycle_of`). A number is not
+    read as a release code: only NCHS's ``SDDSRVYR`` holds those, and elsewhere 1 to 12 may be a
+    day, a phase or a visit."""
+    if not isinstance(value, str) or re.fullmatch(r"\s*[\d.]+\s*", value):
+        return False
+    from turbotab.core.methods.cycles import StackRefused, cycle_of
+
+    try:
+        return cycle_of(value).release is not None
+    except StackRefused:
+        return False
+
+
+def is_survey_cycle(column: str, values: Sequence[Any] | None = None) -> bool:
+    """Whether ``column`` certainly is a survey cycle: NCHS's release code ``SDDSRVYR``, or a
+    column every value of which names an NHANES release by its years (:func:`names_a_release`;
+    ``values`` its distinct values, None when they cannot be read). The cycle reader takes any
+    name with a ``cycle`` in it (``_CYCLE``), and a ``cycle_day``, a ``menstrual_cycle`` or a
+    ``cycle_length`` is none: pooling by one would divide every weight by the count of its
+    values."""
+    if str(column).upper() == "SDDSRVYR":
+        return True
+    return bool(values) and all(names_a_release(v) for v in values)
+
+
+def _values_of(column: str, ctx: Any) -> list[Any] | None:
+    """The distinct values ``column`` holds in the working table ``ctx`` reads; None without it."""
+    from turbotab.core.decisions import _ctx
+
+    if str(column).upper() == "SDDSRVYR":
+        return None  # its name says what it is
+    store_fn = _ctx(ctx, "store")
+    store = store_fn() if callable(store_fn) else None
+    if store is None or column not in set(getattr(store, "columns", ()) or ()):
+        return None
+    return store.materialize([column], None)[column].dropna().unique().tolist()
+
+
 def _pools_by_the_cycle_read(decision: Any, ctx: Any) -> Any:
     """SW2: a population answer that names no cycle, weighted by one cycle's two-year weight
     (:func:`one_cycle_weight`), over rows the reading's cycle column pools from 2001–2002 on
@@ -491,15 +535,20 @@ def _pools_by_the_cycle_read(decision: Any, ctx: Any) -> Any:
     §3.1.3 divides it by the k cycles; most estimates are unmoved by a constant scale, but a
     fit whose penalty meets the weights' sum is not (the causal lane's lasso propensity).
 
-    Where the reading certainly reads the cycle (one column pools, it is NCHS's own release code
-    ``SDDSRVYR``, and its role is settled: BLUEPRINT §14 rule 2), the answer is completed with
-    it, so the fit, every stage that weighs by the answer and its sentence divide by the cycles
-    it holds. Where it does not (another name the cycle reader takes, two columns that each pool,
-    or a role that rode along unconfirmed), the answer is refused, with a way on naming each
-    column, which the user then records, and the sample-only answer. A cycle the roles make a
-    predictor is read as any other (adjusting for it does not change which weight a row takes);
-    the outcome is not a cycle the answer can name (``_names_real_columns``), so it is not read
-    here. An answer weighted by any other weight is kept as given."""
+    Only a column that certainly is a survey cycle is read (:func:`is_survey_cycle`: NCHS's
+    ``SDDSRVYR``, or values that name NHANES releases by their years). Where the reading
+    certainly reads the cycle (one such column pools, it is NCHS's own release code ``SDDSRVYR``,
+    and its role is settled: BLUEPRINT §14 rule 2), the answer is completed with it, so the fit,
+    every stage that weighs by the answer and its sentence divide by the cycles it holds. Where
+    it does not (a survey cycle under another name, two that each pool, or a role that rode along
+    unconfirmed), the answer is refused, with a way on naming each column, which the user then
+    records, and the sample-only answer. A cycle the roles make a predictor is read as any other
+    (adjusting for it does not change which weight a row takes); the outcome is not a cycle the
+    answer can name (``_names_real_columns``), so it is not read here. A column the cycle reader
+    takes by its name alone, holding numbers (a ``cycle_day``, or a ``survey_cycle`` coded 2 and
+    3), may be anything, so an answer naming no cycle beside it is kept as given, as is one
+    weighted by any other weight: each is fit on the weight it names, and its sentence says so
+    (repair round 2, B2)."""
     from turbotab.core.decisions import Refusal, _ctx, _state
 
     if decision.estimand != "population" or decision.cycle or not one_cycle_weight(decision.weight):
@@ -515,7 +564,7 @@ def _pools_by_the_cycle_read(decision: Any, ctx: Any) -> Any:
     for c in reading_of(state).cycles:
         if c in present and c != target:
             values = store.materialize([c], None)[c].dropna().unique().tolist()
-            if len(values) > 1:
+            if len(values) > 1 and is_survey_cycle(c, values):
                 pools[c] = values
     if not pools:
         return decision
