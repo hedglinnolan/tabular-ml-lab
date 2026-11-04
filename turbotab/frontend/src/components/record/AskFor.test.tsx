@@ -16,7 +16,15 @@
  * verifier's V7: a unit is said to be kept whole only under a grouped basis). The final fix
  * round's V1 added one more option to the exclusions card, after the range of one's own and
  * changing nothing else in any block: a range of who the study is about ("Your own eligibility
- * range", in exclusions.html and in the coach and ask blocks that hold that card).
+ * range", in exclusions.html and in the coach and ask blocks that hold that card). G03 of the
+ * front-end audit added one option to the missing-values card, where the server offers it (the
+ * captured view is under inference), before complete cases, and changed nothing else in its block
+ * but the tab stop, which moves to the first option: multiple imputation ("Multiple imputation",
+ * in missing.html), with its m, its imputation model and its levels. Its repair round's V3 changed
+ * that option's line alone: it says the coefficients are pooled, and claims no imputation of each
+ * blank; its second repair round's V1 changed that line alone again: it says the copies only where
+ * a predictor has a blank to impute, since the fit draws none where none has ("Where a predictor
+ * has a blank to impute, several copies of the data are imputed", in missing.html).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
