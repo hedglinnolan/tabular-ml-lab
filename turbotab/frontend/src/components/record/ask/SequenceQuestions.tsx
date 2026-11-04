@@ -15,8 +15,8 @@ import type {
   StructureArtifact,
 } from "../../../api/m2-types";
 import { grainDecision } from "../../../api/m2-types";
-import type { ProjectState, TargetInfoArtifact, Task } from "../../../api/schema";
-import { V } from "../../Prose";
+import type { Decision, ProjectState, TargetInfoArtifact, Task } from "../../../api/schema";
+import { Prose, V } from "../../Prose";
 import { Options, type OptionItem } from "../Options";
 import { Question } from "../Question";
 import { Taught } from "../teach";
@@ -45,6 +45,10 @@ export function OrientationAsk({
 }: AskProps & { oriented: OrientedArtifact | null; current: ProjectState["orientation"] }) {
   const reading = oriented?.reading;
   const turn = oriented?.turn;
+  // The turn check's ways forward (a first column that may name the features or be a sample, a
+  // column that may describe them): each records what the column is (`set_feature_table`), and
+  // the check reads the table again. A way that records nothing is not a button.
+  const exits = turn?.refusal ? turn.exits.filter((x) => x.decision) : [];
   const items: OptionItem[] = (["sample_major", "feature_major"] as const).map((value) => ({
     key: value,
     label: optionLabel(
@@ -64,8 +68,26 @@ export function OrientationAsk({
       reading && reading.reading === value
         ? [{ text: `read from the shape, ${reading.confidence}`, tone: "detected" }]
         : undefined,
-    // The table cannot be turned (duplicate feature names, no name column): said in place.
+    // The table cannot be turned (duplicate feature names, no name column): said in place, with
+    // the server's ways forward under it.
     na: value === "feature_major" && turn?.refusal ? turn.refusal : undefined,
+    extra:
+      value === "feature_major" && exits.length ? (
+        <span className={c.modifierInline} data-testid="turn-exits">
+          {exits.map((x) => (
+            <button
+              key={x.label}
+              type="button"
+              className={c.small}
+              disabled={p.pending}
+              onClick={() => p.record(x.decision as unknown as Decision, value)}
+              data-testid="turn-exit"
+            >
+              <Prose text={x.label} />
+            </button>
+          ))}
+        </span>
+      ) : undefined,
   }));
   return (
     <Question
