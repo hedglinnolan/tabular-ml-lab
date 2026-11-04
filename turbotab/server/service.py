@@ -1660,7 +1660,10 @@ class ProjectService:
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         self._restart_stopped(pid, parsed.kind)
-        if parsed.kind == "set_purpose" and parsed.purpose == "inference":
+        if (parsed.kind == "set_purpose" and parsed.purpose == "inference") or (
+                parsed.kind == "revert" and getattr(ctx.state, "purpose", None) != "inference"):
+            # the goal answered inference, or a revert that may have made it so (one of the
+            # change to prediction): ``_lock_after_prediction`` reads the goal it left
             self._lock_after_prediction(pid)
         if not system:
             # P0.6: what this answer makes due is recorded with it, before the answer returns.
@@ -1674,14 +1677,18 @@ class ProjectService:
         or the inference estimates (``decisions.disclose``; audit WP16). A client's decision made
         under a lock no estimate has been served under was not made after the estimates were seen
         (calm/FOUNDATION §7): a change to the plan withdraws that lock first, so Fit is asked for
-        again; any other decision is recorded unmarked, and the lock stands. ``by``: who recorded
-        it, the question a "Decide now" answer was decided ahead of, the slot that must still be
+        again; any other decision is recorded unmarked, and the lock stands. A change the log
+        would refuse (a revert of a decision already reverted, or of none) is refused before the
+        withdrawal, so no withdrawal stands for a change never recorded. ``by``: who recorded it,
+        the question a "Decide now" answer was decided ahead of, the slot that must still be
         empty, and the decider's note (``DecisionLog.append``)."""
         log = self.log(pid)
         records = log.records()
         seen: bool | None = None
         lock = self._unseen_lock(pid, records) if client else None
         if lock is not None:
+            if isinstance(parsed, decisions.Revert):
+                decisions._check_revert(records, parsed)  # the log's own refusal, said first
             after = decisions.state_after(parsed, ctx)
             if after is not None and plan_lock.plan_changed(lock.decision, after):
                 self._withdraw_lock(pid, lock, "the plan was changed before then.",
@@ -2175,10 +2182,11 @@ class ProjectService:
         """Fit, pressed on the analysis flowchart: a job command, not a decision (RECIPES §4.4).
 
         Refused while there is nothing to fit (no estimate stage can compute) or a question the
-        estimates rest on is open. Otherwise the press is kept beside the project with the estimate
-        it confirms, which releases the scheduler's hold; under Estimate and Describe it records
-        the plan's lock, the existing system record ``lock_plan``, once. Returns the lock as the
-        quest log shows it."""
+        estimates rest on is open. Under Estimate and Describe it records the plan's lock, the
+        existing system record ``lock_plan``, once, and first: a press the lock's checks refuse is
+        refused, and kept nowhere. Otherwise the press is kept beside the project with the estimate
+        it confirms, which releases the scheduler's hold. Returns the lock as the quest log shows
+        it."""
         from turbotab.core.fit_press import fit_estimate, record_press
 
         self.workspace.get(pid)
@@ -2200,11 +2208,13 @@ class ProjectService:
         if gate is not None:
             raise Refusal("fit_not_yet", f"Fit waits: {gate['reason']}", exits=gate["exits"])
         with self._locking:
+            if state.purpose != "prediction" and not state.plan_locked:
+                # the lock first: a press its checks refuse (the imputation model's width, say) is
+                # not kept, so Fit is not read as pressed for a plan never locked
+                self.decide(pid, {"kind": "lock_plan"}, system=True)
             record_press(self.workspace.project_dir(pid), target=state.target,
                          seconds=fit_estimate(self._shelf(pid, stages), state.models),
                          seq=max((r.seq for r in records), default=0))
-            if state.purpose != "prediction" and not state.plan_locked:
-                self.decide(pid, {"kind": "lock_plan"}, system=True)
         for name in estimand.ESTIMATE_STAGES:
             status = stages.get(name)
             if status is not None and status.cancelled:
@@ -2240,9 +2250,10 @@ class ProjectService:
         return self.fit_lock(pid)
 
     def _lock_after_prediction(self, pid: str) -> None:
-        """The purpose just became inference: if estimates were displayed under prediction, the
-        plan is locked now, its record saying where they were shown, so every answer after it is
-        marked as made after the estimates were seen (Gelman & Loken 2013's forking paths)."""
+        """The purpose just became inference, by an answer of the goal or a revert (of the change
+        to prediction, say): if estimates were displayed under prediction, the plan is locked now,
+        its record saying where they were shown, so every answer after it is marked as made after
+        the estimates were seen (Gelman & Loken 2013's forking paths)."""
         path = self.workspace.project_dir(pid) / SHOWN_UNDER_PREDICTION
         try:
             shown = json.loads(path.read_text(encoding="utf-8"))
