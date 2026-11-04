@@ -2184,10 +2184,15 @@ class ProjectService:
         Refused while there is nothing to fit (no estimate stage can compute) or a question the
         estimates rest on is open. Under Estimate and Describe it records the plan's lock, the
         existing system record ``lock_plan``, once, and first: a press the lock's checks refuse is
-        refused, and kept nowhere. Otherwise the press is kept beside the project with the estimate
-        it confirms, which releases the scheduler's hold. Returns the lock as the quest log shows
+        refused, and kept nowhere. A press there is refused too, recording nothing, while the fit
+        or a stage it waits on is refused, with that stage's own refusal (its code, words and ways
+        forward, as the fit's status serves it), and, while the plan is unlocked, while the open
+        noticings' triage, which comes before the lock (calm/FOUNDATION §7), is not confirmed
+        (``fit_press.triage_refusal``). Under Predict neither holds a press: the triage's gate there
+        is the held-out rows. Otherwise the press is kept beside the project with the estimate it
+        confirms, which releases the scheduler's hold. Returns the lock as the quest log shows
         it."""
-        from turbotab.core.fit_press import fit_estimate, record_press
+        from turbotab.core.fit_press import fit_estimate, record_press, triage_refusal
 
         self.workspace.get(pid)
         stages = self.engine.status(pid)
@@ -2207,6 +2212,17 @@ class ProjectService:
         gate = estimand.served_gate(state, self.interview(pid, state, stages, records))
         if gate is not None:
             raise Refusal("fit_not_yet", f"Fit waits: {gate['reason']}", exits=gate["exits"])
+        if state.purpose != "prediction":
+            # The press records the lock: never for a fit that cannot run, whose refusal (its own,
+            # or that of a stage it waits on) the fit's status serves, and never ahead of the
+            # triage of the open noticings, which comes before the lock.
+            fit = stages.get("fit")
+            refused = fit.refusal if fit is not None and fit.status == "error" else None
+            if refused is not None:
+                raise Refusal(refused.code, refused.message, exits=refused.exits)
+            held = None if state.plan_locked else triage_refusal(self.triage(pid))
+            if held is not None:
+                raise held
         with self._locking:
             if state.purpose != "prediction" and not state.plan_locked:
                 # the lock first: a press its checks refuse (the imputation model's width, say) is

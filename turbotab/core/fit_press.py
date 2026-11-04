@@ -25,6 +25,12 @@ decision: it enters the Record only as the plan's lock, under Estimate and Descr
   one confirmed (:data:`REARM`). Every estimate stage that fits the chosen families (one that
   reads ``models``) waits with the fit. The hold is the scheduler's, not a stage requirement, so
   stages stay pure functions of the log and a replay bypasses it.
+* **What a press waits for** under Estimate and Describe, where it records the lock
+  (``ProjectService.press_fit``): a fit that can run (while the fit or a stage it waits on is
+  refused, the press is refused with that refusal) and, while the plan is unlocked, the open
+  noticings' triage, which comes before the lock (:func:`triage_refusal`; calm/FOUNDATION §7). A
+  refused press records no press and no lock. Under Predict neither holds it: the triage's gate
+  there is the held-out rows.
 * **The press** is kept beside the project (:data:`PRESS_FILE`: the outcome it was pressed for, the
   estimate it confirmed and the last record before it), as the scores seen are
   (``selection.SEEN_FILE``): it is not a decision and never enters the log. Cancel, or a change to
@@ -291,6 +297,56 @@ def fit_lock(state: Any, records: Sequence[Any], *, pressed: bool, held: bool,
         reason=reason)
 
 
+PRESS_WAITS_FOR_TRIAGE = ("Fit waits: pressing it locks the analysis plan, and the open noticings "
+                          "are triaged before the plan is locked.")
+
+
+def _said(summary: str) -> str:
+    """A noticing's summary inside a sentence: without its own closing period."""
+    return summary.strip().rstrip(".")
+
+
+def triage_refusal(t: Any) -> Any:
+    """Under Estimate and Describe the open noticings are triaged before the plan's lock
+    (calm/FOUNDATION §7), and pressing Fit records the lock, so a press waits while ``t``, the
+    triage at that gate (``sweep.triage``), is not confirmed: the refusal (``triage_open``) that
+    names each noticing and the way forward, else None. While a noticing blocks, each blocking one
+    is decided on its own first (the triage's "Confirm all" refuses it); while one has no recorded
+    disposition (none recorded, or the one recorded no longer stands), the ways forward are the
+    triage in Models and its "Confirm all", which records each as the engine recommends, with its
+    reason. Silent once every disposition is recorded, whatever it is, with nothing to triage, and
+    once the gate has passed (the plan is locked)."""
+    from turbotab.core.decisions import Refusal
+    from turbotab.core.quest import STAGE_NAMES
+
+    if t is None or _get(t, "passed") or not _get(t, "items"):
+        return None
+    items = list(_get(t, "items"))
+    stage = _get(t, "stage", "models")
+    blocking = [i for i in items if i.blocker]
+    if blocking:
+        k = len(blocking)
+        return Refusal(
+            "triage_open",
+            f"{PRESS_WAITS_FOR_TRIAGE} {k} noticing{'' if k == 1 else 's'} must be resolved "
+            f"first: {'; '.join(_said(i.summary) for i in blocking)}.",
+            exits=[{"label": f"Decide: {i.summary}", "decision": None} for i in blocking])
+    waiting = [i for i in items if i.recorded is None]
+    if not waiting:
+        return None
+    n, where = len(waiting), STAGE_NAMES[stage]
+    named = "; ".join(f"{_said(i.summary)} ({i.label.lower()})" for i in waiting)
+    return Refusal(
+        "triage_open",
+        f"{PRESS_WAITS_FOR_TRIAGE} {n} {'is' if n == 1 else 'are'} still open, each with its "
+        f"recommended disposition: {named}. Triage {'it' if n == 1 else 'them'} in {where} first, "
+        f"so each is decided before any estimate is seen.",
+        exits=[{"label": f"Triage the open noticings in {where}", "decision": None},
+               {"label": "Keep the recommended dispositions",
+                "decision": {"kind": "confirm_sweep", "stage": stage, "sweep": "noticings",
+                             "lines": []}}])
+
+
 def results_open(state: Any, pressed: bool | None) -> bool:
     """Whether Fit has opened Results now: under Estimate and Describe the plan locked (pressing
     Fit records the lock), under Predict Fit pressed for the outcome (``pressed``: None, not
@@ -310,8 +366,8 @@ def opened_by(press: Mapping[str, Any] | None) -> bool:
 
 
 __all__ = ["FIT_FIRST", "FitLock", "HOLD_SECONDS", "LOCK_FIRST", "PRESS_FILE", "PRESS_FIT",
-           "PURPOSE_FIRST", "RELATIONSHIPS_AFTER_LOCK", "REARM", "fit_estimate", "fit_lock", "gate",
-           "holds", "opened_by", "pressed_for", "read_press", "record_press", "relationships_served",
-           "withhold_relationships",
+           "PRESS_WAITS_FOR_TRIAGE", "PURPOSE_FIRST", "RELATIONSHIPS_AFTER_LOCK", "REARM",
+           "fit_estimate", "fit_lock", "gate", "holds", "opened_by", "pressed_for", "read_press",
+           "record_press", "relationships_served", "withhold_relationships",
            "results_open",
-           "served", "serving_gate", "withdraw_press"]
+           "served", "serving_gate", "triage_refusal", "withdraw_press"]
