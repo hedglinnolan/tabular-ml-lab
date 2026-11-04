@@ -1271,4 +1271,48 @@ describe("the reason for an answer (G14)", () => {
     mount("set_updating", { ...answered, decisions: [record()], quest: [elsewhere] });
     expect(screen.queryByTestId("reason-on-record")).toBeNull();
   });
+
+  // The refusal as the server serves it for a note past its limit (core/decisions.py `check_note`,
+  // captured from the engine for a 2,001-character note).
+  const TOO_LONG: Refusal = {
+    error: {
+      code: "note_too_long",
+      message:
+        "A decision's note holds at most 2,000 characters, and this one has 2,001: shorten it, and the decision is recorded with it.",
+      exits: [{ label: "Shorten the note", decision: null }],
+    },
+  };
+
+  it("names itself as the note the server refuses as too long, and that refusal is answered at the box, its exit keeping the reason", async () => {
+    const { decide } = mount("set_updating");
+    decide.mockRejectedValueOnce(new RefusalError(TOO_LONG));
+    open();
+    type("reason-input", REASON);
+    const box = screen.getByTestId("reason-box");
+    // The server's word for it (its refusal's "a decision's note", its exit's "the note") is the box's own.
+    expect(box).toHaveTextContent(/the decision's note/);
+    press(shrinkage.press);
+    const refusal = await within(box).findByTestId("refusal");
+    expect(refusal).toHaveTextContent(TOO_LONG.error.message);
+    expect(screen.getAllByTestId("refusal")).toHaveLength(1);
+    expect(within(screen.getByTestId("options-updating")).queryByTestId("refusal")).toBeNull();
+    fireEvent.click(within(refusal).getByTestId("refusal-exit"));
+    expect(screen.queryByTestId("refusal")).toBeNull();
+    expect(screen.getByTestId("reason-input")).toHaveValue(REASON);
+    expect(decide).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves every other refusal at the option pressed, not at the box", async () => {
+    const refusal: Refusal = {
+      error: { code: "no_refit", message: "Shrinkage needs a refit.", exits: [{ label: "Keep the model as fitted", decision: null }] },
+    };
+    const { decide } = mount("set_updating");
+    decide.mockRejectedValueOnce(new RefusalError(refusal));
+    open();
+    type("reason-input", REASON);
+    press(shrinkage.press);
+    const shown = await within(screen.getByTestId("options-updating")).findByTestId("refusal");
+    expect(shown).toHaveTextContent("Shrinkage needs a refit.");
+    expect(within(screen.getByTestId("reason-box")).queryByTestId("refusal")).toBeNull();
+  });
 });

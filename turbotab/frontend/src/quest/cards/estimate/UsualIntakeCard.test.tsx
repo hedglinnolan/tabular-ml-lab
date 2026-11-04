@@ -24,7 +24,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { api, RefusalError } from "../../../api/client";
 import type { UsualIntakeArtifact } from "../../../api/m3-types";
 import { keys } from "../../../api/queries";
-import type { Decision, ProjectView, QuestLine, Refusal } from "../../../api/schema";
+import type { Decision, DecisionRecord, ProjectView, QuestLine, QuestLog, Refusal } from "../../../api/schema";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../../mocks/m3";
 import { StageFocusProvider } from "../../../state/focus";
 import { CONTRACT } from "../../fixtures/contract";
@@ -265,6 +265,14 @@ function mount(
   serveStage(qc, base, opts.artifact === undefined ? at.artifact : opts.artifact, !opts.stale && !opts.status, opts.status);
   const view = qc.getQueryData<ProjectView>(keys.view(PID))!;
   qc.setQueryData(keys.columns(PID), Object.keys(view.state.roles ?? {}).map((name) => ({ name })));
+  // The quest log the shell holds (`GET /quest`), the card's own line in it.
+  const line = lineOf(opts.line);
+  qc.setQueryData(keys.quest(PID), {
+    version: 1,
+    stages: [{ key: "models", name: "Models", reached: true, progress: null, sweep: null, lines: [line], reopened: [] }],
+    kinds: {},
+    fit: null,
+  } as unknown as QuestLog);
   const decide = vi.spyOn(api, "decide").mockResolvedValue(view);
   // The engine's preview of an option pointed at says nothing here: the words are its, not these tests'.
   vi.spyOn(api, "preview").mockImplementation(() => new Promise(() => {}));
@@ -273,7 +281,7 @@ function mount(
   render(
     <QueryClientProvider client={qc}>
       <StageFocusProvider>
-        <Card pid={PID} line={lineOf(opts.line)} />
+        <Card pid={PID} line={line} />
       </StageFocusProvider>
     </QueryClientProvider>,
   );
@@ -846,5 +854,111 @@ describe("the usual-intake card, pressed on a component with an answer on record
       ...STATED,
       days: second!.days,
     });
+  });
+});
+
+// ── the reason on record (G14) ──────────────────────────────────────────────
+
+/**
+ * The reason on record beside a component's answer (G14, the owner's Q11). The engine keeps one
+ * answer per dietary component (core/decisions.py `register_kind(SetUsualIntake, key=nutrient)`:
+ * "the latest write per key wins, and a revert restores that key's earlier entry"), while the line
+ * names only the last live record of the kind, whatever its component (core/quest.py
+ * `last_answer`). The reason beside a component's marked model is the note on that component's own
+ * record in force, or none: never the line's record's where that answers another component. Each
+ * log here, folded by the engine (decisions.py `fold`, `reverted`), gives the answers stated beside
+ * it, and the line's record is the one `last_answer` names.
+ */
+describe("the reason on record, beside a component's own answer (G14)", () => {
+  const record = (id: string, seq: number, decision: Decision, note: string | null = null): DecisionRecord => ({
+    id,
+    seq,
+    at: AT,
+    note,
+    sentence: null,
+    post_seal: false,
+    after_estimates: false,
+    recorded_by: "you",
+    early: null,
+    decision,
+  });
+  const answer = (nutrient: string, model: string) => ({ kind: KIND, nutrient, model }) as unknown as Decision;
+  const revert = (id: string): Decision => ({ kind: "revert", decision_id: id });
+  const onRecord = () => screen.queryByTestId("reason-on-record");
+  const components = () => {
+    const [first, second] = served().offer.candidates;
+    return { a: first!.column, b: second!.column };
+  };
+
+  it("shows each component's own reason with its marked answer, and never another component's", () => {
+    const { a, b } = components();
+    mount({
+      answers: { [a]: { model: "amount_only", days: [] }, [b]: { model: "two_part", days: [] } },
+      decisions: [record("u7", 19, answer(b, "two_part"), "WHY-SECOND"), record("u9", 20, answer(a, "amount_only"), "WHY-FIRST")],
+      line: { status: "answered", decision_id: "u9" },
+    });
+    expect(screen.getByTestId("option-model:amount_only")).toHaveAttribute("data-recorded");
+    expect(onRecord()).toHaveTextContent("WHY-FIRST");
+    choose(b);
+    expect(screen.getByTestId("option-model:two_part")).toHaveAttribute("data-recorded");
+    expect(onRecord()).toHaveTextContent("WHY-SECOND");
+    expect(screen.queryByText(/WHY-FIRST/)).toBeNull();
+    choose(a);
+    expect(onRecord()).toHaveTextContent("WHY-FIRST");
+    expect(screen.queryByText(/WHY-SECOND/)).toBeNull();
+  });
+
+  it("shows no reason where the chosen component's own record has none, it has no answer, or none is chosen, whatever the line's record says", () => {
+    const { a, b } = components();
+    mount({
+      answers: { [a]: { model: "amount_only", days: [] }, [b]: { model: "two_part", days: [] } },
+      decisions: [record("u7", 19, answer(b, "two_part")), record("u9", 20, answer(a, "amount_only"), "WHY-FIRST")],
+      line: { status: "answered", decision_id: "u9" },
+    });
+    choose(b);
+    expect(screen.getByTestId("option-model:two_part")).toHaveAttribute("data-recorded");
+    expect(onRecord()).toBeNull();
+    choose("");
+    expect(onRecord()).toBeNull();
+    cleanup();
+    mount({
+      answers: { [a]: { model: "amount_only", days: [] } },
+      decisions: [record("u9", 20, answer(a, "amount_only"), "WHY-FIRST")],
+      line: { status: "answered", decision_id: "u9" },
+    });
+    choose(b);
+    expect(document.querySelectorAll("[data-recorded]")).toHaveLength(0);
+    expect(onRecord()).toBeNull();
+  });
+
+  it("reads the component's record in force: its latest, an earlier one once that is reverted, and the latest again once the revert is", () => {
+    const { a, b } = components();
+    // b answered twice, its second answer reverted, then a answered again: the line's record is a's.
+    const log = [
+      record("u1", 19, answer(a, "amount_only"), "FIRST-EARLIER"),
+      record("u2", 20, answer(b, "amount_only"), "SECOND-EARLIER"),
+      record("u3", 21, answer(b, "two_part"), "SECOND-LATER"),
+      record("u4", 22, revert("u3")),
+      record("u5", 23, answer(a, "two_part"), "FIRST-LATER"),
+    ];
+    mount({
+      answers: { [a]: { model: "two_part", days: [] }, [b]: { model: "amount_only", days: [] } },
+      decisions: log,
+      line: { status: "answered", decision_id: "u5" },
+    });
+    expect(onRecord()).toHaveTextContent("FIRST-LATER");
+    choose(b);
+    expect(screen.getByTestId("option-model:amount_only")).toHaveAttribute("data-recorded");
+    expect(onRecord()).toHaveTextContent("SECOND-EARLIER");
+    cleanup();
+    // The revert reverted: b's later answer is in force again.
+    mount({
+      answers: { [a]: { model: "two_part", days: [] }, [b]: { model: "two_part", days: [] } },
+      decisions: [...log, record("u6", 24, revert("u4"))],
+      line: { status: "answered", decision_id: "u5" },
+    });
+    choose(b);
+    expect(screen.getByTestId("option-model:two_part")).toHaveAttribute("data-recorded");
+    expect(onRecord()).toHaveTextContent("SECOND-LATER");
   });
 });

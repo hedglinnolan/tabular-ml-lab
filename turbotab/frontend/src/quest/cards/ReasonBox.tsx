@@ -4,13 +4,15 @@
  * note (`POST …/decisions?note=`, SWARM_ENGINE_PLAN E4): in the decision log, which the view serves
  * and the export carries as `decisions.jsonl`, and never in the methods.
  *
- * Collapsed, it is one quiet link; opened, one line of text, focused. What is typed goes with the
- * next decision the card records (cards/predict/card.tsx `useCard`), and the box is collapsed and
- * empty again once that decision is recorded; a refused press keeps it. It never starts at the
- * reason on record, since a new answer's reason is its own. The reason on the record that answers
- * the card's line is shown above it, in the person's own words, as recorded.
+ * Collapsed, it is one quiet link; opened, one line of text, focused, which says it is kept as the
+ * decision's note, the server's word for it. What is typed goes with the next decision the card
+ * records (cards/predict/card.tsx `useCard`), and the box is collapsed and empty again once that
+ * decision is recorded; a refused press keeps it, and a note the server refuses as too long is
+ * answered here, under the text to shorten. It never starts at the reason on record, since a new
+ * answer's reason is its own. The reason on the record that answers what the card shows as
+ * recorded is shown above it, in the person's own words, as recorded.
  */
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import c from "./ReasonBox.module.css";
 
 /** The reason being written for the next record: whether the box is open, and its text. */
@@ -32,11 +34,14 @@ export function ReasonBox({
   reason,
   onChange,
   onRecord,
+  answer = null,
 }: {
   reason: Reason;
   onChange: (reason: Reason) => void;
-  /** The note on the record that answers the card's line, or null. */
+  /** The note on the record that answers what the card shows as recorded, or null. */
   onRecord: string | null;
+  /** The server's refusal of the note sent, in its words, or nothing. */
+  answer?: ReactNode;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -68,7 +73,7 @@ export function ReasonBox({
             data-testid="reason-input"
           />
           <p id={`${id}-hint`} className={c.hint}>
-            Recorded with the answer, in the decision log; not written into the methods.
+            Recorded with the answer as the decision's note, in the decision log; not written into the methods.
           </p>
         </div>
       ) : (
@@ -84,6 +89,7 @@ export function ReasonBox({
           Add a reason
         </button>
       )}
+      {answer}
     </div>
   );
 }

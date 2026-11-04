@@ -4,7 +4,9 @@
  * A card records as the existing decision hook (`useDecide`) does, with the reason the person gave
  * for the answer (ReasonBox, above the card's record button) as the decision's note, and answers a
  * press the server does not record the way the Record's plain wiring does: the refusal and its
- * exits, or the failure, at the option pressed. It states only what the engine serves: a line of
+ * exits, or the failure, at the option pressed, and a note the server refuses as too long at the
+ * reason box, which names it the decision's note as the refusal does. It states only what the
+ * engine serves: a line of
  * the quest log (`reason`, `would_change`, `changes_nothing`), the preview the engine serves for
  * the option pointed at (the caption of its first view, else its note, else its caution), or the
  * refusal the preview meets. A card with nothing served to say about an option names the option and
@@ -29,7 +31,16 @@ import {
   useQuest,
   useStageResult,
 } from "../../../api/queries";
-import type { ColumnSummary, Decision, ProjectState, ProjectView, QuestLine, QuestLog, Refusal } from "../../../api/schema";
+import type {
+  ColumnSummary,
+  Decision,
+  DecisionRecord,
+  ProjectState,
+  ProjectView,
+  QuestLine,
+  QuestLog,
+  Refusal,
+} from "../../../api/schema";
 import { Actions, RecordButton } from "../../../components/record/ask/common";
 import { Options, type OptionItem, type OptionTag } from "../../../components/record/Options";
 import { FailureNote, RefusalNote } from "../../../components/record/Refusal";
@@ -81,9 +92,17 @@ export interface CardWiring {
   /** The reason being written for the next record, sent with it as the decision's note. */
   reason: Reason;
   setReason: (reason: Reason) => void;
-  /** The note on the record that answers the card's line, or null. */
-  reasonOnRecord: string | null;
+  /** The note on the record that answers what the card shows as recorded, or null: for a keyed
+   *  kind, the record of the entry its marked option's decision writes (`shown`; none where it marks
+   *  none); for a kind that keeps one answer, the line's record, whatever `shown` is. */
+  reasonOnRecord: (shown?: Decision | null) => string | null;
 }
+
+/** Where a note the server refuses as too long is answered: at the reason box, which holds the text
+ *  to shorten and names it as the refusal does (core/decisions.py `check_note`), not at the option
+ *  pressed. */
+const AT_REASON = "reason";
+const NOTE_TOO_LONG = "note_too_long";
 
 /** Record a decision with the reason given for it (`?note=`, none where none is given), as
  *  `useDecide` records one (queries.ts): the view the server answers with merged into the cache,
@@ -100,14 +119,49 @@ function useDecideWithNote(pid: string) {
   });
 }
 
-/** The note on the record that answers the card's line: the record the quest log names for the
- *  declaration of `kind` (core/quest.py: a declaration's line is keyed by its kind, and names the
- *  last live record of it once answered), or null. The log is the one the shell holds; the card
- *  never fetches it. */
-function noteOnRecord(view: ProjectView | undefined, log: QuestLog | undefined, kind: Decision["kind"]): string | null {
+/** The entry a decision of a keyed kind writes, or undefined for a kind that keeps one answer:
+ *  core/decisions.py `register_kind`'s `key`, under which "each decision writes one entry (the
+ *  latest write per key wins, and a revert restores that key's earlier entry)". Of the kinds a card
+ *  here records with a reason, usual intake alone is keyed: one answer per dietary component. */
+function entryOf(decision: Decision): string | undefined {
+  return decision.kind === "set_usual_intake" ? decision.nutrient : undefined;
+}
+
+/** The records in force, in order: every one but those a revert cancels (core/decisions.py
+ *  `reverted`: latest first, a revert counts only where nothing later reverts it). */
+function live(records: readonly DecisionRecord[]): DecisionRecord[] {
+  const ordered = [...records].sort((a, b) => a.seq - b.seq);
+  const cancelled = new Set<string>();
+  for (const r of [...ordered].reverse()) {
+    if (!cancelled.has(r.id) && r.decision.kind === "revert") cancelled.add(r.decision.decision_id);
+  }
+  return ordered.filter((r) => !cancelled.has(r.id));
+}
+
+/** The note on the record that answers what the card shows as recorded, or null. The quest log
+ *  names one record for the declaration of `kind`, the last live record of the kind once answered
+ *  (core/quest.py: a declaration's line is keyed by its kind); the log is the one the shell holds,
+ *  and the card never fetches it. For a kind that keeps one answer, that record is the answer,
+ *  whatever the card marks. For a keyed kind it is the last entry written, whatever entry the card
+ *  shows, so the record that answers is the last live one of the entry `shown` writes, and there is
+ *  none where the card marks none (`shown` null or left out). */
+function noteOnRecord(
+  view: ProjectView | undefined,
+  log: QuestLog | undefined,
+  kind: Decision["kind"],
+  shown: Decision | null | undefined,
+): string | null {
   const line = log?.stages.flatMap((s) => s.lines).find((l) => l.source === "declaration" && l.key === kind);
-  if (!line?.decision_id) return null;
-  return view?.decisions.find((d) => d.id === line.decision_id)?.note ?? null;
+  if (!view || !line?.decision_id) return null;
+  const named = view.decisions.find((d) => d.id === line.decision_id);
+  if (!named) return null;
+  if (entryOf(named.decision) === undefined) return named.note ?? null;
+  const entry = shown ? entryOf(shown) : undefined;
+  if (entry === undefined) return null;
+  const answers = live(view.decisions)
+    .reverse()
+    .find((r) => r.decision.kind === kind && entryOf(r.decision) === entry);
+  return answers?.note ?? null;
 }
 
 /** The wiring of one card: its project's state, its recording, and the preview of the option of
@@ -141,7 +195,7 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
       onError: (err) =>
         setPlain(
           isRefusalError(err)
-            ? { at, refusal: err.refusal }
+            ? { at: err.refusal.error.code === NOTE_TOO_LONG ? AT_REASON : at, refusal: err.refusal }
             : { at, failure: err instanceof Error ? err.message : String(err) },
         ),
     });
@@ -181,7 +235,7 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
     words: preview.answer ? wordsOf(preview.answer) : null,
     reason,
     setReason,
-    reasonOnRecord: noteOnRecord(view, log, kind),
+    reasonOnRecord: (shown) => noteOnRecord(view, log, kind, shown),
   };
 }
 
@@ -259,23 +313,33 @@ export const CHOSEN = "chosen";
 
 /** The card's record button (today's cards' RecordButton), what a press records named on it, the
  *  reason for the answer above it (ReasonBox: the one on record, and the box for the next, collapsed
- *  until asked for), and the answer to its press under it where that press is not answered at an
- *  option. */
+ *  until asked for, which answers a note the server refuses), and the answer to its press under it
+ *  where that press is not answered at an option. */
 export function RecordChosen({
   label,
   card,
   onClick,
   answer = null,
+  recorded,
 }: {
   /** "Record: …", what a press sends; null while nothing is chosen. */
   label: string | null;
   card: CardWiring;
   onClick: () => void;
   answer?: ReactNode;
+  /** The decision of the option the card marks as recorded, null where it marks none; left out by
+   *  a card that draws this button over several choices (LeversCard), whose line's record is its
+   *  one answer. */
+  recorded?: Decision | null;
 }) {
   return (
     <>
-      <ReasonBox reason={card.reason} onChange={card.setReason} onRecord={card.reasonOnRecord} />
+      <ReasonBox
+        reason={card.reason}
+        onChange={card.setReason}
+        onRecord={card.reasonOnRecord(recorded)}
+        answer={card.answerAt?.key === AT_REASON ? card.answerAt.node : null}
+      />
       <Actions>
         <RecordButton
           disabled={label === null || card.pending}
@@ -423,6 +487,7 @@ export function Choice<V extends string>({
           label={chosen === null ? null : `Record: ${names[chosen]}`}
           card={card}
           onClick={() => chosen !== null && send(`${field}:${chosen}`)}
+          recorded={recorded === null ? null : (decisions.get(`${field}:${recorded}`) ?? null)}
         />
       ) : null}
     </fieldset>
