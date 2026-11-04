@@ -160,7 +160,6 @@ describe("every (source, key) the engine emits has a renderer", () => {
 const NOT_YET: Record<string, string> = {
   set_batch: "a batch column's handling, met under the omics lenses",
   set_scales: "a multi-item scale, met under the survey lens",
-  set_usual_intake: "usual intake from repeated recalls, met under the dietary lens with repeats",
 };
 
 describe("no counted Decide is left with only the fallback card (P1)", () => {
