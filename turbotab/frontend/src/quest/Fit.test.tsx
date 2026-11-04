@@ -8,10 +8,11 @@
  * engine serves (components/fixtures/stages.json).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { api } from "../api/client";
-import type { FitLock, QuestLog, StageStatus } from "../api/schema";
+import { api, RefusalError } from "../api/client";
+import type { FitLock, QuestLog, Refusal, StageStatus } from "../api/schema";
 import { SERVED } from "../components/fixtures/stages";
 import { plain } from "../kit";
 import { FitControl } from "./Fit";
@@ -149,5 +150,78 @@ describe("Fit, over a fit the engine refused", () => {
     expect(screen.queryByTestId("fit-refusal")).toBeNull();
     wrap(<FitControl pid="p" log={logWith(notHeld)} fit={fitStatus("fresh", 1)} />);
     expect(screen.queryByTestId("fit-refusal")).toBeNull();
+  });
+});
+
+describe("Fit, a press the engine refused", () => {
+  // Under Estimate and Describe the engine refuses a press of Fit while the open noticings' triage
+  // before the lock is not confirmed (core/fit_press.py `triage_refusal`, code `triage_open`), in
+  // the served shape (turbotab/server/tests/test_fit_press_holds_api.py): its words, built by the
+  // engine's rule from a noticing the triage serves (results/fixtures/nhanes-predict.json,
+  // `binary_text__gender`), and two ways forward, the triage in Models (no decision) and its
+  // Confirm all (a decision). The shell draws that triage at Models' end; Fit sits in the tapestry,
+  // which records nothing (FOUNDATION §1), so the press's refusal is said as Fit's other lines are:
+  // its words and the ways forward that name no decision, in sentences, none a press.
+  const { unlocked } = CONTRACT.fit_locks;
+  const LEAD = "Fit waits: pressing it locks the analysis plan, and the open noticings are triaged before the plan is locked.";
+  const SUMMARY = "`gender` is two-level text (`female`, `male`); which level counts as 1 is not asked yet.";
+  const said = (summary: string) => summary.trim().replace(/\.$/, "");
+  const TRIAGE_IN_MODELS = "Triage the open noticings in Models";
+  const KEEP = "Keep the recommended dispositions";
+  const OPEN: Refusal = {
+    error: {
+      code: "triage_open",
+      message: `${LEAD} 1 noticing is still open: ${said(SUMMARY)}. Recommended: act on it. Triage it in Models first, so it is decided before any estimate is seen.`,
+      exits: [
+        { label: TRIAGE_IN_MODELS, decision: null },
+        { label: KEEP, decision: { kind: "confirm_sweep", stage: "models", sweep: "noticings", lines: [] } },
+      ],
+    },
+  };
+  const BLOCKING_SUMMARY = "`glucose` takes one value in every row.";
+  const BLOCKING: Refusal = {
+    error: {
+      code: "triage_open",
+      message: `${LEAD} 1 noticing must be resolved first: ${said(BLOCKING_SUMMARY)}.`,
+      exits: [{ label: `Decide: ${BLOCKING_SUMMARY}`, decision: null }],
+    },
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  async function pressRefused(refusal: Refusal | Error) {
+    const press = vi.spyOn(api, "pressFit").mockRejectedValue(refusal instanceof Error ? refusal : new RefusalError(refusal));
+    const decide = vi.spyOn(api, "decide");
+    wrap(<FitControl pid="p" log={logWith(unlocked)} fit={fitStatus("fresh", 1)} />);
+    await userEvent.setup().click(screen.getByTestId("fit"));
+    const alert = await within(screen.getByTestId("fit-position")).findByRole("alert");
+    expect(press).toHaveBeenCalledTimes(1);
+    return { alert, decide };
+  }
+
+  it("says the triage's refusal with the way forward that names where the triage is, and no press", async () => {
+    expect(unlocked.purpose).not.toBe("prediction");
+    const { alert, decide } = await pressRefused(OPEN);
+    expect(alert.textContent).toBe(`${plain(OPEN.error.message)} ${TRIAGE_IN_MODELS}.`);
+    expect(alert).not.toHaveTextContent(KEEP);
+    expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("says a blocking noticing's refusal with its way forward in words", async () => {
+    const { alert, decide } = await pressRefused(BLOCKING);
+    expect(alert.textContent).toBe(`${plain(BLOCKING.error.message)} ${plain(BLOCKING.error.exits[0]!.label)}`);
+    expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("says a refusal with no way forward, and a failure, in their words alone, as before", async () => {
+    const ordinary: Refusal = { error: { code: "fit_not_yet", message: "There is nothing to fit yet.", exits: [] } };
+    const first = await pressRefused(ordinary);
+    expect(first.alert.textContent).toBe(ordinary.error.message);
+    cleanup();
+    vi.restoreAllMocks();
+    const second = await pressRefused(new Error("The server stopped."));
+    expect(second.alert.textContent).toBe("The server stopped.");
+    expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
   });
 });
