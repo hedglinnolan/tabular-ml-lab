@@ -17,7 +17,8 @@
  *
  * What was drawn stays, veiled and inert, until the export is read for the record as it stands:
  * while it is read again, while it waits, and where it refuses or cannot be read (`useExportContents`
- * keeps the newest read; `veilOf` says how it is veiled, by what moved since).
+ * keeps the newest read; `veilOf` says how it is veiled, by what moved since, or where the view
+ * shows nothing that would veil it, by what the export did).
  */
 import { useEffect, useRef } from "react";
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -95,30 +96,57 @@ export function useExportContents(pid: string, basis: Basis | null, enabled: boo
   return { drawn, again: read.isFetching, error: read.error };
 }
 
+/** The veil's words where the view shows no cause for it (`veilOf`): no decision was recorded since
+ *  the read, and no stage that moved since computes, failed or was stopped. StaleVeil's own words
+ *  would name an answer that changed or a recompute that did not finish, which the view does not
+ *  show, so these say only what the export did, as the line above the tables says it (WriteUp.tsx):
+ *  it now waits, it refused, or it could not be read; else only that the tables are as last read. */
+export const EXPORT_TAG = {
+  waits: "as last read — the export now waits",
+  refused: "as last read — the export refused",
+  unread: "as last read — the export could not be read",
+  read: "as last read",
+} as const;
+
+/** A veil's state, and its words where StaleVeil's for that state would name a cause the view does
+ *  not show (`EXPORT_TAG`). */
+export interface Veil {
+  state: VeilState;
+  tag?: string;
+}
+
 /** How the tables and figures of the read for `drawn` stand beside the view now, as StaleVeil says
  *  it. "fresh" only where they are the export's for the record as it stands: nothing moved since
  *  that read, the checklist waits for nothing, and the export is neither being read again nor
  *  refused. Else by what moved in the view since: "recomputing" while the export is read again or
  *  a stage that moved since computes; "failed" where such a stage failed, "stopped" where its
- *  computing was stopped; "stale" where a decision was recorded since. Where none of that moved,
- *  an export that refused or failed when read again is "failed" (its own recompute did not
- *  finish); else "stale". */
+ *  computing was stopped; "stale" where a decision was recorded since, each in StaleVeil's words.
+ *  Where none of that moved, the view shows no cause, so the tag says only what the export did:
+ *  it now waits (the checklist lists what for), it refused or could not be read when read again
+ *  (`failed`), else only that the tables are as last read. */
 export function veilOf(
   drawn: Basis,
   view: ProjectView | undefined,
-  read: { ready: boolean; again: boolean; failed: boolean },
-): VeilState {
+  read: { ready: boolean; again: boolean; failed: "refused" | "unread" | null },
+): Veil {
   const now = basisOf(view) ?? drawn;
-  if (now.key === drawn.key && read.ready && !read.again && !read.failed) return "fresh";
+  if (now.key === drawn.key && read.ready && !read.again && !read.failed) return { state: "fresh" };
   const moved = [...new Set([...Object.keys(drawn.stages), ...Object.keys(now.stages)])]
     .filter((name) => drawn.stages[name] !== now.stages[name])
     .flatMap((name) => {
       const s = view?.stages[name];
       return s ? [s] : [];
     });
-  if (read.again || moved.some((s) => s.status === "queued" || s.status === "running")) return "recomputing";
-  if (moved.some((s) => s.status === "error")) return "failed";
-  if (moved.some((s) => s.cancelled)) return "stopped";
-  if (now.decisions !== drawn.decisions) return "stale";
-  return read.failed ? "failed" : "stale";
+  if (read.again || moved.some((s) => s.status === "queued" || s.status === "running")) return { state: "recomputing" };
+  if (moved.some((s) => s.status === "error")) return { state: "failed" };
+  if (moved.some((s) => s.cancelled)) return { state: "stopped" };
+  if (now.decisions !== drawn.decisions) return { state: "stale" };
+  const tag = !read.ready
+    ? EXPORT_TAG.waits
+    : read.failed === "refused"
+      ? EXPORT_TAG.refused
+      : read.failed === "unread"
+        ? EXPORT_TAG.unread
+        : EXPORT_TAG.read;
+  return { state: "stale", tag };
 }

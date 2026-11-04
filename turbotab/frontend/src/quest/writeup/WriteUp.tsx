@@ -15,8 +15,8 @@
  *    title and caption the file holds (bundle.ts). They are read only once nothing waits: until
  *    then, or where the export refuses or this browser cannot open it, one line says so. What was
  *    drawn stays, veiled and inert, until the export is read for the record as it stands (while it
- *    is read again, waits or refuses, that line above it), the veil saying what moved since
- *    (reads.ts `veilOf`).
+ *    is read again, waits or refuses, that line above it), the veil saying what moved since, or,
+ *    where the view shows nothing that moved, only what the export did (reads.ts `veilOf`).
  * 4. The analysis plan (GET …/plan), behind one disclosure: its text, the decisions it holds, and
  *    each made after the estimates were seen.
  *
@@ -136,7 +136,9 @@ function Exhibits({ ready, readable, read, view }: { ready: boolean; readable: b
   const { drawn, again, error } = read;
   const line = !readable ? (
     <p className={q.lineQuiet} data-kit data-testid="export-unreadable">
-      This browser cannot open the export here; Download holds its tables and figures.
+      {ready
+        ? "This browser cannot open the export here; Download holds its tables and figures."
+        : "This browser cannot open the export here; Download will hold its tables and figures once the export waits for nothing."}
     </p>
   ) : !ready ? (
     <p className={q.lineQuiet} data-kit data-testid="export-later">
@@ -157,10 +159,11 @@ function Exhibits({ ready, readable, read, view }: { ready: boolean; readable: b
   ) : null;
   if (!drawn) return line;
   const { contents } = drawn;
+  const veil = veilOf(drawn.basis, view, { ready, again, failed: error ? (isRefusalError(error) ? "refused" : "unread") : null });
   return (
     <>
       {line}
-      <StaleVeil state={veilOf(drawn.basis, view, { ready, again, failed: !!error })} testId="export-veil">
+      <StaleVeil state={veil.state} tag={veil.tag} testId="export-veil">
         {contents.tables.length ? (
           <section className={q.group} data-kit data-testid="export-tables">
             <h3 className={q.groupLabel}>Results tables</h3>

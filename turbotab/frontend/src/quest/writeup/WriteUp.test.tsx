@@ -23,6 +23,7 @@ import { CONTRACT } from "../fixtures/contract";
 import { StageCard } from "../StageCard";
 import estimateRaw from "./fixtures/bundle-estimate.json";
 import predictRaw from "./fixtures/bundle-predict.json";
+import { EXPORT_TAG } from "./reads";
 
 interface Captured {
   purpose: string;
@@ -110,6 +111,9 @@ function writeUp(c: Captured, opts: { checklist?: ChecklistReport; exportAnswer?
 
 const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 const cellsOf = (row: HTMLElement) => [...row.querySelectorAll("th, td")].map((c) => c.textContent);
+/** The words the veil over the drawn tables and figures says (StaleVeil's live tag). */
+const tagOf = (card: HTMLElement) => within(card).getByTestId("export-veil").querySelector("[aria-live]")!.textContent;
+const EXPORT_TAGS: string[] = Object.values(EXPORT_TAG);
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -220,8 +224,25 @@ describe("the export is read only when it can be shown", () => {
     const { card, calls } = writeUp(PREDICT);
     await settle();
     expect(calls("export")).toBe(0);
-    expect(within(card).getByTestId("export-unreadable")).toBeInTheDocument();
+    // The export waits for nothing, so Download holds its tables and figures now.
+    expect(PREDICT.checklist.waiting).toEqual([]);
+    expect(within(card).getByTestId("export-unreadable")).toHaveTextContent(
+      /^This browser cannot open the export here; Download holds its tables and figures\.$/,
+    );
     expect(within(card).queryByTestId("export-tables")).toBeNull();
+  });
+
+  it("says, in a browser that cannot open a zip, that Download holds the tables and figures only once the export waits for nothing, while it waits", async () => {
+    vi.stubGlobal("DecompressionStream", undefined);
+    const { card, calls } = writeUp(PREDICT, { checklist: PREDICT.waiting.checklist });
+    await settle();
+    expect(calls("export")).toBe(0);
+    expect(PREDICT.waiting.checklist.waiting.length).toBeGreaterThan(0);
+    for (const w of PREDICT.waiting.checklist.waiting) expect(within(card).getByText(plain(w))).toBeInTheDocument();
+    expect(within(card).getByTestId("export-unreadable")).toHaveTextContent(
+      /^This browser cannot open the export here; Download will hold its tables and figures once the export waits for nothing\.$/,
+    );
+    expect(within(card).queryByTestId("export-later")).toBeNull();
   });
 
   it("is not read in a browser whose DecompressionStream refuses \"deflate-raw\", the format the zip's entries are stored in", async () => {
@@ -320,6 +341,8 @@ describe("the export is read only when it can be shown", () => {
     act(() => qc.setQueryData(keys.view(PID), { ...VIEW, decisions: [...VIEW.decisions, { ...last, id: `${last.id}-next` }] }));
     await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "stale"));
     await settle();
+    // A decision was recorded: the veil says the stale state's own words, none of the export's.
+    expect(EXPORT_TAGS).not.toContain(tagOf(card));
     expect(within(card).getByTestId("export-tables")).toBe(drawn);
     expect(drawn.closest("[inert]")).not.toBeNull();
     expect(within(card).getAllByTestId("export-later")).toHaveLength(1);
@@ -347,6 +370,7 @@ describe("the export is read only when it can be shown", () => {
     act(() => qc.setQueryData(keys.view(PID), { ...VIEW, stages: { ...VIEW.stages, fit: { ...fit, status: "running" } } }));
     await waitFor(() => expect(within(card).getAllByTestId("export-later")).toHaveLength(1));
     await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "recomputing"));
+    expect(EXPORT_TAGS).not.toContain(tagOf(card));
     expect(calls("export")).toBe(2);
     expect(within(card).getByTestId("export-tables")).toBe(drawn);
     expect(drawn.closest("[inert]")).not.toBeNull();
@@ -367,10 +391,52 @@ describe("the export is read only when it can be shown", () => {
     act(() => qc.setQueryData(keys.view(PID), { ...VIEW, stages: { ...VIEW.stages, fit: { ...fit, key: `${fit.key}-other` } } }));
     const refused = await within(card).findByTestId("export-refused");
     expect(refused).toHaveTextContent(plain(PREDICT.waiting.refusal.error.message));
-    // Nothing the view holds failed, stopped or computes, and no decision was recorded: what did
-    // not finish is the export's own read.
-    expect(within(card).getByTestId("export-veil")).toHaveAttribute("data-veil", "failed");
+    // Nothing the view holds failed, stopped or computes, and no decision was recorded: the veil
+    // says only what the export did, never an answer that changed or a recompute that did not finish.
+    expect(within(card).getByTestId("export-veil")).toHaveAttribute("data-veil", "stale");
+    expect(tagOf(card)).toBe(EXPORT_TAG.refused);
     expect(within(card).getByTestId("export-tables")).toBe(drawn);
     expect(drawn.closest("[inert]")).not.toBeNull();
+  });
+
+  it("says only that the export now waits where a resync finds nothing moved, the export refusing and the checklist waiting, and its state's words once a decision is recorded", async () => {
+    // Nothing in the view moves, and the export's gate now refuses and the checklist waits (as for
+    // a data file changed on disk since it was read, core/export/gate.py's input_changed, which
+    // records no decision). The stream reconnects and the project is read again, unawaited, as
+    // events.ts does.
+    let n = 0;
+    const { qc, card, calls, serve } = writeUp(PREDICT, { exportAnswer: () => (++n === 1 ? zipAnswer(PREDICT)() : refusalAnswer(PREDICT)()) });
+    const drawn = await within(card).findByTestId("export-tables");
+    serve(PREDICT.waiting.checklist);
+    void qc.invalidateQueries({ queryKey: keys.project(PID) });
+    await waitFor(() => expect(calls("export")).toBe(2));
+    await waitFor(() => expect(within(card).queryByTestId("export-later")).not.toBeNull());
+    await waitFor(() => expect(tagOf(card)).toBe(EXPORT_TAG.waits));
+    expect(within(card).getByTestId("export-tables")).toBe(drawn);
+    expect(drawn.closest("[inert]")).not.toBeNull();
+    // A decision is recorded: now the view shows a cause, and the veil says the stale state's own words.
+    const last = VIEW.decisions[VIEW.decisions.length - 1]!;
+    act(() => qc.setQueryData(keys.view(PID), { ...VIEW, decisions: [...VIEW.decisions, { ...last, id: `${last.id}-next` }] }));
+    await waitFor(() => expect(EXPORT_TAGS).not.toContain(tagOf(card)));
+    expect(within(card).getByTestId("export-veil")).toHaveAttribute("data-veil", "stale");
+    expect(drawn.closest("[inert]")).not.toBeNull();
+  });
+
+  it("says only that the export refused where a resync finds nothing moved and the export, read again, refuses", async () => {
+    let n = 0;
+    const { qc, card, calls } = writeUp(PREDICT, { exportAnswer: () => (++n === 1 ? zipAnswer(PREDICT)() : refusalAnswer(PREDICT)()) });
+    const drawn = await within(card).findByTestId("export-tables");
+    void qc.invalidateQueries({ queryKey: keys.project(PID) });
+    await waitFor(() => expect(calls("export")).toBe(2));
+    const refused = await within(card).findByTestId("export-refused");
+    expect(refused).toHaveTextContent(plain(PREDICT.waiting.refusal.error.message));
+    await waitFor(() => expect(tagOf(card)).toBe(EXPORT_TAG.refused));
+    expect(within(card).getByTestId("export-tables")).toBe(drawn);
+    expect(drawn.closest("[inert]")).not.toBeNull();
+    // A stage computes: the veil says so, in its state's words.
+    const fit = VIEW.stages.fit!;
+    act(() => qc.setQueryData(keys.view(PID), { ...VIEW, stages: { ...VIEW.stages, fit: { ...fit, status: "running" } } }));
+    await waitFor(() => expect(within(card).getByTestId("export-veil")).toHaveAttribute("data-veil", "recomputing"));
+    expect(EXPORT_TAGS).not.toContain(tagOf(card));
   });
 });
