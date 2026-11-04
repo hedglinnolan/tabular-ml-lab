@@ -650,8 +650,9 @@ def on_cumulative_scale(table: Any, outcome: Any = None, levels: Sequence[Any] |
 
 def effective_rows(counts: Sequence[int]) -> float:
     """An ordinal outcome's effective sample size, n − Σ n_k³ / n² (Whitehead 1993, as Harrell's
-    *Regression Modeling Strategies* §4.4 gives it): n for a continuous outcome, the smaller class
-    count's equivalent for two levels."""
+    *Regression Modeling Strategies* §4.4 gives it): n for a continuous outcome, and for two levels
+    of a and b rows 3ab/n ((n³ − a³ − b³)/n² = 3ab(a + b)/n²), between 1.5 and 3 times the smaller
+    count."""
     n = float(sum(counts))
     return n - sum(float(c) ** 3 for c in counts) / (n * n) if n else 0.0
 

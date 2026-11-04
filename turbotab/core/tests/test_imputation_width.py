@@ -13,17 +13,19 @@ effective sample size n − Σn³/n² for a multinomial model, whose parameters 
 predictor for each level beyond the first. The chain fits a numeric code the user declared a
 category as its indicators, as the width counts it. Every expected value here is from construction
 or a derivation: the parameters counted from the columns built, the rows and events from pandas,
-the effective size by its formula, the multinomial model's slopes from scikit-learn, and the width
-by R's ``ncol(model.matrix(~ ., data)) - 1`` on the imputation frame, its strata a factor. Each
-boundary is tested on both sides (80 columns and 81; each rule's rows); the brief's scale (about 90
-columns: 8,000 rows imputed, 150 refused) through the sampler, through the answer and through the
-plan's lock, and through the fit (and over HTTP, ``server/tests/test_imputation_width_api.py``).
+the effective size by its formula, the multinomial model's slopes from R's ``nnet::multinom``, and
+the width by R's ``ncol(model.matrix(~ ., data)) - 1`` on the imputation frame, its strata a
+factor. Each boundary is tested on both sides (80 columns and 81; each rule's rows); the brief's
+scale (about 90 columns: 8,000 rows imputed, 150 refused) through the sampler, through the answer
+and through the plan's lock, and through the fit (and over HTTP,
+``server/tests/test_imputation_width_api.py``).
 Where the width rule refuses a model, the answer says what the sampler refuses first (a logged
 column's zeros, a column with fewer than two recorded values, then the width) with the fit's ways
 forward (each where the record accepts it), the fit's table is given the answer's set of columns
 an exit may leave out and offers to leave out what the answer offers, and both read one lead;
-where the width rule does not refuse the model, the answer gives no refusal, and the fit's table
-offers what it offered before.
+where the width rule does not refuse the model, the answer refuses what the sampler refuses before
+it draws, with what the fit's table offers then: to leave out any column but the exposure and
+those the energy model is computed with (``test_imputation_agreement``).
 """
 from __future__ import annotations
 
@@ -321,19 +323,33 @@ def test_a_category_of_two_levels_is_a_logistic_model_held_to_its_events():
            "9.99 events per parameter" in str(refused.value)
 
 
-def test_a_multinomial_model_counts_a_slope_per_predictor_for_each_level_beyond_the_first():
-    """Three levels on 81 predictor parameters (83 columns): scikit-learn's multinomial model fits
-    a row of slopes per level, identified up to a common shift, so (3 − 1)·81 = 162 parameters and
-    the rule asks for an effective size of 1,620. 607, 608 and 608 recorded give 1,620.4 and are
-    imputed; 607, 607 and 608 give 1,619.6 and are refused, in words that count the 162 parameters
-    (9.997 each: fewer digits would round to the 10 asked). Counted as 81, both would have been
-    drawn (810 asked)."""
-    from sklearn.linear_model import LogisticRegression
+@needs_r
+def test_a_multinomial_model_s_parameters_are_nnet_multinom_s_slopes(tmp_path):
+    """The multinomial model's parameters, (k − 1)·p, are the slopes R's ``nnet::multinom`` fits:
+    its coefficient matrix on three levels and three predictors is (k − 1) × (p + 1), a row for
+    each level beyond the first and an intercept column, so 2 × 3 = 6 slopes, as
+    :attr:`ModelSize.parameters` counts them for that model."""
+    from turbotab.core.methods.imputation import model_size
 
     rng = np.random.default_rng(0)
-    model = LogisticRegression(max_iter=500).fit(rng.normal(size=(90, 3)),
-                                                 np.repeat(list("pqr"), 30))
-    assert model.coef_.shape == (3, 3)  # one row per level: identified up to a common shift
+    frame = pd.DataFrame({"g": np.repeat(list("pqr"), 30), **{c: rng.normal(size=90)
+                                                              for c in ("a", "b", "c")}})
+    r = run_r("d <- read.csv(frame_csv, stringsAsFactors = TRUE)\n"
+              "m <- nnet::multinom(g ~ ., d, trace = FALSE)\n"
+              "out(list(rows = nrow(coef(m)), cols = ncol(coef(m))))\n", {"frame": frame},
+              tmp_path)
+    assert (r["rows"], r["cols"]) == (3 - 1, 3 + 1)
+    sized = model_size("g", "categorical", 3, frame["g"])
+    assert sized.levels == 3 and sized.parameters == r["rows"] * (r["cols"] - 1) == 6
+
+
+def test_a_multinomial_model_counts_a_slope_per_predictor_for_each_level_beyond_the_first():
+    """Three levels on 81 predictor parameters (83 columns): a multinomial model fits a slope per
+    predictor column for each level beyond the first (``nnet::multinom``'s (k − 1) × (p + 1)
+    coefficients, above), so (3 − 1)·81 = 162 parameters and the rule asks for an effective size
+    of 1,620. 607, 608 and 608 recorded give 1,620.4 and are imputed; 607, 607 and 608 give
+    1,619.6 and are refused, in words that count the 162 parameters (9.997 each: fewer digits
+    would round to the 10 asked). Counted as 81, both would have been drawn (810 asked)."""
     assert effective([607, 608, 608]) >= EPV * 162 > effective([607, 607, 608]) >= EPV * 81
     impute(_categories([607, 608, 608]), [Variable("g", "categorical")], m=2, iterations=1)
     with pytest.raises(ImputationRefused) as refused:
@@ -1081,11 +1097,12 @@ def test_above_the_width_neither_offers_to_leave_out_a_column_that_is_not_a_cova
 def test_within_the_width_the_fit_offers_to_leave_out_any_column_but_the_exposure(tmp_path):
     """`kcal`, of the energy role and named by no energy model, recorded on one of 300 rows of a
     model 8 columns wide (`x`, `kcal`, five covariates and the outcome's term): the width rule does
-    not refuse it, so the answer is accepted and gives no refusal to match, and the fit's table,
-    refused because `kcal` has fewer than two values, offers what it offered before the check at
-    the answer: to leave out any column but the exposure, `kcal` here. Taken, the record accepts
-    it, and the fit pools the copies drawn without `kcal`: its imputation model holds `x`, the five
-    covariates and the outcome."""
+    not refuse it, but the sampler refuses that `kcal` has fewer than two values, so the answer is
+    refused in those words, and the fit's table says the same; both offer what the fit offered
+    before the check at the answer: to leave out any column but the exposure (and those an energy
+    model is computed with, none here), `kcal` here. Taken, the record accepts it, and the fit
+    pools the copies drawn without `kcal`: its imputation model holds `x`, the five covariates and
+    the outcome."""
     from turbotab.core.methods.imputation import M_DEFAULT
 
     rng = np.random.default_rng(4)
@@ -1100,7 +1117,10 @@ def test_within_the_width_the_fit_offers_to_leave_out_any_column_but_the_exposur
     state = wide_state(roles=roles, missing=MissingSpec(strategy="multiple_imputation"), **FIT)
     ctx = ctx_of(state, Ingested(path, tmp_path / "answer"))
     assert smcfcs.imputation_at(state, ctx).sized.width == 1 + 1 + 5 + 1
-    validate({"kind": "lock_plan"}, ctx)  # the answer is accepted
+    with pytest.raises(Refusal) as answered:  # the answer refuses what the sampler refuses
+        validate({"kind": "lock_plan"}, ctx)
+    assert answered.value.message == LEAD + KCAL_ONCE
+    assert [e["label"] for e in answered.value.exits] == ["Leave `kcal` out"]
     said = _fit_table(path, tmp_path / "project", state)
     assert said["caption"] == f"No coefficients: {LEAD}{KCAL_ONCE}"
     assert [e["label"] for e in said["exits"]] == ["Leave `kcal` out"]

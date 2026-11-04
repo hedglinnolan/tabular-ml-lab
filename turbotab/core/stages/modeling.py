@@ -1729,8 +1729,11 @@ def imputed_copies_column(state: Any) -> str | None:
 
 def _leavable(state: Any, columns: Sequence[str]) -> list[str]:
     """Of ``columns``, those an exit may leave out of the analysis: never an exposure (by its role,
-    or the estimand's), whose effect is the table's question."""
+    or the estimand's), whose effect is the table's question, nor a column the energy adjustment
+    is computed with (its total energy and nutrients, ``methods.energy.adjustment_columns``), which
+    the design cannot compute without."""
     from turbotab.core.estimand import exposures_of
+    from turbotab.core.methods.energy import adjustment_columns
 
     roles = getattr(state, "roles", None) or {}
     spec = getattr(state, "estimand", None)
@@ -1738,6 +1741,7 @@ def _leavable(state: Any, columns: Sequence[str]) -> list[str]:
         declared = set(exposures_of(state, spec)) if spec is not None else set()
     except Exception:  # noqa: BLE001 - an estimand that names no exposure yet holds none back
         declared = set()
+    declared |= set(adjustment_columns(getattr(state, "energy_adjustment", None)))
     return [c for c in columns if roles.get(c) != "exposure" and c not in declared]
 
 

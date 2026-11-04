@@ -97,10 +97,15 @@ after the plan's lock: Sullivan 2021's runs 22 and 26 locked imputations of 89 a
 answer, before the lock (:func:`imputation_at`, registered for every answer and for the lock); its
 ways forward are complete cases, the sample answer where the design's terms are most of the width,
 and leaving out a column the others already span (a recode beside its code), of the columns an
-exit may leave out (the answer's settled covariates; the fit, given none, names none).
+exit may leave out (the answer's settled covariates; the fit, given none, names none). The answer
+refuses every plan the sampler refuses before it draws a copy (:func:`refusal_before_drawing`: a
+logged column's zeros, a column with fewer than two recorded values or with none to start from,
+then the width), at any width, with the ways forward the fit's table offers (:func:`ways_forward`),
+so no plan the sampler refuses so is locked.
 """
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -1402,7 +1407,12 @@ class _Chain:
 # strata and its PSUs within them as categories, and its weight.
 DESIGN_TERMS = ("__stratum", "__psu", "__weight")
 SHOWN_MODELS = 3  # incomplete columns a refusal names after the first; the rest are counted
+# The codes of the answer's refusals (:func:`_imputation_has_its_rows`), one for each of the
+# sampler's refusals before drawing (:func:`refusal_before_drawing`): the width, a column with too
+# few recorded values to impute from (fewer than two, or none to start from), and a logged column's
+# zeros (``methods.energy.LOGGED_ZEROS``, the log residual's own code).
 WIDTH_REFUSAL = "imputation_too_wide"
+VALUES_REFUSAL = "imputation_too_few_values"
 # The lead of the imputation's refusal, which the answer's (:func:`_imputation_has_its_rows`) and
 # the fit's table's (``stages.modeling._missing_for_table``) both read.
 REFUSED_LEAD = "Multiple imputation cannot run on these data: "
@@ -1413,7 +1423,8 @@ class ModelWidth:
     """The imputation model's width and each incomplete column's model against the
     rows-per-parameter rule (:func:`model_width`)."""
 
-    width: int  # every model column of its predictors: R's ncol(model.matrix(~ ., data)) − 1
+    width: int  # every model column of its predictors: R's ncol(model.matrix(~ ., data)) − 1 (a
+    # category of one level none, where model.matrix refuses it)
     columns: dict[str, int]  # each predictor's model columns (a category's levels less one)
     models: list[ModelSize]  # each column the chain draws, as its model is fit
     design: int = 0  # of ``width``, the survey design's terms
@@ -1456,8 +1467,11 @@ def model_width(data: pd.DataFrame, variables: Sequence[Variable], *,
     and the check at the answer runs (:func:`imputation_at`).
 
     The width counts every predictor column of ``data`` as R's ``model.matrix`` does, a category as
-    its levels less one (total energy under ``identity``, and ``exclude``, are never predictors). A
-    column the chain draws is held to the rule with its own design's columns
+    its levels less one; a category of one recorded level as none, which the chain encodes as no
+    column and ``model.matrix`` refuses ("contrasts can be applied only to factors with 2 or more
+    levels"). Total energy under ``identity``, and ``exclude``, are never predictors. A
+    column the chain draws (a unit-level variable only where a unit records it on no row, as
+    :meth:`_Chain._update_units` draws it) is held to the rule with its own design's columns
     (:meth:`_Chain.design_rows`, :meth:`_Chain.design_units`, which encode each column as
     :func:`chain_kinds` reads it, a declared numeric code as its indicators): the other columns',
     an energy source's total-energy terms in place of "other", and with ``units`` the other
@@ -1478,10 +1492,16 @@ def model_width(data: pd.DataFrame, variables: Sequence[Variable], *,
              if energy is not None else np.zeros(len(data), dtype=bool))
     clustered = units is not None
     once = {v.name for v in variables if v.unit_level} if clustered else set()
+    codes_all = np.asarray(units) if clustered else None
     models: list[ModelSize] = []
     for v in variables:
-        drawn = (bool((~e_obs).any()) if identity is not None and v.name == identity.other
-                 else bool(data[v.name].isna().any()))
+        if identity is not None and v.name == identity.other:
+            drawn = bool((~e_obs).any())
+        elif v.name in once:  # a unit that records it on any row holds that value on every row
+            drawn = (len(np.unique(codes_all[data[v.name].notna().to_numpy()]))
+                     < len(np.unique(codes_all)))
+        else:
+            drawn = bool(data[v.name].isna().any())
         if not drawn:
             continue
         gone = {v.name, *skip}
@@ -1512,9 +1532,13 @@ SMALL = 0.05  # below this, one decimal would read a figure as 0.0
 def _below(value: float, limit: float, first: int = 1) -> str:
     """``value`` in words, with the fewest digits from ``first`` that keep it below ``limit``; a
     value above 0 and below :data:`SMALL`, which one decimal would read as 0.0, to two significant
-    digits (1/90 as 0.011)."""
+    digits (1/90 as 0.011; 0.00996, which rounds up to the next power of ten, as 0.010)."""
     if 0 < value < SMALL:
-        said = f"{value:,.{max(first, 1 - math.floor(math.log10(value)))}f}"
+        power = math.floor(math.log10(value))
+        digits = max(first, 1 - power)
+        said = f"{value:,.{digits}f}"
+        if digits > first and float(said.replace(",", "")) >= 10.0 ** (power + 1):
+            said = f"{value:,.{digits - 1}f}"  # rounded up a place: one digit fewer keeps two
         if float(said.replace(",", "")) < limit:
             return said
     for digits in range(first, 4):
@@ -1729,15 +1753,21 @@ def refusal_before_drawing(data: pd.DataFrame, variables: Sequence[Variable], *,
     """What :func:`impute` refuses before it draws a copy, the first in its order, or None where it
     draws: a variable analyzed on the log scale recorded at zero or below (``zeros``); a column
     the chain draws, other than a category, with fewer than two recorded values (``columns``);
-    then a model the width rule refuses (:meth:`ModelWidth.refused`, :func:`width_refusal`, which
-    ``leavable`` reaches). The sampler raises it, and the check at the answer says it with the
-    fit's ways forward (:func:`_imputation_has_its_rows`), so both say the same. ``sized``: the
-    model's width where it is measured already (the answer's, :func:`imputation_at`), measured
-    here otherwise. The refusals that may name a column to leave out (fewer than two values, the
-    width) carry ``width_refused``: whether the width rule refuses the model, so the check at the
-    answer, which runs only where it does, refuses the plan in these words; the fit's table then
-    offers to leave out what the answer offers, of ``leavable`` only
-    (``stages.modeling._missing_for_table``)."""
+    a model the width rule refuses (:meth:`ModelWidth.refused`, :func:`width_refusal`, which
+    ``leavable`` reaches); then a category the chain draws with no recorded value to start its
+    draws from (``columns``; the chain's start, :meth:`_Chain.start`, refuses it in these words).
+    The sampler raises it, and the check at the answer says it with the fit's ways forward
+    (:func:`_imputation_has_its_rows`, :func:`ways_forward`) wherever the fit would draw copies,
+    so both say the same. ``sized``: the model's width where it is measured already (the
+    answer's, :func:`imputation_at`), measured here otherwise. Each carries ``code``, the code the
+    answer refuses it with (:data:`WIDTH_REFUSAL`, :data:`VALUES_REFUSAL`, ``methods.energy.
+    LOGGED_ZEROS``); those that may name a column to leave out (too few values, the width) carry
+    ``width_refused``: whether the width rule refuses the model, where the fit's table and the
+    answer offer to leave out a column of ``leavable`` only
+    (``stages.modeling._missing_for_table``), and elsewhere any column but an exposure and those
+    the energy model is computed with."""
+    from turbotab.core.methods.energy import LOGGED_ZEROS
+
     variables = [v for v in variables if v.name in data.columns]
     for v in variables:
         if v.log:
@@ -1750,6 +1780,7 @@ def refusal_before_drawing(data: pd.DataFrame, variables: Sequence[Variable], *,
                     f"zero a log would turn into a blank goes to the detection-limit question, "
                     f"never to a fill.")
                 refused.zeros = [v.name]  # the columns whose zeros the analysis cannot log
+                refused.code = LOGGED_ZEROS
                 return refused
     targets, _ = _targets(data, variables, identity)
     for v in targets:
@@ -1759,6 +1790,7 @@ def refusal_before_drawing(data: pd.DataFrame, variables: Sequence[Variable], *,
             refused.columns = [v.name]  # what leaving out would let the imputation run without
             refused.width_refused = _measured(sized, data, variables, identity, units, kinds,
                                               exclude).refused()
+            refused.code = VALUES_REFUSAL
             return refused
     # Wider than the cap, each incomplete column's model against the rows-per-parameter rule, on
     # the rows that record it (:func:`model_width`, :meth:`ModelWidth.refused`): the check at the
@@ -1769,7 +1801,18 @@ def refusal_before_drawing(data: pd.DataFrame, variables: Sequence[Variable], *,
         refused = width_refusal(sized, data, variables, identity=identity, units=units,
                                 kinds=kinds, exclude=exclude, leavable=leavable)
         refused.width_refused = True
+        refused.code = WIDTH_REFUSAL
         return refused
+    # The chain's start (:meth:`_Chain.start`), after the width as the sampler meets it: a category
+    # the chain draws with no recorded value to start from (a number with none is refused above).
+    for v in targets:
+        if not data[v.name].notna().any():
+            refused = ImputationRefused(f"`{v.name}` has no recorded value to start its "
+                                        f"imputations from.")
+            refused.columns = [v.name]  # what leaving out would let the imputation run without
+            refused.width_refused = False  # the width rule draws it (above)
+            refused.code = VALUES_REFUSAL
+            return refused
     return None
 
 
@@ -1788,16 +1831,67 @@ def zero_exits(column: str, adjustment: Any) -> list[dict[str, Any]]:
     table offers them (``stages.modeling._missing_for_table``): no fill or row choice resolves
     them, only how the zeros are read, or, where ``adjustment`` (the energy adjustment) logs that
     column, an energy model without the log (MODELING_SEQUENCE §2, zeros)."""
+    from turbotab.core.methods.energy import NO_LOG_EXIT
+
     exits: list[dict[str, Any]] = []
     if (adjustment is not None and adjustment.log_transform
             and column in (*adjustment.nutrients, adjustment.energy_column)):
-        exits.append({"label": "Adjust for energy without the log",
+        exits.append({"label": NO_LOG_EXIT,
                       "decision": {"kind": "set_energy_adjustment", **adjustment.model_dump(),
                                    "log_transform": False}})
     exits.append({"label": f"Say how the zeros of `{column}` are read: values below a detection "
                            f"limit, or true zeros", "decision": None,
                   "target": toward(stage="data")})
     return exits
+
+
+def ways_forward(refused: ImputationRefused, answer: Mapping[str, Any], state: Any, *,
+                 adjustment: Any = None, leavable: Sequence[str] = ()) -> list[dict[str, Any]]:
+    """The ways forward from ``refused`` (:func:`refusal_before_drawing`'s, or the sampler's) as
+    the fit's table offers them (``stages.modeling._missing_for_table``), each decision in its JSON
+    form, built on ``answer`` (the missing-values answer recorded) before anyone asks the record
+    whether it accepts them (the answer, :func:`_imputation_has_its_rows`; the scales stage):
+
+    * for a logged column's zeros, :func:`zero_exits` (``adjustment``: the energy model);
+    * otherwise complete cases, unless the refusal found that the analysis model has no maximum on
+      them (``complete_cases`` False); the refusal's own (the sample answer); and leaving out the
+      columns it names that are not left out yet: of ``leavable`` (the settled covariates, never
+      what the analysis studies) where the width rule refuses the model too (``width_refused``),
+      else of any column but an exposure and those the energy model is computed with
+      (``stages.modeling._leavable`` on ``state``)."""
+    zeros = list(getattr(refused, "zeros", None) or [])
+    if zeros:
+        return zero_exits(zeros[0], adjustment)
+    from turbotab.core.methods.missing import _COMPLETE_CASES_EXIT
+    from turbotab.core.stages.modeling import _leavable
+
+    base = {k: v for k, v in dict(answer).items() if k != "kind"}
+    dropped = list(base.get("drop_columns") or [])
+    ways: list[dict[str, Any]] = []
+    if getattr(refused, "complete_cases", None) is not False:
+        ways.append({"label": _COMPLETE_CASES_EXIT,
+                     "decision": {**base, "kind": "set_missing", "strategy": "complete_case",
+                                  "acknowledged": False}})
+    ways.extend(dict(e) for e in getattr(refused, "exits", None) or [])
+    named = list(getattr(refused, "columns", None) or [])
+    offered = leavable if getattr(refused, "width_refused", False) else _leavable(state, named)
+    left = [c for c in named if c in offered and c not in dropped]
+    if left:
+        ways.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
+                     "decision": {**base, "kind": "set_missing",
+                                  "drop_columns": [*dropped, *left]}})
+    return ways
+
+
+def leavable_of(state: Any) -> list[str]:
+    """The columns an exit may leave out where the width rule refuses the model: the settled
+    covariates, less any the analysis studies or the energy model is computed with
+    (``stages.modeling._leavable``), as the answer (:func:`imputation_at`) and the fit's table
+    read them."""
+    from turbotab.core.readings import settled_roles
+    from turbotab.core.stages.modeling import _leavable
+
+    return _leavable(state, [c for c, r in settled_roles(state).items() if r == "covariate"])
 
 
 def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "fcs",
@@ -1915,13 +2009,15 @@ def imputation_at(state: Any, ctx: Any) -> AtTheAnswer | None:
 
     None where the fit would draw no copies (not inference, not multiple imputation, no blank, a
     block the fit holds first, the data's own copies, no family that pools), or where what it would
-    draw cannot be foreseen here (no table to open, a reading the fit asks first): the fit's own
-    refusal says the same words then (:func:`impute`)."""
+    draw cannot be foreseen here (no table to open, a reading the fit asks first, a refusal in
+    words on the way): the fit's own refusal says the same words then (:func:`impute`). Any other
+    failure is an engine defect: it is logged with its traceback, and the answer is not refused
+    for it (the check is not made, as before it was built)."""
     missing = getattr(state, "missing", None)
     if (getattr(state, "purpose", None) != "inference" or missing is None
             or missing.strategy != "multiple_imputation" or not state.target or not state.roles):
         return None
-    from turbotab.core.decisions import _store_of
+    from turbotab.core.decisions import Refusal, _store_of
     from turbotab.core.stages.modeling import imputed_copies_column
 
     if imputed_copies_column(state) is not None:
@@ -1931,7 +2027,11 @@ def imputation_at(state: Any, ctx: Any) -> AtTheAnswer | None:
         return None
     try:
         return _imputation_at(state, ctx, store)
-    except Exception:  # noqa: BLE001 - what cannot be foreseen here: the fit says why, in its words
+    except (ValueError, Refusal):  # a refusal in words on the way (a reading asked, a stage's)
+        return None
+    except Exception:  # noqa: BLE001 - an engine defect: logged, and no answer refused for it
+        logging.getLogger(__name__).exception(
+            "the check at the answer could not foresee the imputation the fit would draw")
         return None
 
 
@@ -1946,8 +2046,8 @@ def _imputation_at(state: Any, ctx: Any, store: Any) -> AtTheAnswer | None:
     from turbotab.core.models.pipeline import (design_spec, input_columns, model_predictors,
                                                modeling_frame)
     from turbotab.core.readings import (energy_source_factors, factor_verdicts, kcal_per_unit,
-                                        nesting, predictors_or_ask, settled_roles)
-    from turbotab.core.stages.modeling import _leavable, coded_outcome
+                                        nesting, predictors_or_ask)
+    from turbotab.core.stages.modeling import coded_outcome
     from turbotab.core.stages.rows import compute_cohort
 
     infos = list(store.info().columns)
@@ -2049,8 +2149,7 @@ def _imputation_at(state: Any, ctx: Any, store: Any) -> AtTheAnswer | None:
                            factors=settled, time_invariant=once)
     sized = model_width(plan.data, plan.variables, identity=plan.identity, units=plan.units,
                         kinds=plan.kinds)
-    covariates = [c for c, r in settled_roles(state).items() if r == "covariate"]
-    return AtTheAnswer(plan, sized, _leavable(state, covariates), spec)
+    return AtTheAnswer(plan, sized, leavable_of(state), spec)
 
 
 @lru_cache(maxsize=1)
@@ -2065,28 +2164,24 @@ def _frame_reads() -> tuple[str, ...]:
 
 
 def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
-    """The rule at the answer (:func:`model_width` on the frame the fit would impute,
-    :func:`imputation_at`): an answer that leaves multiple imputation under inference with a model
-    the sampler refuses (:meth:`ModelWidth.refused`: wider than
-    :data:`~turbotab.core.methods.imputation.MAX_MODEL_COLUMNS` columns, with a model short of the
-    rows that record its column) is refused when it is given, in the words the sampler refuses it
-    with, the first in its order (:func:`refusal_before_drawing`: a logged column's zeros, a column
-    with fewer than two recorded values, then the width), and with the ways forward the fit's table
-    offers for them (``stages.modeling._missing_for_table``): for the zeros, how they are read,
-    and the energy model without the log where the record accepts it (:func:`zero_exits`; the
-    fit's table offers that one without asking the record); otherwise complete cases, the width
-    refusal's own (the sample answer), and leaving out a column the refusal names, of the settled
-    covariates only. Each missing-values answer among them is offered where the record accepts it,
-    as the fit's table counts it (``row_floor.stage_exits``).
-    Registered for every kind that writes a slot, so the answer refused is the one that makes the
-    model too wide (multiple imputation itself, a role, the survey answer, an exclusion), and for
-    the plan's lock, which the server records when Fit is pressed: a plan the rows cannot carry is
+    """The sampler's refusals at the answer (:func:`refusal_before_drawing` on the frame the fit
+    would impute, :func:`imputation_at`): an answer that leaves multiple imputation under inference
+    with a plan the sampler refuses before it draws a copy is refused when it is given, at any
+    width, in the words the sampler refuses it with, the first in its order (a logged column's
+    zeros, a column with fewer than two recorded values, a model the width rule refuses:
+    :meth:`ModelWidth.refused`, wider than
+    :data:`~turbotab.core.methods.imputation.MAX_MODEL_COLUMNS` columns with a model short of the
+    rows that record its column; then a category with no recorded value to start from), each with
+    its own code (:data:`WIDTH_REFUSAL`, :data:`VALUES_REFUSAL`, ``methods.energy.LOGGED_ZEROS``),
+    and with the ways forward the fit's table offers for them (:func:`ways_forward`), each where
+    the record accepts it when it is taken (:func:`_offered`). Registered for every kind that
+    writes a slot, so the answer refused is the one that brings the plan the sampler refuses
+    (multiple imputation itself, a role, the survey answer, an exclusion), and for the plan's lock,
+    which the server records when Fit is pressed: a plan the sampler refuses before drawing is
     refused before it is locked, never after."""
-    from turbotab.core.decisions import (Refusal, SetMissing, _records_in,
-                                         _roles_record_what_rode_along, _state, fold_onto,
-                                         state_after)
-    from turbotab.core.methods.missing import _COMPLETE_CASES_EXIT
-    from turbotab.core.row_floor import _PROBING, accepted_exit
+    from turbotab.core.decisions import (Refusal, _records_in, _roles_record_what_rode_along,
+                                         _state, fold_onto, state_after)
+    from turbotab.core.row_floor import _PROBING
 
     now = _state(ctx)
     if now is None:
@@ -2101,53 +2196,171 @@ def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
                                 for s in _frame_reads()):
             return
     found = imputation_at(after, ctx)
-    if found is None or not found.sized.refused():
+    if found is None:
         return
     plan = found.plan
     refused = refusal_before_drawing(plan.data, plan.variables, identity=plan.identity,
                                      units=plan.units, kinds=plan.kinds, leavable=found.leavable,
                                      sized=found.sized)
-    if refused is None:  # the width rule refuses it (above), so the sampler does
+    if refused is None:  # the sampler draws it
         return
+    code = getattr(refused, "code", WIDTH_REFUSAL)
     if _PROBING.get():  # an exit tried for another refusal: only whether it is refused is read
-        raise Refusal(WIDTH_REFUSAL, f"{REFUSED_LEAD}{refused}")
-    base = after.missing.model_dump(mode="json")
-    zeros = list(getattr(refused, "zeros", None) or [])
-    if zeros:
-        # Each where taking it is accepted: the energy model without the log is as wide (the log
-        # enters no column's count), so where the width rule refuses this one, it is refused too.
-        exits = [e for e in zero_exits(zeros[0], found.spec.energy_adjustment() if found.spec
-                                       else None)
-                 if e["decision"] is None or accepted_exit(e["decision"], ctx) is not None]
-    else:
-        exits = [{"label": _COMPLETE_CASES_EXIT,
-                  "decision": SetMissing(**{**base, "strategy": "complete_case",
-                                            "acknowledged": False})}]
-        exits.extend(dict(e) for e in getattr(refused, "exits", None) or [])
-        left = [c for c in getattr(refused, "columns", None) or []
-                if c in found.leavable and c not in base["drop_columns"]]
-        if left:
-            exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
-                          "decision": SetMissing(**{**base, "drop_columns": [
-                              *base["drop_columns"], *left]})})
-    raise Refusal(WIDTH_REFUSAL, f"{REFUSED_LEAD}{refused}",
-                  exits=[e for e in exits if not isinstance(e["decision"], SetMissing)
-                         or accepted_exit(e["decision"], ctx) is not None])
+        raise Refusal(code, f"{REFUSED_LEAD}{refused}")
+    ways = ways_forward(refused, after.missing.model_dump(mode="json"), after,
+                        adjustment=found.spec.energy_adjustment() if found.spec else None,
+                        leavable=found.leavable)
+    raise Refusal(code, f"{REFUSED_LEAD}{refused}", exits=_offered(ways, decision, ctx, now, after))
+
+
+def _offered(ways: Sequence[Mapping[str, Any]], decision: Any, ctx: Any, now: Any, after: Any
+             ) -> list[dict[str, Any]]:
+    """Of ``ways`` (the ways forward from ``decision``'s refusal), each the record accepts when it
+    is taken (``row_floor.accepted_exit``), and every way without a decision: a way of the
+    answer's own kind replaces it, so it is asked of the record now; a way of another kind (a
+    missing-values answer offered under a roles answer, the sample answer, the energy model
+    without the log under a missing-values answer) is taken first and the answer given again
+    after it, so it is asked of the record both now and with the answer recorded too
+    (:func:`_context_after`), and neither is then refused."""
+    from turbotab.core.row_floor import accepted_exit
+
+    later: list[Any] = []
+    out: list[dict[str, Any]] = []
+    for way in ways:
+        d = way.get("decision")
+        if d is not None:
+            kind = d.get("kind") if isinstance(d, Mapping) else getattr(d, "kind", None)
+            if accepted_exit(d, ctx) is None:
+                continue
+            if kind != decision.kind and after != now:
+                if not later:
+                    later.append(_context_after(ctx, decision, after))
+                if later[0] is not None and accepted_exit(d, later[0]) is None:
+                    continue
+        out.append(dict(way))
+    return out
+
+
+def _context_after(ctx: Any, decision: Any, after: Any) -> Any:
+    """``ctx`` as it will stand once ``decision`` is recorded: its state ``after``, and its log
+    (where it names one) holding ``decision`` last; None for a context that cannot be rebuilt so."""
+    import dataclasses
+    from datetime import datetime, timezone
+
+    from turbotab.core.decisions import DecisionRecord, _records_in
+
+    records = _records_in(ctx)
+    log = None
+    if records is not None:
+        log = [*records, DecisionRecord(id="__answer__", at=datetime.now(timezone.utc),
+                                        seq=max((r.seq for r in records), default=0) + 1,
+                                        decision=decision)]
+    if isinstance(ctx, Mapping):
+        return {**ctx, "state": after, **({"records": log} if log is not None else {})}
+    fields = ({f.name for f in dataclasses.fields(ctx)}
+              if dataclasses.is_dataclass(ctx) and not isinstance(ctx, type) else set())
+    if "state" in fields:  # the server's (``server.service.DecisionContext``)
+        return dataclasses.replace(ctx, state=after, **({"records": lambda: log}
+                                                        if log is not None and "records" in fields
+                                                        else {}))
+    return None
+
+
+ENERGY_LEFT_OUT = "energy_column_left_out"
+
+
+def _energy_columns_dropped(state: Any) -> list[str]:
+    """The columns ``state``'s energy adjustment is computed with (``methods.energy.
+    adjustment_columns``: none under method ``"none"``) that its missing-values answer drops."""
+    from turbotab.core.methods.energy import adjustment_columns
+
+    named = set(adjustment_columns(getattr(state, "energy_adjustment", None)))
+    spec = getattr(state, "missing", None)
+    return [c for c in (spec.drop_columns if spec is not None else []) if c in named]
+
+
+def _left_out_columns_keep_the_energy_model(decision: Any, ctx: Any) -> None:
+    """A missing-values answer that leaves out of the predictors a column the energy adjustment is
+    computed with (its total energy or a nutrient it adjusts, ``methods.energy.
+    adjustment_columns``) while that adjustment holds: the design could not compute the
+    adjustment without it (``methods.energy.applicable_methods``, "The energy column … is not in
+    this table"), so the fit would raise on it. Refused here, in the same words: the
+    missing-values answer dropping such a column; a revert whose state after drops one (it brings
+    back that answer, or the energy adjustment over it) where the state before it drops none; and
+    the inference plan's lock, which the server records when Fit is pressed, of a state that drops
+    one (a log recorded before this check). An energy adjustment over a column already left out is
+    refused by its own answer's check (``decisions``, ``left_out``). The way forward is the
+    missing-values answer leaving out only the rest, where the record accepts it: the answer
+    given, or the one in force at the lock, or, under a revert that leaves the missing-values
+    answer as it stands, that one (taken first, then the revert given again: asked of the record
+    now and with the revert recorded, :func:`_offered`). A revert that brings back a missing-values
+    answer offers no such way (it would be a new answer in place of the one brought back, which
+    its label does not say), and every revert offers keeping the answers as they are."""
+    from turbotab.core.decisions import Refusal, SetMissing, _state, state_after
+    from turbotab.core.methods.energy import METHOD_TABLE, adjustment_columns
+    from turbotab.core.row_floor import KEEP, _PROBING, accepted_exit
+
+    now = _state(ctx)
+    if decision.kind == "set_missing":
+        if not decision.drop_columns:
+            return
+        answer, after, adjustment = decision, None, getattr(now, "energy_adjustment", None)
+    else:  # a revert, from the state it would leave; the lock, from the state as it stands
+        after = now if decision.kind == "lock_plan" else state_after(decision, ctx)
+        if after is None or not _energy_columns_dropped(after):
+            return
+        if decision.kind == "revert" and now is not None and _energy_columns_dropped(now):
+            return  # already so before this revert: not this revert's doing
+        answer = SetMissing(**after.missing.model_dump())
+        adjustment = after.energy_adjustment
+    named = set(adjustment_columns(adjustment))
+    kept = [c for c in answer.drop_columns if c in named]
+    if not kept:
+        return
+    rest = [c for c in answer.drop_columns if c not in named]
+    label = METHOD_TABLE.get(adjustment.method, {}).get("label", adjustment.method)
+    one = len(kept) == 1
+    way = answer.model_copy(update={"drop_columns": rest})
+    ways = [{"label": f"Leave out only {_listed([f'`{c}`' for c in rest])}" if rest
+             else "Keep every predictor", "decision": way}]
+    if _PROBING.get():  # an exit tried for another refusal needs none of its own
+        exits: list[dict[str, Any]] = []
+    elif decision.kind == "set_missing":
+        exits = ways if accepted_exit(way, ctx) is not None else []
+    elif decision.kind == "lock_plan":
+        exits = _offered(ways, decision, ctx, now, after)
+    else:  # a revert: the way only where it leaves the missing-values answer as it stands
+        stands = now is not None and now.missing == after.missing
+        exits = [*(_offered(ways, decision, ctx, now, after) if stands else []), dict(KEEP)]
+    # The label as the method table spells it, in quotation marks (one has parentheses of its
+    # own), and the answer "cannot drop" the columns, true under every method, those whose label
+    # says total energy leaves the model among them: the design still computes with it.
+    raise Refusal(
+        ENERGY_LEFT_OUT,
+        f"{_listed([f'`{c}`' for c in kept])} {'is' if one else 'are'} needed to compute the "
+        f"energy adjustment “{label}”, so the missing-values answer cannot drop "
+        f"{'it' if one else 'them'}.",
+        exits=exits)
 
 
 def _register() -> None:
     """Importing this module registers the check, for every kind the decisions know by then (as
-    ``row_floor`` registers its own) and for revert."""
+    ``row_floor`` registers its own) and for revert, and, before it, the check that the
+    missing-values answer leaves the energy model its columns, for that answer, revert and the
+    plan's lock (the sampler's check reads the design's error on such a state as no plan)."""
     from turbotab.core.decisions import SLOTS, register_validator
 
+    for kind in ("set_missing", "revert", "lock_plan"):
+        register_validator(kind, _left_out_columns_keep_the_energy_model)
     for kind in [*SLOTS, "revert"]:
         register_validator(kind, _imputation_has_its_rows)
 
 
 _register()
 
-__all__ = ["DESIGN_TERMS", "FIRST_TRIES", "Identity", "Mode", "ModelWidth", "Outcome",
-           "REFUSED_LEAD", "RJLIMIT", "START_SHARE", "Substantive", "Term", "Variable",
-           "WIDTH_REFUSAL", "breslow", "chain_kinds", "efron", "imputation_at", "impute",
-           "model_width", "outcome_logdensity", "redundant_columns", "refusal_before_drawing",
-           "width_refusal", "zero_exits"]
+__all__ = ["DESIGN_TERMS", "ENERGY_LEFT_OUT", "FIRST_TRIES", "Identity", "Mode", "ModelWidth",
+           "Outcome", "REFUSED_LEAD", "RJLIMIT", "START_SHARE", "Substantive", "Term",
+           "VALUES_REFUSAL", "Variable", "WIDTH_REFUSAL", "breslow", "chain_kinds", "efron",
+           "imputation_at", "impute", "leavable_of", "model_width", "outcome_logdensity",
+           "redundant_columns", "refusal_before_drawing", "ways_forward", "width_refusal",
+           "zero_exits"]

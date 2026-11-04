@@ -1729,7 +1729,19 @@ def test_chain_the_methods_sentence_is_written_as_the_record_says(chain_run):
 def test_2_a_declared_code_column_enters_the_imputation_model_as_a_category():
     """A complete number column the user declared codes (RIDRETH3's 1, 2, 3, 4, 6, 7: six groups,
     not one line; BLUEPRINT §14.3) is a category in every covariate model of the imputation, as
-    the analysis model holds it, whatever its values look like."""
+    the analysis model holds it, whatever its values look like: the imputation reads it as a
+    category, and the model the chain fits for `x` holds its five indicators beside the outcome's
+    term (six columns, the intercept not counted), where one number would make two."""
+    from turbotab.core.methods import smcfcs
+
+    seen: dict[str, int] = {}
+    real = smcfcs._Chain.design_rows
+
+    def spy(self: Any, target: str, skip: Any) -> np.ndarray:
+        X = real(self, target, skip)
+        seen[target] = X.shape[1] - 1
+        return X
+
     rng = np.random.default_rng(71)
     n = 300
     race = rng.choice([1.0, 2.0, 3.0, 4.0, 6.0, 7.0], n)
@@ -1742,8 +1754,11 @@ def test_2_a_declared_code_column_enters_the_imputation_model_as_a_category():
                       shape_confirmations={"code_or_count:race": "code"})
     spec = design_spec(st, frame, list(roles))
     assert "race" in spec.categorical
-    imputations = impute_for_inference(spec, frame, y, "regression", seed=7)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(smcfcs._Chain, "design_rows", spy)
+        imputations = impute_for_inference(spec, frame, y, "regression", seed=7)
     assert imputations.kinds["race"] == "categorical"
+    assert seen == {"x": len(np.unique(race)) - 1 + 1}
 
 
 @needs_r
