@@ -235,14 +235,18 @@ def sample_concern(reading: DesignReading) -> str:
 
 
 def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None,
-            placed: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+            placed: Mapping[str, Any] | None = None,
+            cycles: Sequence[Any] = ()) -> list[dict[str, Any]]:
     """The answers the survey question offers, each with the decision it records.
 
     One "surveyed population" option per weight the names read as, with the strata, PSU (and, when
-    ``pooled_cycle`` names a cycle column holding more than one cycle, the cycle and the four-year
-    weight) filled in from the reading, then "these participants". Design columns the user settled
-    whose names say nothing of their part are placed by their values (``placed``:
-    :func:`place_design`), and an option names each placement it takes.
+    ``pooled_cycle`` names a cycle column holding more than one cycle, the cycle) filled in from
+    the reading, then "these participants". The four-year weight is filled in only where 1999–2000
+    is among ``cycles``, the values ``pooled_cycle`` holds: only there does
+    ``methods.survey.analysis_weights`` read it (§3.1.4); from 2001–2002 on the 2-year weight is
+    divided by the number of cycles (§3.1.3). Design columns the user settled whose names say
+    nothing of their part are placed by their values (``placed``: :func:`place_design`), and an
+    option names each placement it takes.
     """
     reading = reading_of(state)
     if not reading.present:
@@ -272,12 +276,13 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None,
         weights = rank_weights(weights, lcd)
     waiting = set(unsettled(state)) if roles else set()
     scores = getattr(state, "purpose", None) == "prediction"
+    first = bool(pooled_cycle) and any(cycle_number(v, pooled_cycle) == 1 for v in cycles)
     out: list[dict[str, Any]] = []
     for w in weights[:4]:
         # Never pre-acknowledged: with no strata or PSU the server asks for the attestation.
         decision = {"kind": "set_survey", "estimand": "population", "weight": w, "strata": strata,
                     "psu": psu, "cycle": pooled_cycle,
-                    "four_year_weight": reading.four_year.get(w) if pooled_cycle else None,
+                    "four_year_weight": reading.four_year.get(w) if first else None,
                     "acknowledged": False}
         named = [f"`{p}`" for p in (strata, psu) if p]
         within = f" over {' and '.join(named)}" if named else "; no strata or PSU named"
@@ -376,7 +381,15 @@ def _names_real_columns(decision: Any, ctx: Any) -> None:
                           f"`{column}` is the outcome, so it cannot be part of the survey design.",
                           exits=[{"label": "Name another column", "decision": None,
                                   "target": toward("survey")}])
-        if roles.get(column) in ("exposure", "covariate", "energy"):
+        # A survey cycle says only which cycle's weight each row takes and how many are pooled
+        # (``methods.survey.analysis_weights``), which adjusting for it (a secular trend, or the
+        # exposure of a trend across cycles) does not contradict. Refusing it left a pool whose
+        # cycle the roles adjust for with no answer that reaches NCHS's weight (PP2 follow-up SW2).
+        # Only a column that certainly is one (:func:`is_survey_cycle`) is let through: a
+        # predictor the cycle reader takes by its name alone (``cycle_day``) is a predictor, and
+        # pooling by it would divide every weight by its values' count (repair round 2, B2).
+        if roles.get(column) in ("exposure", "covariate", "energy") and not (
+                slot == "cycle" and is_survey_cycle(column, _values_of(column, ctx))):
             raise Refusal(
                 "design_is_predictor",
                 f"`{column}` is a predictor ({roles[column]}); a survey "
@@ -466,6 +479,128 @@ def _pools_cycles_by_the_rule(decision: Any, ctx: Any) -> None:
                     "decision": decision.model_copy(update={"cycle": cycle})}])
 
 
+_ONE_CYCLE = re.compile(r"^WT[A-Z0-9]*2YR$|^WTDRD1$|^WTDR2D$|^WTSVOC2Y$", re.I)
+
+
+def one_cycle_weight(name: str | None) -> bool:
+    """Whether ``name`` is a two-year weight NCHS publishes, one cycle's sample (each release's
+    codebook: ``WTMEC2YR``, ``WTSAF2YR``, the dietary day weights ``WTDRD1`` and ``WTDR2D``, …).
+    Pooled, such a weight is divided by the number of cycles (§3.1.3). Any other weight may cover
+    another span (the four-year ``WTMEC4YR``, the 3.2-year ``WTMECPRP``) or be pooled already (a
+    researcher's ``MEC6YR``, a stack's ``pooled_weight``), and dividing it again would describe a
+    k-th of the population."""
+    return bool(name) and bool(_ONE_CYCLE.match(str(name)))
+
+
+def names_a_release(value: Any) -> bool:
+    """Whether ``value`` names an NHANES release by its years ("2003–2004", "2017–March 2020",
+    "August 2021–August 2023": :func:`turbotab.core.methods.cycles.cycle_of`). A number is not
+    read as a release code: only NCHS's ``SDDSRVYR`` holds those, and elsewhere 1 to 12 may be a
+    day, a phase or a visit."""
+    if not isinstance(value, str) or re.fullmatch(r"\s*[\d.]+\s*", value):
+        return False
+    from turbotab.core.methods.cycles import StackRefused, cycle_of
+
+    try:
+        return cycle_of(value).release is not None
+    except StackRefused:
+        return False
+
+
+def is_survey_cycle(column: str, values: Sequence[Any] | None = None) -> bool:
+    """Whether ``column`` certainly is a survey cycle: NCHS's release code ``SDDSRVYR``, or a
+    column every value of which names an NHANES release by its years (:func:`names_a_release`;
+    ``values`` its distinct values, None when they cannot be read). The cycle reader takes any
+    name with a ``cycle`` in it (``_CYCLE``), and a ``cycle_day``, a ``menstrual_cycle`` or a
+    ``cycle_length`` is none: pooling by one would divide every weight by the count of its
+    values."""
+    if str(column).upper() == "SDDSRVYR":
+        return True
+    return bool(values) and all(names_a_release(v) for v in values)
+
+
+def _values_of(column: str, ctx: Any) -> list[Any] | None:
+    """The distinct values ``column`` holds in the working table ``ctx`` reads; None without it."""
+    from turbotab.core.decisions import _ctx
+
+    if str(column).upper() == "SDDSRVYR":
+        return None  # its name says what it is
+    store_fn = _ctx(ctx, "store")
+    store = store_fn() if callable(store_fn) else None
+    if store is None or column not in set(getattr(store, "columns", ()) or ()):
+        return None
+    return store.materialize([column], None)[column].dropna().unique().tolist()
+
+
+def _pools_by_the_cycle_read(decision: Any, ctx: Any) -> Any:
+    """SW2: a population answer that names no cycle, weighted by one cycle's two-year weight
+    (:func:`one_cycle_weight`), over rows the reading's cycle column pools from 2001–2002 on
+    (1999–2000 pooled is refused above, ``name_the_cycle``). Its fit would take the 2-year weight
+    as it is (``methods.survey.analysis_weights`` with no cycle), k times the population, where
+    §3.1.3 divides it by the k cycles; most estimates are unmoved by a constant scale, but a
+    fit whose penalty meets the weights' sum is not (the causal lane's lasso propensity).
+
+    Only a column that certainly is a survey cycle is read (:func:`is_survey_cycle`: NCHS's
+    ``SDDSRVYR``, or values that name NHANES releases by their years). Where the reading
+    certainly reads the cycle (one such column pools, it is NCHS's own release code ``SDDSRVYR``,
+    and its role is settled: BLUEPRINT §14 rule 2), the answer is completed with it, so the fit,
+    every stage that weighs by the answer and its sentence divide by the cycles it holds. Where
+    it does not (a survey cycle under another name, two that each pool, or a role that rode along
+    unconfirmed), the answer is refused, with a way on naming each column, which the user then
+    records, and the sample-only answer. A cycle the roles make a predictor is read as any other
+    (adjusting for it does not change which weight a row takes); the outcome is not a cycle the
+    answer can name (``_names_real_columns``), so it is not read here. A column the cycle reader
+    takes by its name alone, holding numbers (a ``cycle_day``, or a ``survey_cycle`` coded 2 and
+    3), may be anything, so an answer naming no cycle beside it is kept as given, as is one
+    weighted by any other weight: each is fit on the weight it names, and its sentence says so
+    (repair round 2, B2)."""
+    from turbotab.core.decisions import Refusal, _ctx, _state
+
+    if decision.estimand != "population" or decision.cycle or not one_cycle_weight(decision.weight):
+        return decision
+    state = _state(ctx)
+    store_fn = _ctx(ctx, "store")
+    if state is None or not callable(store_fn):
+        return decision
+    store = store_fn()
+    present = set(getattr(store, "columns", ()) or ()) if store is not None else set()
+    target = getattr(state, "target", None)
+    pools: dict[str, list[Any]] = {}
+    for c in reading_of(state).cycles:
+        if c in present and c != target:
+            values = store.materialize([c], None)[c].dropna().unique().tolist()
+            if len(values) > 1 and is_survey_cycle(c, values):
+                pools[c] = values
+    if not pools:
+        return decision
+    from turbotab.core.readings import is_settled
+
+    only = next(iter(pools))
+    first = any(cycle_number(v, only) == 1 for v in pools[only])
+    if len(pools) == 1 and only.upper() == "SDDSRVYR" and is_settled(state, only) and not first:
+        return decision.model_copy(update={"cycle": only})
+    if len(pools) == 1 and first:
+        # As the check above words it, where the reading's first cycle column is another.
+        words = (f"`{only}` pools 1999–2000 with other cycles; name it, so the 1999–2002 rows "
+                 f"take their four-year weight ({GUIDELINES} §3.1.4).")
+    elif len(pools) == 1:
+        k = len(pools[only])
+        words = (f"`{only}` reads as a survey cycle and holds {k:,} values, and "
+                 f"`{decision.weight}` is one cycle's two-year weight: pooled over {k:,} cycles "
+                 f"it is divided by {k:,} ({GUIDELINES} §3.1.3). Name the cycle column, or "
+                 f"estimate for these participants.")
+    else:
+        words = (f"{_listing(list(pools))} each read as a survey cycle holding more than one "
+                 f"value, and `{decision.weight}` is one cycle's two-year weight, divided by the "
+                 f"number of cycles pooled ({GUIDELINES} §3.1.3). Name the cycle column, or "
+                 f"estimate for these participants.")
+    raise Refusal("name_the_cycle", words, exits=[
+        *({"label": f"Pool by `{c}`", "decision": decision.model_copy(update={"cycle": c})}
+          for c in pools),
+        {"label": "Estimate for these participants instead",
+         "decision": {"kind": "set_survey", "estimand": "sample"}}])
+
+
 def _design_is_settled(decision: Any, ctx: Any) -> None:
     """BLUEPRINT §14 rule 2: the survey weight (and the strata and PSU) are number-changing
     defaults; a design role that rode along unconfirmed in a bulk confirm is confirmed on its own
@@ -510,6 +645,7 @@ def _register() -> None:
                   _names_its_units, _pools_cycles_by_the_rule, _design_is_settled):
         register_validator("set_survey", check)
     register_completion("set_survey", _answered_under_its_goal)
+    register_completion("set_survey", _pools_by_the_cycle_read)
 
 
 _register()

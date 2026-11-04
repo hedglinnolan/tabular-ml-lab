@@ -268,7 +268,7 @@ def proposal(state: Any, store: Any) -> dict[str, Any] | None:
             "strata": reading.strata, "psu": reading.psu,
             "cycle": pooled_cycle, "cycles": [str(v) for v in cycles],
             "four_year": reading.four_year,
-            "options": offered(state, pooled_cycle, frame, placed)}
+            "options": offered(state, pooled_cycle, frame, placed, cycles)}
 
 
 __all__ = ["FitSurvey", "NAME_THE_FOUR_YEAR", "PooledWeight", "UNANSWERED", "analysis_weights",

@@ -1117,7 +1117,11 @@ ACCEPTED = {
     "free_text": "a many-level category is excluded high by its distinct counts (values)",
     "plausibility": "values change only through the user's apply_repair with its parameters "
                     "shown; the assumed 1 = male coding in its counts is a deviation",
-    "survey_cycle": "the option names the cycle column it pools by and the user records it",
+    "survey_cycle": "the option names the cycle column it pools by and the user records it; an "
+                    "answer naming none is completed only with NCHS's SDDSRVYR, its role settled "
+                    "(survey._pools_by_the_cycle_read), else refused with the way on naming it "
+                    "where a column certainly is a survey cycle (survey.is_survey_cycle), else "
+                    "kept as given",
 }
 
 
