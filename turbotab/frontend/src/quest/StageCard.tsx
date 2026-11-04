@@ -29,7 +29,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { isRefusalError } from "../api/client";
 import {
-  useChecklist,
   useConfirmSweep,
   useDecide,
   useExport,
@@ -62,6 +61,7 @@ import {
 } from "./log";
 import { ResultsCards } from "./results";
 import { said } from "./words";
+import { WriteUp } from "./writeup";
 import q from "./quest.module.css";
 
 const idOf = (l: QuestLine) => `${l.source}:${l.key}`;
@@ -269,7 +269,7 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
         {triageHere ? <StageTriage pid={pid} stage={stage.key} /> : null}
 
         {stage.reached ? <ForTheRecord pid={pid} stage={stage} /> : null}
-        {stage.key === "writeup" && stage.reached ? <Checklist pid={pid} /> : null}
+        {stage.key === "writeup" && stage.reached ? <WriteUp pid={pid} /> : null}
 
         {back ? (
           <button type="button" className={k.linkish} data-kit onClick={back} data-testid="back-to-stage">
@@ -501,31 +501,6 @@ function ForTheRecord({ pid, stage }: { pid: string; stage: QuestStage }) {
         ))}
       </ul>
     </details>
-  );
-}
-
-/** Write-up's checklist: the reporting guideline's items, by how far the record answers each. */
-function Checklist({ pid }: { pid: string }) {
-  const report = useChecklist(pid).data;
-  if (!report) return null;
-  const { counts } = report;
-  return (
-    <section className={q.group} data-kit data-testid="checklist">
-      <h3 className={q.groupLabel}>{report.title}</h3>
-      <p className={q.lineQuiet}>
-        {counts.answered} answered, {counts.partly_answered} partly answered, {counts.unanswered} unanswered,
-        of {counts.items} items.
-      </p>
-      {report.waiting.length ? (
-        <ul className={q.recordList}>
-          {report.waiting.map((w) => (
-            <li key={w}>
-              <Plain text={w} />
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
   );
 }
 

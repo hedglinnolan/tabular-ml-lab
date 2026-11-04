@@ -1,0 +1,103 @@
+/* Write-up's read-only exhibits (WriteUp.tsx): the export's tables as journals set them (three
+   rules, no stripes, no color), its figures on their own paper, the plan and the checklist behind
+   one disclosure each. Tokens only (FOUNDATION §4). */
+
+.exhibit,
+.figure {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.caption {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.scroll {
+  overflow-x: auto;
+}
+.table {
+  border-collapse: collapse;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+.table th,
+.table td {
+  padding: 4px 12px 4px 0;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.table thead th {
+  font-weight: 600;
+  border-bottom: 1px solid var(--line-strong);
+}
+.drawing {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.text {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.sublabel {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.section {
+  margin: 12px 0 0;
+}
+.sectionName {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.items {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.item {
+  display: grid;
+  gap: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--muted);
+}
+.itemName {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.item p {
+  margin: 0;
+}
+.quoted {
+  color: var(--faint);
+}
+.where {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+}
