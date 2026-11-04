@@ -3714,34 +3714,117 @@ def _defaults_and_their_columns(state: Any) -> dict[str, list[str]]:
     return out
 
 
-def _answers_keep_settled_roles(decision: Any, ctx: Any) -> None:
-    """BLUEPRINT §14 rule 2 (and §13's "invalidates"): an answer that would un-settle a role a
-    recorded number-changing answer reads (reverting its confirmation, or recording the roles
-    again so that it rides along unconfirmed) is refused until that answer changes; the default
-    is never kept silently on a role nobody confirmed."""
+# Keeping the answers as they are: the last route of a revisit refused because a recorded answer
+# reads what it would unsettle (``_answers_keep_settled_roles``,
+# ``_answers_keep_settled_readings``). A refusal that offers it refuses the revisit itself and asks
+# for no reading (``tests.truths.asks``).
+KEEP_THE_ANSWERS = {"label": "Keep the answers as they are", "decision": None}
+_CONFIRMATIONS = ("confirm_role", "confirm_reading", "confirm_readings")
+# The answers whose words read a role (``_defaults_and_their_columns``), each with the slot a revert
+# of its record in force withdraws or returns to an earlier answer (``_role_reader_returned``) and
+# the verb that agrees with its name: "The recorded exclusion rules read `kcal`".
+_ROLE_READERS = {"energy adjustment": ("energy_adjustment", "reads"),
+                 "survey answer": ("survey", "reads"),
+                 "exclusion rules": ("exclusions", "read")}
+# The earlier answer of a slot that records no rule or no adjustment, as a revert returns to it
+# (``_role_reader_returned``): whether the slot's value is that answer, and the words naming what
+# it does ("Keep every row" records no rules; "Do not adjust for energy" the method "none").
+# Either survey answer is a survey answer, so it keeps its name.
+_RECORDS_NONE = {"energy adjustment": (lambda held: held.method == "none", "no energy adjustment"),
+                 "exclusion rules": (lambda held: not held, "keeping every row")}
+
+
+def _undoes_a_confirmation(decision: Any, ctx: Any) -> bool:
+    """Whether ``decision`` reverts a confirmation (a role's or a reading's, or one block of them),
+    which keeping the answers keeps; a revert of any other answer (the user's own roles answer, a
+    missing-values answer that left a column out), or a new roles answer, undoes none."""
+    if getattr(decision, "kind", None) != "revert":
+        return False
+    target = next((r for r in _records_in(ctx) or [] if r.id == decision.decision_id), None)
+    return target is not None and target.decision.kind in _CONFIRMATIONS
+
+
+def _roles_newly_unsettled(now: Any, after: Any) -> dict[str, list[str]]:
+    """The recorded number-changing answers ``after`` holds (:func:`_defaults_and_their_columns`),
+    each with the roles it reads that are unsettled ``after`` but not ``now``."""
     from turbotab.core.readings import unsettled
 
-    if decision.kind == "set_roles":
-        decision = _roles_record_what_rode_along(decision, ctx)
-    after = state_after(decision, ctx)
-    now = _state(ctx)
-    if after is None or not after.roles:
-        return
     newly: dict[str, list[str]] = {}
     for what, columns in _defaults_and_their_columns(after).items():
         before = set(unsettled(now, columns)) if now is not None else set()
         waiting = [c for c in unsettled(after, columns) if c not in before]
         if waiting:
             newly[what] = waiting
+    return newly
+
+
+def _role_reader_returned(decision: Any, ctx: Any, what: str) -> list[dict[str, Any]]:
+    """The way past the recorded ``what`` that would read a role ``decision`` unsettles: a revert of
+    the record in force for its slot (:func:`_record_in_force`), as an exit, where ``decision``
+    after that revert leaves no answer of the slot reading a role it unsettles (the readers
+    recomputed on that state, :func:`_roles_newly_unsettled`), and the record accepts the revert
+    (:func:`_taken`); else none. Its label says what the revert does: withdraws the answer where the
+    slot is then empty, returns to the earlier answer where one of it is still live (``fold`` keeps
+    the latest live word: the Router records the slot's first answer, the card's adjustment, no
+    rules, the sample's estimate, before any change), named by what it does where it records no
+    rule or no adjustment (:data:`_RECORDS_NONE`), as no earlier rules or adjustment exist."""
+    slot = _ROLE_READERS[what][0]
+    record = _record_in_force(ctx, slot)
+    records = _records_in(ctx)
+    if record is None or records is None:
+        return []
+    revert = Revert(decision_id=record)
+    top = max((r.seq for r in records), default=0)
+    at = datetime.now(timezone.utc)
+    back = DecisionRecord(id="__revert__", seq=top + 1, at=at, decision=revert)
+    probe = DecisionRecord(id="__probe__", seq=top + 2, at=at, decision=decision)
+    try:
+        returned, then = fold([*records, back]), fold([*records, back, probe])
+    except Refusal:
+        return []
+    if not then.roles or _roles_newly_unsettled(returned, then).get(what):
+        return []
+    held = getattr(returned, slot, None)
+    empty = _RECORDS_NONE.get(what)
+    label = (f"Withdraw the {what} first" if held is None else
+             f"Return to {empty[1]} first" if empty is not None and empty[0](held) else
+             f"Return to the earlier {what} first")
+    return _taken([{"label": label, "decision": revert}], ctx)
+
+
+def _answers_keep_settled_roles(decision: Any, ctx: Any) -> None:
+    """BLUEPRINT §14 rule 2 (and §13's "invalidates"): an answer that would un-settle a role a
+    recorded number-changing answer reads (reverting its confirmation, or recording the roles
+    again so that it rides along unconfirmed) is refused until that answer changes; the default
+    is never kept silently on a role nobody confirmed. The refusal offers each way it names, and
+    names only the ways the record accepts now (:func:`_taken`), as its readings sibling does
+    (:func:`_answers_keep_settled_readings`): a revert of the record in force for the answer that
+    reads the role, only where after it no answer of that slot reads a role the change unsettles
+    (:func:`_role_reader_returned`), said as withdrawing that answer, or as returning to the
+    earlier answer it leaves in force; after it the change is accepted, or refused for another
+    answer that reads the role; and the answers kept, said as keeping the confirmation only where
+    the change reverts one (:func:`_undoes_a_confirmation`)."""
+    if decision.kind == "set_roles":
+        decision = _roles_record_what_rode_along(decision, ctx)
+    after = state_after(decision, ctx)
+    now = _state(ctx)
+    if after is None or not after.roles:
+        return
+    newly = _roles_newly_unsettled(now, after)
     if not newly:
         return
     what, columns = next(iter(newly.items()))
+    reads = _ROLE_READERS[what][1]
     one = len(columns) == 1
+    way = _role_reader_returned(decision, ctx, what)
+    keep = (f"keep {'its' if one else 'their'} confirmation"
+            if _undoes_a_confirmation(decision, ctx) else "keep the answers as they are")
+    said = f"{way[0]['label'][0].lower()}{way[0]['label'][1:]}, or {keep}" if way else keep
     raise Refusal(
         "role_unconfirmed",
-        f"The recorded {what} reads {_and(columns)}, which would then be a role nobody confirmed. "
-        f"Change the {what} first, or keep {'its' if one else 'their'} confirmation.",
-        exits=[{"label": "Keep the answers as they are", "decision": None}])
+        f"The recorded {what} {reads} {_and(columns)}, which would then be "
+        f"{'a role' if one else 'roles'} nobody confirmed. {said[0].upper()}{said[1:]}.",
+        exits=[*way, KEEP_THE_ANSWERS])
 
 
 def _energy_reads_settled_roles(decision: SetEnergyAdjustment, ctx: Any) -> None:
@@ -4021,7 +4104,9 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
     force, only where that revert leaves no such answer (:func:`_withdraws`: with an earlier one
     still live it would return that one, which reads the reading as well), after which the revisit
     is accepted, and unless that revert is itself refused (the seal keeps how each unit's rows are
-    combined once the held-out rows are drawn); and the answers kept."""
+    combined once the held-out rows are drawn); and the answers kept, said as keeping the
+    confirmation only where the revisit reverts one (:func:`_undoes_a_confirmation`: reverting a
+    missing-values answer that left a column out undoes none)."""
     from turbotab.core.readings import (
         Unsettled, body_unit_reading, predictors_or_ask, time_column_reading,
     )
@@ -4079,7 +4164,8 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
     if withdraw:
         routes.append(f"withdraw the {what} first")
         exits.extend(withdraw)
-    routes.append("keep the confirmation")
+    routes.append("keep the confirmation" if _undoes_a_confirmation(decision, ctx)
+                  else "keep the answers as they are")
     said = routes[0] if len(routes) == 1 else f"{', '.join(routes[:-1])}, or {routes[-1]}"
     from turbotab.core.readings import listing
 
@@ -4089,7 +4175,7 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
         "role_unconfirmed",
         f"The recorded {what} {reads} {names}, which would then rest on {rests} nobody "
         f"settled. {said[0].upper()}{said[1:]}.",
-        exits=[*exits, {"label": "Keep the answers as they are", "decision": None}])
+        exits=[*exits, KEEP_THE_ANSWERS])
 
 
 def _rule_without(decision: SetExclusions, index: int) -> SetExclusions:
@@ -5681,6 +5767,14 @@ def _censored_named(ctx: Any) -> list[str]:
     return censored_columns(findings, _state(ctx))
 
 
+# The fewest detected values a single censoring-aware fill fits its censored normal on: on a column
+# with fewer it sets every blank to half the smallest detected value (that value itself where it
+# is below zero), with no fit (``missing.BelowDetectionFill``, ``omics.LogScaleCensoredFill``,
+# which keep the same number as a literal;
+# ``tests/test_below_detection_exit_says_what_it_records.py`` holds them to this one, at 3 and 2).
+CENSORED_FIT_MIN_DETECTED = 3
+
+
 def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any) -> None:
     """Values below a detection limit are small, not unknown (audit ME-08): when the left-censoring
     finding names predictors (or the user recoded zeros as non-detections), a fill that treats
@@ -5723,8 +5817,28 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
         return
     how = ("multiple imputation reads them as missing at random" if decision.strategy ==
            "multiple_imputation" else "the median fill places them in the middle of the distribution")
-    aware = ("a censored-normal draw below the limit, given the outcome" if inference else
-             "the expected value below the limit, fit in each training fold")
+    # The censoring-aware exit keeps the answer's strategy, so under inference its words follow it
+    # (``_missing_fits_the_purpose``, which runs first, refuses multiple imputation under
+    # prediction): within multiple imputation each blank is drawn below the limit given the
+    # outcome; a single fill sets each to one expected value below the limit from a censored normal
+    # fitted without the outcome (``missing.BelowDetectionFill``, ``omics.LogScaleCensoredFill``).
+    # The normalization that chooses between them may be recorded after this answer, so the words
+    # name both fallbacks with no fit: half the smallest detected value on a column with fewer
+    # than CENSORED_FIT_MIN_DETECTED of them, that value itself where it is below zero (the
+    # own-scale fill's ``limit / 2 if limit > 0 else limit``), and half it where the detected
+    # values are all equal and a log2 normalization (``omics.LOGGED``) includes any censored
+    # column, so that every one is filled on the log scale (``pipeline.detect_step``); on the own
+    # scale equal values are refused (``missing.censored_fill_refusal``).
+    if not inference:
+        aware = "the expected value below the limit, fit in each training fold"
+    elif decision.strategy == "multiple_imputation":
+        aware = "a censored-normal draw below the limit, given the outcome"
+    else:
+        aware = (f"the expected value below the limit under a censored-normal fit, or, with no "
+                 f"fit, half the smallest detected value (the value itself where it is negative) "
+                 f"where a column has fewer than {CENSORED_FIT_MIN_DETECTED} detected values, or "
+                 f"has every detected value equal and a log2 normalization includes any of these "
+                 f"columns")
     # Half the minimum is customary only at 10% below the limit or less (Lubin et al. 2004); the
     # share is of the participants' values, zeros recoded as non-detections included (MS7 repair).
     from turbotab.core.methods.omics import CENSORED_CUSTOMARY_MAX, censored_share_of

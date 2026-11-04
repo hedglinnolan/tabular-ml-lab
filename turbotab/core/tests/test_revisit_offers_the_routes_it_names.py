@@ -417,3 +417,34 @@ def test_a_screen_or_combining_answer_given_twice_is_not_offered_as_withdrawn(lo
     assert caught.value.message.endswith("nobody settled. Keep the confirmation.")
     assert f"recorded {named} " in caught.value.message
     assert caught.value.exits == [KEEP]
+
+
+# INBOX 11.1039: the refusal is registered for every revert, so a revisit that undoes no
+# confirmation keeps the answers as they are, never "the confirmation".
+LEFT_OUT = {"kind": "set_missing", "strategy": "impute",
+            "drop_columns": ["charlson_index", "prior_adm"]}
+
+
+def test_reverting_a_missing_values_answer_keeps_the_answers_not_a_confirmation():
+    """The missing-values answer (record 5) left out `charlson_index` and `prior_adm`, so no
+    reading of theirs was asked or confirmed; reverting it returns both to the models answer's
+    predictors with neither reading settled. Nothing the revert undoes is a confirmation, so the
+    words keep the answers as they are; the withdrawal is offered and accepted, and the revert is
+    then accepted. Its other direction (a confirmation revisited keeps the confirmation) is every
+    test above."""
+    head = [{"kind": "set_target", "column": "y"},
+            {"kind": "set_task", "column": "y", "task": "regression"},
+            {"kind": "set_purpose", "purpose": "prediction"},
+            {"kind": "set_roles", "roles": TWO_ROLES}, LEFT_OUT, LINEAR]
+    log = [rec(i, x) for i, x in enumerate(head, start=1)]
+    assert not d.fold(log).shape_confirmations
+    refusal = refused(log, REVISIT, roles=TWO_ROLES, info=TWO_INFO)
+    assert refusal.message == (
+        "The recorded models answer reads `charlson_index` and `prior_adm`, which would then rest "
+        "on readings nobody settled. Withdraw the models answer first, or keep the answers as "
+        "they are.")
+    assert refusal.exits == [{"label": "Withdraw the models answer first",
+                              "decision": {"kind": "revert", "decision_id": "r6"}}, KEEP]
+    offered(refusal, ctx(log, TWO_ROLES, TWO_INFO))
+    after = [*log, rec(7, refusal.exits[0]["decision"])]
+    d.validate(REVISIT, ctx(after, TWO_ROLES, TWO_INFO))

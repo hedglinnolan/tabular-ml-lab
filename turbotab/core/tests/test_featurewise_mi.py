@@ -1395,9 +1395,10 @@ WAYS_IN = {
     "qrilc, complete cases": {"strategy": "complete_case", "censored_columns": C6,
                               "below_detection": "qrilc"},
 }
-# decisions.median_below_detection (not this package's) offers "Censoring-aware: a censored-normal
-# draw below the limit, given the outcome" under a fill once: the single fill, which the
-# feature-wise table refuses when taken (an open issue for decisions.py).
+# decisions.median_below_detection (not this package's) offers "Censoring-aware: the expected value
+# below the limit under a censored-normal fit, or, with no fit, half the smallest detected
+# value …" under a fill once: the single fill, which the feature-wise table refuses when taken (an
+# open issue for decisions.py).
 DECISIONS_EXIT = "median_below_detection"
 
 
@@ -1472,9 +1473,10 @@ def test_19_the_leash_s_censored_normal_way_forward_is_the_multiple_imputation_i
 def test_19_the_median_refusal_s_censoring_aware_way_forward_is_taken_by_the_feature_wise_plan():
     """The open issue the walk above leaves out, pinned so its fix shows: under inference a median
     fill once of values below detection is refused (``median_below_detection``), offering
-    "Censoring-aware: a censored-normal draw below the limit, given the outcome", whose answer
-    keeps the fill once: the single censoring-aware fill, intercept-only, which ignores the
-    outcome its label names; the feature-wise plan refuses it when taken."""
+    "Censoring-aware: the expected value below the limit under a censored-normal fit, or, with no
+    fit, half the smallest detected value …", whose answer keeps the fill once: the single
+    censoring-aware fill, intercept-only, as its label says; the feature-wise plan refuses it when
+    taken."""
     from turbotab.core import decisions as d
 
     state = plan_state(["featurewise"], None)
