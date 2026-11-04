@@ -99,13 +99,7 @@
   color: var(--warn-ink);
 }
 
-/* ── the drawings ─────────────────────────────────────────────────────────── */
-.drawing {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
+/* ── the drawings (in the shared ViewFrame) ───────────────────────────────── */
 .svg {
   display: block;
   width: 100%;
