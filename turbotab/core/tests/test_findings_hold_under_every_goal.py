@@ -123,7 +123,7 @@ def visits(tmp_path_factory) -> tuple[Ingested, dict, dict]:
 TEXT_NUMBERS_WHY = ("As a predictor it can enter the models only as a category, one level per "
                     "distinct value, until it is read as numbers: here, or through the fit's "
                     "question whether it holds codes or amounts, which is not asked of an assay's "
-                    "exposures.")
+                    "study factors.")
 NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a category, each "
                        "distinct value a level of its own, rather than as a number.")
 #: The number-format reason's second sentence, which holds whichever columns it flags: the comma is
@@ -133,7 +133,7 @@ NUMBER_FORMAT_COMMA = (
     "there it can parse and be wrong by a factor of a hundred with no error. This app reads no "
     "comma as a thousands separator unless you answer that it is one.")
 NUMBER_FORMAT_ROUTES = ("by a repair or through the fit's question whether it holds codes or "
-                        "amounts (not asked of an assay's exposures)")
+                        "amounts (not asked of an assay's study factors)")
 #: Every column it flags is one the app reads as numbers (the text-number finding's).
 NUMBER_FORMAT_WHY = (
     "A predictor that does not parse as numeric can enter the models only as a category until it "

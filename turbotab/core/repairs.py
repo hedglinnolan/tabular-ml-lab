@@ -966,7 +966,7 @@ def _named_values(unparsed: Mapping[str, int], limit: int = 10) -> str:
 TEXT_NUMBERS_WHY = ("As a predictor it can enter the models only as a category, one level per "
                     "distinct value, until it is read as numbers: here, or through the fit's "
                     "question whether it holds codes or amounts, which is not asked of an assay's "
-                    "exposures.")
+                    "study factors.")
 
 
 def text_number_findings(frame: pd.DataFrame) -> list[tuple[dict, dict]]:

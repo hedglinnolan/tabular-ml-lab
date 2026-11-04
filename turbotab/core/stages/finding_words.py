@@ -1244,7 +1244,7 @@ UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]],
 #: The number-format reason's routes to numbers, named for the columns that have them
 #: (:func:`_number_routes`).
 NUMBER_ROUTES = ("by a repair or through the fit's question whether it holds codes or amounts "
-                 "(not asked of an assay's exposures)")
+                 "(not asked of an assay's study factors)")
 
 
 def _read_as_numbers(fc: FindingContext, column: str) -> bool:
