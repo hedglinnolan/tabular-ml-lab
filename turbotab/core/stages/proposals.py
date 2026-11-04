@@ -1237,17 +1237,24 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     # WP7: the missing-data methods, soundest first for the declared purpose, each with its
     # "customary" and "sound" labels and its rung (turbotab.core.methods.missing). Multiple
     # imputation's sentence names total energy only where the primary model holds a column
-    # declared it (pp2-mi-words): not one a repair took out (``gone``) or the adjustment answers
-    # leave out of it (``estimand.adjustment_left_out``: without the dietary lens a column declared
-    # total energy is a covariate they place), a "further adjusted for" one among them, which only
-    # that model's own imputation holds.
+    # declared it (pp2-mi-words), as ``pipeline.model_predictors`` builds it: by settled role (one
+    # that rode along unconfirmed is in no model until it is confirmed), less every column a repair
+    # marked unusable (``gone`` keeps one a declared modification's model reads, so the card lists
+    # its blanks, but the primary model does not hold it) and each the adjustment answers leave
+    # out (``estimand.adjustment_left_out``: without the dietary lens a column declared total
+    # energy is a covariate they place), a "further adjusted for" one among them, which only that
+    # model's own imputation holds. The missing-values answer's own drop is the one this stage
+    # cannot read, and the sentence states it as a condition (``missing.mi_sound``).
     from turbotab.core.estimand import adjustment_left_out
     from turbotab.core.methods.missing import (below_detection_options,
                                                imputation_model_options, methods_for)
+    from turbotab.core.repairs import unusable_columns
 
-    out_of_primary = {*gone, *adjustment_left_out(state)}
+    settled = set(settled) if settled is not None else None
+    out_of_primary = {*unusable_columns(state), *adjustment_left_out(state)}
     declared = [c for c, r in roles.items()
-                if r == "energy" and c != target and c not in out_of_primary]
+                if r == "energy" and c != target and c not in out_of_primary
+                and (settled is None or c in settled)]
     missing["methods"] = methods_for(purpose, energy=declared)
     missing["below_detection"] = below_detection_options(purpose)
     # MS1–MS2: multiple imputation's sub-answers, each labeled (compatible; passive; single-level).
@@ -1263,7 +1270,6 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                 "coach": _card_lines(frame, target=target, energy=None, unit="kcal", missing=missing),
                 "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen.",
                 "energy_unit": None}
-    settled = set(settled) if settled is not None else None
     energy_read = energy_column_reading(_with_medians(info, frame), roles, frame)
     energy = energy_read["column"] if energy_read is not None else None
     settled_unit = None

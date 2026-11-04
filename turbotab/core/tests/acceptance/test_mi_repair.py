@@ -1004,7 +1004,9 @@ def test_7_the_answers_sentence_and_labels_state_m_by_its_rule():
             "fills, rounded up, if that is larger; for feature-wise tests, counted in whichever "
             "study factor's model fills the most rows")
     assert label == f"Multiple imputation ({rule})"
-    assert MI_EXIT_LABEL == f"Multiple imputation with the outcome and energy ({rule})"
+    # The exit reads no plan, and a project with no column declared total energy (this one) has
+    # none in its imputation model: it names the outcome alone (pp2-mi-words, the verifier's V1).
+    assert MI_EXIT_LABEL == f"Multiple imputation with the outcome ({rule})"
     with pytest.raises(Refusal) as refused:
         validate(SetMissing(strategy="impute"),
                  {"state": ProjectState(target="y", purpose="inference", roles={"x": "exposure"})})

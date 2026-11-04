@@ -125,7 +125,12 @@ M_WORDS = (f"m = the number asked, {M_DEFAULT} by default, or the percentage of 
            f"imputation model fills, rounded up, if that is larger; for feature-wise tests, "
            f"counted in whichever study factor's model fills the most rows")
 MI_LABEL = f"Multiple imputation ({M_WORDS})"
-MI_EXIT_LABEL = f"Multiple imputation with the outcome and energy ({M_WORDS})"
+# The exit of the refusals that offer multiple imputation in place of a single fill or a missing
+# indicator (``decisions._missing_fits_the_purpose``, :func:`missing_block`), which read no plan:
+# it names the outcome, which every imputation model holds (``imputation.outcome_terms``), and
+# no energy, which one holds only where the analysis model holds a column declared it (it said
+# "with the outcome and energy" on every project, one with no energy column among them).
+MI_EXIT_LABEL = f"Multiple imputation with the outcome ({M_WORDS})"
 
 
 def mi_sound(energy: Sequence[str] | None = None) -> str:
@@ -133,20 +138,24 @@ def mi_sound(energy: Sequence[str] | None = None) -> str:
 
     ``energy``: the columns declared total energy (role ``energy``) that the primary model holds,
     which its imputation model holds as it holds every input of the analysis
-    (:func:`imputation_frame`); empty where none is, so none is named (none declared, or the
-    adjustment answers leave each out: ``estimand.adjustment_left_out``); None where the caller
-    does not know the plan, and the sentence says where energy is held. A column only the "further
-    adjusted for" model holds is in that model's own imputation model (``stages.secondary``), not
-    the primary's of which the sentence speaks, so it is not among them. Interval uncertainty is
-    claimed for a family whose coefficient table pools the imputations
-    (``stages.modeling._missing_for_table``: every family with an ``inference`` table); one
-    without a table (elastic net, boosted trees) draws no copy and is fit on the single fill
-    (``pipeline.impute_detail``). The card is served before the families are chosen, so the
-    sentence states that condition rather than read the choice."""
+    (:func:`imputation_frame`); empty where none is, so none is named (none declared, none settled,
+    a repair marked each unusable, or the adjustment answers leave each out:
+    ``decisions.left_out``); None where the caller does not know the plan, and the sentence says
+    where energy is held. The missing-values answer can leave a named column out too
+    (``drop_columns``), and the card that names it is served without that answer (the proposals
+    stage does not read it), so the sentence states that condition beside the names. A column only
+    the "further adjusted for" model holds is in that model's own imputation model
+    (``stages.secondary``), not the primary's of which the sentence speaks, so it is not among them.
+    Interval uncertainty is claimed for a family whose coefficient table pools the imputations
+    (``stages.modeling._missing_for_table``: every family with an ``inference`` table); one without
+    a table (elastic net, boosted trees) draws no copy and is fit on the single fill
+    (``pipeline.impute_detail``). The card is served before the families are chosen, so the sentence
+    states that condition rather than read the choice."""
     if energy is None:
         held = "the outcome (and total energy, where the analysis model holds a column declared it)"
     elif energy:
-        held = f"the outcome and total energy ({_named(energy)})"
+        held = (f"the outcome and total energy ({_named(energy)}, unless the missing-values answer "
+                f"leaves {'it' if len(energy) == 1 else 'them'} out)")
     else:
         held = "the outcome"
     return (f"Sound: with {held} in the imputation model it is unbiased under missing at random "
