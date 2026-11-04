@@ -1236,11 +1236,18 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     missing = missing_reading(frame, columns, roles, target, gone)
     # WP7: the missing-data methods, soundest first for the declared purpose, each with its
     # "customary" and "sound" labels and its rung (turbotab.core.methods.missing). Multiple
-    # imputation's sentence names total energy only where a column is declared it (pp2-mi-words).
+    # imputation's sentence names total energy only where the primary model holds a column
+    # declared it (pp2-mi-words): not one a repair took out (``gone``) or the adjustment answers
+    # leave out of it (``estimand.adjustment_left_out``: without the dietary lens a column declared
+    # total energy is a covariate they place), a "further adjusted for" one among them, which only
+    # that model's own imputation holds.
+    from turbotab.core.estimand import adjustment_left_out
     from turbotab.core.methods.missing import (below_detection_options,
                                                imputation_model_options, methods_for)
 
-    declared = [c for c, r in roles.items() if r == "energy" and c != target and c not in gone]
+    out_of_primary = {*gone, *adjustment_left_out(state)}
+    declared = [c for c, r in roles.items()
+                if r == "energy" and c != target and c not in out_of_primary]
     missing["methods"] = methods_for(purpose, energy=declared)
     missing["below_detection"] = below_detection_options(purpose)
     # MS1–MS2: multiple imputation's sub-answers, each labeled (compatible; passive; single-level).

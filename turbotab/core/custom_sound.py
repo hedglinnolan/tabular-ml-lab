@@ -172,8 +172,9 @@ def energy(purpose: str | None, applicable: Sequence[str] | None = None) -> Labe
 
 
 def missing(purpose: str | None, energy: Sequence[str] | None = None) -> LabeledQuestion:
-    """``energy``: the columns declared total energy, which multiple imputation's sound sentence
-    names (``methods.missing.sound_for``); None where the caller does not know the roles."""
+    """``energy``: the columns declared total energy that the primary model holds, which multiple
+    imputation's sound sentence names (``methods.missing.sound_for``); None where the caller does
+    not know the plan."""
     from turbotab.core.methods.missing import METHODS, sound_for
 
     fields = {
