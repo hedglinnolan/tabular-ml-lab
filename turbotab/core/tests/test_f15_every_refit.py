@@ -1,6 +1,6 @@
-"""F15-rest (RECIPES_AND_TUNING §1 F15, §4.3; WAVE_C6A_PLAN §7 rulings 9 and 13): the split's
-seed, the rows' survey design and the stage's cancel reach every refit a stage makes after the fit,
-and a spec a stage builds afresh keeps the design stage's tuning plans.
+"""F15-rest (RECIPES_AND_TUNING §1 F15, §4.3; WAVE_C6A_PLAN §7 rulings 9, 13 and 14): the split's
+seed, the rows' survey design, the split's units and the stage's cancel reach every refit a stage
+makes after the fit, and a spec a stage builds afresh keeps the design stage's tuning plans.
 
 Every expected value comes from outside the code under test:
 
@@ -10,12 +10,15 @@ Every expected value comes from outside the code under test:
   NHANES Analytic Guidelines §3.1.3);
 * **the plans** are the design stage's own record (``design.objects["spec"]["plans"]``), compared
   with what each later stage hands ``build_pipeline``;
+* **the units** of each refit's rows are the table's own ``pid`` column, by row id, where the test
+  dealt each person two rows and the split keeps each person whole;
 * **the cancel**: a pressed Cancel raised inside the tuned family's refit itself (``jobs.Cancelled``
   out of ``fit_pipeline``), not at the stage's next progress report;
 * **completeness**: every ``fit_pipeline`` call outside the fit stage's own module, read from the
   source, names a seed and a design (never the literal None) and sits in a cancel scope, and every
   call of a refit helper (``fit_with``, ``fit_on_rows``, ``class_family_entries``,
-  ``correct_together``) hands it the rows' design and the stage's cancel;
+  ``correct_together``) hands it the rows' design and the stage's cancel, and each but
+  ``correct_together`` the split's units (``groups=``);
 * **the moved numbers**: under the population answer a tuned family's refit draws its inner splits
   by whole PSU even at split seed 0, read against the table's own stratum and PSU columns.
 
@@ -72,10 +75,13 @@ def _given(call: ast.Call, name: str) -> bool:
 
 
 # The refit helpers a stage hands its rows' design and its cancel to, with what each must be given
-# (the helpers whose ``seed`` defaults to the recorded split's need no ``seed=``).
-HELPERS = {"fit_with": ("seed", "designs", "cancelled"),
-           "fit_on_rows": ("designs", "cancelled"),
-           "class_family_entries": ("designs", "cancelled"),
+# (the helpers whose ``seed`` defaults to the recorded split's need no ``seed=``). ``groups``: the
+# split's units, which each helper that takes them hands its refits (WAVE_C6A_PLAN §7 ruling 14);
+# where no unit repeats a stage passes None at run time, never the literal. ``correct_together``
+# names no ``groups`` parameter.
+HELPERS = {"fit_with": ("seed", "designs", "cancelled", "groups"),
+           "fit_on_rows": ("designs", "cancelled", "groups"),
+           "class_family_entries": ("designs", "cancelled", "groups"),
            "correct_together": ("seed", "designs", "cancelled")}
 # F15's last two call sites, in files the integrator owns this phase (stages/modeling.py and
 # stages/secondary.py): each is removed here when its call passes them.
@@ -91,8 +97,8 @@ def test_every_refit_outside_the_fit_stage_names_the_seed_and_design_inside_a_ca
     """Read from the source: each ``inner_cv.fit_pipeline`` call outside ``stages/modeling.py``
     passes ``seed=`` (never the literal 0 it defaults to, nor None) and ``design=`` (never the
     literal None), inside ``with cancel_scope(...)``; each call to ``stages.modeling.fit_with``
-    (which opens the scope and reads the rows' design itself) passes ``seed=``, ``designs=`` and
-    ``cancelled=``, none of them the literal None."""
+    (which opens the scope and reads the rows' design itself) passes ``seed=``, ``designs=``,
+    ``cancelled=`` and ``groups=``, none of them the literal None."""
     problems: list[str] = []
     for path, tree in _sources():
         if path in EXEMPT:
@@ -122,8 +128,10 @@ def test_every_call_of_a_refit_helper_hands_it_the_design_and_the_cancel() -> No
     """Read from the source, every module included: each call of a stage's refit helper
     (``fit_on_rows``, ``class_family_entries``, ``correct_together``, ``fit_with``) passes the
     rows' design and the stage's cancel (and ``seed=`` where the helper has no split to read it
-    from), none of them the literal None. ``PENDING`` is empty since the integration of C6a phase
-    3 gave the substitution stage's class refits and the secondary stage's refits theirs."""
+    from), and each helper that takes the split's units its ``groups=``, none of them the literal
+    None. ``PENDING`` is empty since the integration of C6a phase 3 gave the substitution stage's
+    class refits and the secondary stage's refits their design and cancel, and CH1 the secondary
+    stage's refits their units, which ``stages.secondary`` alone did not pass."""
     problems: set[str] = set()
     for path, tree in _sources():
         for node in ast.walk(tree):
@@ -154,8 +162,8 @@ def _design_table(seed: int = 0, strata: int = 8, psus: int = 2, per: int = 12) 
 
 
 class _Spy:
-    """Every ``inner_cv.fit_pipeline`` call: the stage running, the seed, the design, whether a
-    cancel scope was open, and the rows' ids."""
+    """Every ``inner_cv.fit_pipeline`` call: the stage running, the seed, the design, the groups,
+    whether a cancel scope was open, and the rows' ids."""
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -164,7 +172,8 @@ class _Spy:
 
     def __call__(self, pipeline: Any, X: Any, y: Any, **kw: Any) -> Any:
         self.calls.append({"stage": self.stage, "seed": kw.get("seed", 0),
-                           "design": kw.get("design"), "scoped": bool(tuning._cancel_checks()),
+                           "design": kw.get("design"), "groups": kw.get("groups"),
+                           "scoped": bool(tuning._cancel_checks()),
                            "tuned": type(pipeline).__name__ == "TunedPipeline",
                            "plan": getattr(pipeline, "search", None),
                            "ids": np.asarray(getattr(X, "index", np.arange(len(X))))})
@@ -663,3 +672,58 @@ def test_a_pressed_cancel_stops_a_sensitivity_refit_inside_the_forests_search(tm
             sensitivity_stage(ctx)
     assert pressed[0]
     assert raised == ["TunedPipeline"]
+
+
+# ── the split's units reach the secondary model's refits (WAVE_C6A_PLAN §7 ruling 14) ─────────
+
+
+def _secondary_refits(folder: Path, *, per_person: int) -> tuple[pd.DataFrame, dict, list[dict]]:
+    """The secondary stage (the primary model and the one further adjusted for `bmi`) on the
+    estimand fixtures' cohort, each person (``pid``) dealt ``per_person`` rows in turn and the
+    split keeping each person whole: the table, the stage's artifact and every refit it made."""
+    from turbotab.core.stages.modeling import design_stage
+    from turbotab.core.stages.secondary import secondary_stage
+    from turbotab.core.tests.acceptance import estimand_fixtures as est_f
+
+    frame = est_f.cohort(n=240, seed=19)
+    frame["pid"] = np.arange(len(frame)) // per_person
+    grain = "repeated" if per_person > 1 else "one_row_per_unit"
+    st = est_f.state(target="glucose", task="regression", measure="mean_difference",
+                     grain=d.GrainSpec(grain=grain, id_column="pid"))
+    paths = mf.ingest_frame(frame, folder)
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed,
+                            groups=frame["pid"].to_numpy(), grouped_by="pid")
+    info = mf.target_info(st.task, st.target)
+    design = design_stage(mf.context(st, {"split": split, "target_info": info}, paths))
+    inputs = {"design": design, "split": split, "target_info": info}
+    spy = _Spy()
+    spy.stage = "secondary"
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(inner_cv, "fit_pipeline", spy)
+        out = secondary_stage(mf.context(st, inputs, paths)).data
+    return frame, out, spy.calls
+
+
+def test_each_secondary_refit_keeps_a_person_s_rows_together_as_the_split_does(tmp_path) -> None:
+    """Each person has two rows and the split keeps each person whole: each refit the secondary
+    stage makes, of the primary model and of the one further adjusted for `bmi`, is handed every
+    row's person (the table's own ``pid``, by row id) as its groups, as the fit stage hands its
+    own fits and the sensitivity analyses and the curve hand theirs, so a nested split keeps a
+    person's rows on one side; on the base each was handed none."""
+    frame, out, calls = _secondary_refits(tmp_path, per_person=2)
+    [linear] = out["families"]
+    assert [f["label"] for f in linear["fits"]] == ["Primary", "Further adjusted for `bmi`"]
+    assert all(f["coefficients"] for f in linear["fits"])
+    assert len(calls) >= 2
+    for c in calls:
+        assert c["groups"] is not None
+        np.testing.assert_array_equal(np.asarray(c["groups"]),
+                                      frame.loc[c["ids"], "pid"].to_numpy())
+
+
+def test_no_secondary_refit_is_handed_units_where_no_person_repeats(tmp_path) -> None:
+    """One row per person, the split keyed by the person: no unit repeats, so the fit stage hands
+    its fits no groups, and neither does the secondary stage."""
+    _, out, calls = _secondary_refits(tmp_path, per_person=1)
+    assert all(f["coefficients"] for f in out["families"][0]["fits"])
+    assert len(calls) >= 2 and all(c["groups"] is None for c in calls)
