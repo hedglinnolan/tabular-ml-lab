@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { api, ApiError, RefusalError } from "../../../api/client";
 import { keys } from "../../../api/queries";
 import type { PreviewResult } from "../../../api/m1-stage-types";
-import type { Decision, ProjectState, ProjectView, QuestLine, Refusal } from "../../../api/schema";
+import type { Decision, DecisionRecord, ProjectState, ProjectView, QuestLine, QuestLog, Refusal } from "../../../api/schema";
 import { StageFocusProvider } from "../../../state/focus";
 import FIXTURE from "./payloads.fixture.json";
 import { DECLARATION_CARDS } from "./index";
@@ -140,6 +140,7 @@ function lineOf(kind: CardKind, over: Partial<QuestLine> = {}): QuestLine {
 
 interface Mounted {
   decide: ReturnType<typeof vi.spyOn>;
+  qc: QueryClient;
 }
 
 /** An outcome the engine reads as yes/no, the one decision support is offered for (finding 9). */
@@ -157,6 +158,10 @@ function mount(
     detected?: { column: string; detected_task: string };
     /** The roles stage's proposal for each column (core/stages/rows.py `roles_stage`). */
     proposed?: Record<string, string>;
+    /** The view's decision records, in the served shape. */
+    decisions?: DecisionRecord[];
+    /** The quest log's lines the shell holds (`GET /quest`), in one stage. */
+    quest?: QuestLine[];
   } = {},
 ): Mounted {
   const state = stateWith(opts.recorded);
@@ -164,6 +169,7 @@ function mount(
   const fresh = (stage: string, key: string) => ({ stage, status: "fresh", key, updated_at: null });
   const view = {
     ...base,
+    decisions: opts.decisions ?? [],
     stages: {
       ...base.stages,
       ...(opts.detected ? { target_info: fresh("target_info", "t") } : {}),
@@ -174,6 +180,14 @@ function mount(
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   qc.setQueryData(keys.view(PID), view);
+  if (opts.quest) {
+    qc.setQueryData(keys.quest(PID), {
+      version: 1,
+      stages: [{ key: "models", name: "Models", reached: true, progress: null, sweep: null, lines: opts.quest, reopened: [] }],
+      kinds: {},
+      fit: null,
+    } as unknown as QuestLog);
+  }
   if (opts.detected) {
     qc.setQueryData(keys.stage(PID, "target_info"), { stage: "target_info", key: "t", fresh: true, status: "fresh", artifact: opts.detected });
   }
@@ -209,7 +223,7 @@ function mount(
       </StageFocusProvider>
     </QueryClientProvider>,
   );
-  return { decide };
+  return { decide, qc };
 }
 
 afterEach(() => {
@@ -1120,5 +1134,195 @@ describe("the intended use (finding 9)", () => {
     press("use:risk_estimation");
     await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
     expect(decide.mock.calls[0]![1]).toMatchObject({ subgroups: ["RIDAGEYR", "RIDRETH1"] });
+  });
+});
+
+/**
+ * The reason for an answer (G14, the owner's Q11: "an optional one-line box beside each recorded
+ * answer, collapsed by default"): the server keeps a decision's reason as its record's note
+ * (`POST …/decisions?note=`), so the card sends what the person typed with the decision it
+ * records. It shows no note on record (the orchestrator's scope cut of 2026-11-04): the note is kept
+ * in the decision log and the export.
+ */
+describe("the reason for an answer (G14)", () => {
+  const shrinkage = CASES.find((c) => c.card === "set_updating" && c.press === "method:shrinkage")!;
+  const REASON = "Our clinics recalibrate every year, so shrinkage is enough.";
+  const open = () => fireEvent.click(screen.getByTestId("reason-add"));
+  const record = (over: Partial<DecisionRecord> = {}): DecisionRecord => ({
+    id: "r9",
+    seq: 9,
+    at: "2026-11-04T08:00:00Z",
+    note: REASON,
+    sentence: "Shrinkage was declared as the update.",
+    post_seal: false,
+    after_estimates: false,
+    recorded_by: "you",
+    early: null,
+    decision: { kind: "set_updating", method: "shrinkage" },
+    ...over,
+  });
+  const answered = { recorded: { updating: { method: "shrinkage" } }, answered: true } as const;
+
+  it("is collapsed until asked for, then one line, focused", () => {
+    mount("set_updating");
+    expect(screen.getByTestId("reason-add")).toBeInTheDocument();
+    expect(screen.queryByTestId("reason-input")).toBeNull();
+    open();
+    const input = screen.getByTestId("reason-input");
+    expect(input).toHaveAttribute("type", "text");
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("");
+    expect(screen.queryByTestId("reason-add")).toBeNull();
+  });
+
+  it("is sent as the decision's note, the decision as the card posts it", async () => {
+    const { decide } = mount("set_updating");
+    open();
+    type("reason-input", `  ${REASON}  `);
+    press(shrinkage.press);
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    // The server keeps the reason without the blanks around it (decisions.py `check_note`).
+    expect(decide.mock.calls[0]).toEqual([PID, shrinkage.payload, { note: REASON }]);
+  });
+
+  it("is not sent where none is given: never opened, or left blank", async () => {
+    const { decide } = mount("set_updating");
+    press(shrinkage.press);
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]).toEqual([PID, shrinkage.payload]);
+    open();
+    type("reason-input", "   ");
+    press(shrinkage.press);
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
+    expect(decide.mock.calls[1]).toEqual([PID, shrinkage.payload]);
+  });
+
+  it("goes with Enter on an option, which records at once", async () => {
+    const { decide } = mount("set_updating");
+    open();
+    type("reason-input", REASON);
+    const option = screen.getByTestId(`option-${shrinkage.press}`);
+    fireEvent.focus(option);
+    fireEvent.keyDown(option, { key: "Enter" });
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]).toEqual([PID, shrinkage.payload, { note: REASON }]);
+  });
+
+  it("stays through a refusal, goes with the press that records, and then is collapsed and empty", async () => {
+    const refusal: Refusal = {
+      error: { code: "note_too_long", message: "Shorten the note.", exits: [{ label: "Shorten the note", decision: null }] },
+    };
+    const { decide } = mount("set_updating");
+    decide.mockRejectedValueOnce(new RefusalError(refusal));
+    open();
+    type("reason-input", REASON);
+    press(shrinkage.press);
+    expect(await screen.findByTestId("refusal")).toHaveTextContent("Shorten the note.");
+    expect(screen.getByTestId("reason-input")).toHaveValue(REASON);
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
+    expect(decide.mock.calls[1]).toEqual([PID, shrinkage.payload, { note: REASON }]);
+    await waitFor(() => expect(screen.queryByTestId("reason-input")).toBeNull());
+    expect(screen.getByTestId("reason-add")).toBeInTheDocument();
+    // Recorded once: the next press has no reason of its own.
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(3));
+    expect(decide.mock.calls[2]).toEqual([PID, shrinkage.payload]);
+  });
+
+  it("keeps what is written while the press is pending, which goes with the next press", async () => {
+    const LATER = `${REASON} And the slope is near one.`;
+    const { decide, qc } = mount("set_updating");
+    const served = qc.getQueryData<ProjectView>(keys.view(PID))!;
+    let answer!: (view: ProjectView) => void;
+    decide.mockImplementationOnce(() => new Promise<ProjectView>((resolve) => (answer = resolve)));
+    open();
+    type("reason-input", REASON);
+    press(shrinkage.press);
+    await waitFor(() => expect(screen.getByTestId("card-record")).toBeDisabled());
+    expect(decide.mock.calls[0]).toEqual([PID, shrinkage.payload, { note: REASON }]);
+    // Written on while the first press is in flight: not what that press sent.
+    type("reason-input", LATER);
+    answer(served);
+    await waitFor(() => expect(screen.getByTestId("card-record")).not.toBeDisabled());
+    expect(screen.getByTestId("reason-input")).toHaveValue(LATER);
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
+    expect(decide.mock.calls[1]).toEqual([PID, shrinkage.payload, { note: LATER }]);
+  });
+
+  it("does not go with a refusal's exit, which records the engine's decision, and stays for the next press", async () => {
+    // The reason was written for shrinkage; the exit records no update at all.
+    const exit: Decision = { kind: "set_updating", method: "none" };
+    const refusal: Refusal = {
+      error: { code: "no_refit", message: "Shrinkage needs a refit.", exits: [{ label: "Keep the model as fitted", decision: exit }] },
+    };
+    const { decide } = mount("set_updating");
+    decide.mockRejectedValueOnce(new RefusalError(refusal));
+    open();
+    type("reason-input", REASON);
+    press(shrinkage.press);
+    fireEvent.click(within(await screen.findByTestId("refusal")).getByTestId("refusal-exit"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
+    expect(decide.mock.calls[1]).toEqual([PID, exit]);
+    await waitFor(() => expect(screen.queryByTestId("refusal")).toBeNull());
+    expect(screen.getByTestId("reason-input")).toHaveValue(REASON);
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(3));
+    expect(decide.mock.calls[2]).toEqual([PID, shrinkage.payload, { note: REASON }]);
+  });
+
+  it("shows no reason on record, though the record the line names has one, and starts empty", () => {
+    const line = { status: "answered", decision_id: "r9" } as const;
+    mount("set_updating", { ...answered, line, decisions: [record()], quest: [lineOf("set_updating", line)] });
+    expect(screen.getByTestId(`option-${shrinkage.press}`)).toHaveAttribute("data-recorded");
+    expect(screen.queryByTestId("reason-on-record")).toBeNull();
+    expect(document.body).not.toHaveTextContent(REASON);
+    open();
+    expect(screen.getByTestId("reason-input")).toHaveValue("");
+  });
+
+  // The refusal as the server serves it for a note past its limit (core/decisions.py `check_note`,
+  // captured from the engine for a 2,001-character note).
+  const TOO_LONG: Refusal = {
+    error: {
+      code: "note_too_long",
+      message:
+        "A decision's note holds at most 2,000 characters, and this one has 2,001: shorten it, and the decision is recorded with it.",
+      exits: [{ label: "Shorten the note", decision: null }],
+    },
+  };
+
+  it("names itself as the note the server refuses as too long, and that refusal is answered at the box, its exit keeping the reason", async () => {
+    const { decide } = mount("set_updating");
+    decide.mockRejectedValueOnce(new RefusalError(TOO_LONG));
+    open();
+    type("reason-input", REASON);
+    const box = screen.getByTestId("reason-box");
+    // The server's word for it (its refusal's "a decision's note", its exit's "the note") is the box's own.
+    expect(box).toHaveTextContent(/the decision's note/);
+    press(shrinkage.press);
+    const refusal = await within(box).findByTestId("refusal");
+    expect(refusal).toHaveTextContent(TOO_LONG.error.message);
+    expect(screen.getAllByTestId("refusal")).toHaveLength(1);
+    expect(within(screen.getByTestId("options-updating")).queryByTestId("refusal")).toBeNull();
+    fireEvent.click(within(refusal).getByTestId("refusal-exit"));
+    expect(screen.queryByTestId("refusal")).toBeNull();
+    expect(screen.getByTestId("reason-input")).toHaveValue(REASON);
+    expect(decide).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves every other refusal at the option pressed, not at the box", async () => {
+    const refusal: Refusal = {
+      error: { code: "no_refit", message: "Shrinkage needs a refit.", exits: [{ label: "Keep the model as fitted", decision: null }] },
+    };
+    const { decide } = mount("set_updating");
+    decide.mockRejectedValueOnce(new RefusalError(refusal));
+    open();
+    type("reason-input", REASON);
+    press(shrinkage.press);
+    const shown = await within(screen.getByTestId("options-updating")).findByTestId("refusal");
+    expect(shown).toHaveTextContent("Shrinkage needs a refit.");
+    expect(within(screen.getByTestId("reason-box")).queryByTestId("refusal")).toBeNull();
   });
 });

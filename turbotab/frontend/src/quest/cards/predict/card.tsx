@@ -1,12 +1,16 @@
 /**
  * What the six Predict declaration cards share: the frame, the recording, and the engine's words.
  *
- * A card records through the existing decision hook (`useDecide`) and answers a press the server
- * does not record the way the Record's plain wiring does: the refusal and its exits, or the
- * failure, at the option pressed. It states only what the engine serves: a line of the quest log
- * (`reason`, `would_change`, `changes_nothing`), the preview the engine serves for the option
- * pointed at (the caption of its first view, else its note, else its caution), or the refusal the
- * preview meets. A card with nothing served to say about an option names the option and stops.
+ * A card records as the existing decision hook (`useDecide`) does, with the reason the person gave
+ * for the answer (ReasonBox, above the card's record button) as the decision's note, and answers a
+ * press the server does not record the way the Record's plain wiring does: the refusal and its
+ * exits, or the failure, at the option pressed, and a note the server refuses as too long at the
+ * reason box, which names it the decision's note as the refusal does. A refusal's exit records the
+ * decision the engine offers, not the press the reason was written for, so it goes without the
+ * note. It states only what the engine serves: a line of the quest log (`reason`, `would_change`,
+ * `changes_nothing`), the preview the engine serves for the option pointed at (the caption of its
+ * first view, else its note, else its caution), or the refusal the preview meets. A card with
+ * nothing served to say about an option names the option and stops.
  *
  * A press the card will not send (a number outside what the model takes, a column still to choose)
  * is answered at the option too, in one sentence for each field in the way, so no press is silent.
@@ -15,16 +19,25 @@
  * walkthrough): a click on an option chooses it, marked "chosen" until it is recorded, and the
  * button under the options records the choice; Enter on an option records it at once, as before.
  */
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type MouseEvent, type ReactNode } from "react";
-import { isRefusalError } from "../../../api/client";
-import { useColumnSummaries, useDecide, useProjectView, useStageResult } from "../../../api/queries";
-import type { ColumnSummary, Decision, ProjectState, QuestLine, Refusal } from "../../../api/schema";
+import { api, isRefusalError } from "../../../api/client";
+import {
+  keys,
+  logDerivedKeys,
+  mergeView,
+  useColumnSummaries,
+  useProjectView,
+  useStageResult,
+} from "../../../api/queries";
+import type { ColumnSummary, Decision, ProjectState, ProjectView, QuestLine, Refusal } from "../../../api/schema";
 import { Actions, RecordButton } from "../../../components/record/ask/common";
 import { Options, type OptionItem, type OptionTag } from "../../../components/record/Options";
 import { FailureNote, RefusalNote } from "../../../components/record/Refusal";
 import { Prose } from "../../../components/Prose";
 import { decisionKey, stateSeq, usePreview, type Answer } from "../../../components/stage/data";
 import { useStageFocus, type StageFocus } from "../../../state/focus";
+import { NO_REASON, ReasonBox, noteOf, type Reason } from "../ReasonBox";
 import c from "./declaration.module.css";
 
 /** The engine's words for the option pointed at, tagged with the decision they answer. */
@@ -66,6 +79,30 @@ export interface CardWiring {
   hold: (at: string) => void;
   answerAt: { key: string; node: ReactNode } | null;
   words: Words | null;
+  /** The reason being written for the next record, sent with it as the decision's note. */
+  reason: Reason;
+  setReason: (reason: Reason) => void;
+}
+
+/** Where a note the server refuses as too long is answered: at the reason box, which holds the text
+ *  to shorten and names it as the refusal does (core/decisions.py `check_note`), not at the option
+ *  pressed. */
+const AT_REASON = "reason";
+const NOTE_TOO_LONG = "note_too_long";
+
+/** Record a decision with the reason given for it (`?note=`, none where none is given), as
+ *  `useDecide` records one (queries.ts): the view the server answers with merged into the cache,
+ *  and the reads that follow the decision log refetched. `useDecide` takes no note. */
+function useDecideWithNote(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ decision, note }: { decision: Decision; note: string | null }) =>
+      note === null ? api.decide(pid, decision) : api.decide(pid, decision, { note }),
+    onSuccess: (view: ProjectView) => {
+      qc.setQueryData<ProjectView>(keys.view(pid), (prev) => mergeView(prev, view));
+      for (const key of logDerivedKeys(pid)) void qc.invalidateQueries({ queryKey: key, exact: true });
+    },
+  });
 }
 
 /** The wiring of one card: its project's state, its recording, and the preview of the option of
@@ -75,9 +112,10 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
   const summaries = useColumnSummaries(pid, view?.stages.ingest?.status === "fresh").data;
   const targetStatus = view?.stages.target_info?.status;
   const target = useStageResult(pid, "target_info", targetStatus !== undefined && targetStatus !== "idle" && targetStatus !== "blocked").data?.artifact;
-  const decide = useDecide(pid);
+  const decide = useDecideWithNote(pid);
   const [plain, setPlain] = useState<PlainAnswer | null>(null);
   const [held, setHeld] = useState<string | null>(null);
+  const [reason, setReason] = useState<Reason>(NO_REASON);
   const { focus } = useStageFocus();
   const pointed =
     focus.kind === "option" && focus.decision.kind === kind
@@ -85,17 +123,26 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
       : null;
   const preview = usePreview(pid, pointed, view ? stateSeq(view) : 0);
 
-  const record = (decision: Decision, at: string) => {
+  // The card's button and Enter on an option send the reason written for the press; once it is
+  // recorded, the box is collapsed and empty again, unless the person has written on meanwhile. A
+  // refused press keeps it. A refusal's exit records the decision the engine offers, not the press
+  // the reason was written for, so it goes without the note and leaves the box as it is.
+  const send = (decision: Decision, at: string, note: string | null, onRecorded?: () => void) => {
     setPlain(null);
     setHeld(null);
-    decide.mutate(decision, {
+    decide.mutate({ decision, note }, {
+      onSuccess: () => onRecorded?.(),
       onError: (err) =>
         setPlain(
           isRefusalError(err)
-            ? { at, refusal: err.refusal }
+            ? { at: err.refusal.error.code === NOTE_TOO_LONG ? AT_REASON : at, refusal: err.refusal }
             : { at, failure: err instanceof Error ? err.message : String(err) },
         ),
     });
+  };
+  const record = (decision: Decision, at: string) => {
+    const note = noteOf(reason);
+    send(decision, at, note, () => setReason((now) => (noteOf(now) === note ? NO_REASON : now)));
   };
   const hold = (at: string) => {
     setPlain(null);
@@ -108,7 +155,7 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
           <RefusalNote
             refusal={plain.refusal}
             onDismiss={() => setPlain(null)}
-            onExit={(exit) => (exit.decision ? record(exit.decision, plain.at) : setPlain(null))}
+            onExit={(exit) => (exit.decision ? send(exit.decision, plain.at, null) : setPlain(null))}
           />
         ) : (
           <FailureNote
@@ -130,6 +177,8 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
     hold,
     answerAt,
     words: preview.answer ? wordsOf(preview.answer) : null,
+    reason,
+    setReason,
   };
 }
 
@@ -205,8 +254,10 @@ function BlockedNote({ problems }: { problems: string[] }) {
  *  card until the action records it). */
 export const CHOSEN = "chosen";
 
-/** The card's record button (today's cards' RecordButton), what a press records named on it, and
- *  the answer to its press under it where that press is not answered at an option. */
+/** The card's record button (today's cards' RecordButton), what a press records named on it, the
+ *  box for the reason for the next answer above it (ReasonBox, collapsed until asked for, which
+ *  answers a note the server refuses), and the answer to its press under it where that press is not
+ *  answered at an option. */
 export function RecordChosen({
   label,
   card,
@@ -221,6 +272,11 @@ export function RecordChosen({
 }) {
   return (
     <>
+      <ReasonBox
+        reason={card.reason}
+        onChange={card.setReason}
+        answer={card.answerAt?.key === AT_REASON ? card.answerAt.node : null}
+      />
       <Actions>
         <RecordButton
           disabled={label === null || card.pending}
