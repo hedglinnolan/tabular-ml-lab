@@ -5,11 +5,14 @@ as an exit, as its readings sibling does (``test_revisit_offers_the_routes_it_na
 they are" its only exit, and "The recorded exclusion rules reads `x`".
 
 The routes, by construction: the answer that reads the role withdrawn first, a revert of the record
-in force for its slot, after which the revisit is accepted; and the answers kept. A withdrawal is
-offered and named only where it withdraws (an earlier answer of the slot still live is returned by
-the revert, and reads the column as well) and the record accepts it (the seal keeps the exclusion
-rules once the held-out rows are drawn). The words agree with the answer's name and the columns'
-count ("The recorded exclusion rules read"; "roles nobody confirmed"), and keeping names what the
+in force for its slot, after which the revisit is accepted; and the answers kept. That revert is
+offered and named only where, after it, no answer of the slot reads a role the revisit unsettles,
+and the record accepts it (the seal keeps the exclusion rules once the held-out rows are drawn).
+Where it returns an earlier answer of the slot that reads none of them (the Router records each
+slot's first answer, the card's adjustment, no rules, the sample's estimate, before any change), it
+is offered as a return to that earlier answer; where the earlier answer reads one as well, it is
+not offered. The words agree with the answer's name and the columns' count ("The recorded
+exclusion rules read"; "roles nobody confirmed"), and keeping names what the
 revisit undoes: a confirmation, or (reverting the user's own roles answer, which settled the role
 without a confirmation, or a bulk roles answer that would carry a settled role along) the answers
 as they are. With no answer reading the role, the revisit is accepted and nothing is offered.
@@ -151,6 +154,82 @@ def test_an_answer_given_twice_is_not_offered_as_withdrawn(answer, slot):
     refusal = refused(log, REVISIT)
     assert refusal.message.endswith("would then be a role nobody confirmed. Keep its "
                                     "confirmation.")
+    assert refusal.exits == [KEEP]
+
+
+# An earlier answer of the slot that reads no role the revisit unsettles, then the answer that
+# reads it (record 5): the A2 InBody card's adjustment without `ALC`, then one adding it; no
+# adjustment, then one; the sample's estimate, then the population's; no exclusion rules, then a
+# rule on `kcal` (the Router records each slot's first answer before any change).
+WITHOUT_ALC = {"kind": "set_energy_adjustment", "method": "standard", "energy_column": "kcal",
+               "nutrients": ["fat_g"]}
+EARLIER = {
+    "an-adjustment-without-the-role": (
+        ROLES, "ALC", WITHOUT_ALC, ADJ, "energy_adjustment",
+        "The recorded energy adjustment reads `ALC`, which would then be a role nobody confirmed. "
+        "Return to the earlier energy adjustment first, or keep its confirmation.",
+        "Return to the earlier energy adjustment first"),
+    "no-adjustment": (
+        ROLES, "ALC", {"kind": "set_energy_adjustment", "method": "none"}, ADJ,
+        "energy_adjustment",
+        "The recorded energy adjustment reads `ALC`, which would then be a role nobody confirmed. "
+        "Return to the earlier energy adjustment first, or keep its confirmation.",
+        "Return to the earlier energy adjustment first"),
+    "the-sample-s-estimate": (
+        SURVEY_ROLES, "wt", {"kind": "set_survey", "estimand": "sample"}, SURVEY, "survey",
+        "The recorded survey answer reads `wt`, which would then be a role nobody confirmed. "
+        "Return to the earlier survey answer first, or keep its confirmation.",
+        "Return to the earlier survey answer first"),
+    "no-rules": (
+        ROLES, "kcal", {"kind": "set_exclusions", "rules": []}, SCREEN, "exclusions",
+        "The recorded exclusion rules read `kcal`, which would then be a role nobody confirmed. "
+        "Return to the earlier exclusion rules first, or keep its confirmation.",
+        "Return to the earlier exclusion rules first"),
+}
+
+
+@pytest.mark.parametrize("roles, column, earlier, later, slot, message, label",
+                         list(EARLIER.values()), ids=list(EARLIER))
+def test_an_earlier_answer_that_reads_no_unsettled_role_is_offered_to_return_to(
+        roles, column, earlier, later, slot, message, label):
+    """Reverting the answer in force (record 5) returns the earlier one (record 4), which reads no
+    role the revisit unsettles, so the revert is offered and named for what it does: a return to
+    that earlier answer, not a withdrawal (the slot still holds an answer). By construction, the
+    state after it holds the earlier answer as if the later had never been recorded, and the
+    revisit is then accepted, leaving the role unsettled. Its other direction, an earlier answer
+    that reads the role as well, is the test above (nothing offered)."""
+    from turbotab.core.readings import unsettled
+
+    log = confirmed(earlier, later, rode=(column,), roles=roles)
+    refusal = refused(log, REVISIT, roles=roles)
+    assert refusal.code == "role_unconfirmed"
+    assert refusal.message == message
+    assert refusal.exits == [{"label": label, "decision": {"kind": "revert", "decision_id": "r5"}},
+                             KEEP]
+    after = taken(log, refusal.exits[0]["decision"], roles=roles)
+    never = confirmed(earlier, rode=(column,), roles=roles)
+    assert getattr(d.fold(after), slot) is not None
+    assert getattr(d.fold(after), slot) == getattr(d.fold(never), slot)
+    revisited = taken(after, REVISIT, roles=roles)
+    assert unsettled(d.fold(revisited), [column]) == [column]
+
+
+def test_an_earlier_answer_that_reads_another_unsettled_role_is_not_offered():
+    """One confirmation settled `fat_g` and `ALC` (record 3); the earlier adjustment (record 4)
+    reads `fat_g`, the later (record 5) both. Returning to the earlier still leaves `fat_g` a role
+    nobody confirmed (by construction the revisit is refused again after it), so no return is
+    offered or named."""
+    both = {"kind": "confirm_readings", "items": [
+        {"reading": "role", "column": "fat_g", "value": "exposure"},
+        {"reading": "role", "column": "ALC", "value": "exposure"}]}
+    log = confirmed(WITHOUT_ALC, ADJ, rode=("fat_g", "ALC"), confirmation=both)
+    returned = [*log, rec(6, {"kind": "revert", "decision_id": "r5"})]
+    again = refused(returned, REVISIT)
+    assert again.code == "role_unconfirmed" and "reads `fat_g`," in again.message
+    refusal = refused(log, REVISIT)
+    assert refusal.message == (
+        "The recorded energy adjustment reads `fat_g` and `ALC`, which would then be roles "
+        "nobody confirmed. Keep their confirmation.")
     assert refusal.exits == [KEEP]
 
 

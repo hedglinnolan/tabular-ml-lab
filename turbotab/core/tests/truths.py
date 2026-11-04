@@ -130,8 +130,8 @@ def asks(error: dict[str, Any]) -> bool:
     :data:`ASKING`, except a ``role_unconfirmed`` that carries a route, the revisit refused because
     a recorded answer reads what it would unsettle (its last exit keeps the answers as they are,
     ``decisions.KEEP_THE_ANSWERS``). That one refuses the revisit itself, and its other exits are
-    routes (a reading's other value in place of the one revisited, the answer withdrawn first),
-    none a question: answering it from the truth recorded the declared reading again, after which
+    routes (a reading's other value in place of the one revisited, the answer withdrawn first or
+    returned to the earlier one), none a question: answering it from the truth recorded the declared reading again, after which
     the revisit undid nothing, or the other value, a route nobody chose."""
     from turbotab.core.decisions import KEEP_THE_ANSWERS
 
