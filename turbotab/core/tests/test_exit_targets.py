@@ -216,6 +216,7 @@ UNTARGETED: dict[tuple[str, str], str] = {
     ("core/fit_press.py", "'Choose the goal'"): HELD,
     ("core/fit_press.py", "f'Triage the open noticings in {where}'"): HELD,
     ("core/fit_press.py", "f'Decide: {i.summary}'"): HELD,
+    ("core/fit_press.py", "f'Act on it {_acted_at(i)}: {i.summary}'"): HELD,
     ("core/methods/exposure_form.py", "last"): ROWS,
     ("core/methods/qc_drift.py", "'Run it in each training fold'"): ENGINE_GUARD,
     ("core/methods/survey.py",
