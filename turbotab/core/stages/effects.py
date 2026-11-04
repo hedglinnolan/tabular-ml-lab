@@ -1561,9 +1561,9 @@ class _Run:
         from turbotab.core.voice import listing
 
         if name == "crude" and together:
-            return (f"STROBE 16a's estimate without the covariates; {listing(list(together))}, "
-                    f"the members of the exposure family, are in it together, so each is "
-                    f"adjusted for the other{'s' if len(together) > 2 else ''}.")
+            return (f"STROBE 16a's estimate without the covariates; the study factors "
+                    f"{listing(list(together))} are in it together, so each is adjusted for the "
+                    f"other{'s' if len(together) > 2 else ''}.")
         if name == "crude" and adjusted:
             one = len(adjusted) == 1
             return (f"STROBE 16a's estimate without the covariates; the indicators of "

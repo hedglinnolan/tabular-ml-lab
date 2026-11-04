@@ -56,8 +56,8 @@ EACH = {
     "none": ("2 exposures were tested, each in turn, with no multiplicity control, recorded as a "
              "limitation: at p < 0.05 about 0 would pass by chance alone; every member is shown."),
 }
-JOINT_NOTE = ("STROBE 16a's estimate without the covariates; `fiber` and `sugar`, the members of "
-              "the exposure family, are in it together, so each is adjusted for the other.")
+JOINT_NOTE = ("STROBE 16a's estimate without the covariates; the study factors `fiber` and `sugar` "
+              "are in it together, so each is adjusted for the other.")
 UNADJUSTED_NOTE = "STROBE 16a's unadjusted estimate: no other column in the model."
 # The claims no sentence beside a joint fit's rows makes: none carries a q-value.
 EACH_CLAIMS = ("each in turn", "q-values control", "tests are stated")
@@ -202,8 +202,8 @@ def test_a_category_member_of_a_joint_fit_is_named_by_its_column(tmp_path):
     assert sequence["crude"]["adjusted_for"] == ["fiber", "arm"]
     assert sequence["crude"]["label"] == "Without covariates"
     assert sequence["crude"]["note"] == (
-        "STROBE 16a's estimate without the covariates; `fiber` and `arm`, the members of the "
-        "exposure family, are in it together, so each is adjusted for the other.")
+        "STROBE 16a's estimate without the covariates; the study factors `fiber` and `arm` are in "
+        "it together, so each is adjusted for the other.")
 
 
 # ── one fit per member: silent ───────────────────────────────────────────────
