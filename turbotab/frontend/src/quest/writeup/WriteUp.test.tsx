@@ -48,6 +48,7 @@ const CAPTURED: [string, Captured][] = [
   ["estimate", estimateRaw as unknown as Captured],
 ];
 const [, PREDICT] = CAPTURED[0]!;
+const [, ESTIMATE] = CAPTURED[1]!;
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-nhanes-prediction.json", { eager: true, import: "default" });
 const JOURNEY = Object.values(FIXTURES)[0]!;
@@ -273,6 +274,39 @@ describe("the export is read only when it can be shown", () => {
     await act(async () => answerNext(zipAnswer(PREDICT)()));
     await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "fresh"));
     expect(within(card).getByTestId("export-tables").closest("[inert]")).toBeNull();
+  });
+
+  it("keeps the newest read drawn where an older read, for a record since left behind, answers after it", async () => {
+    // The fit's result moves twice while the export is read: the read for the middle result
+    // answers last, with another export's tables, so which read is drawn shows in its tables as
+    // well as in its veil.
+    const pending: ((r: Response) => void)[] = [];
+    let n = 0;
+    const { qc, card, calls } = writeUp(PREDICT, {
+      exportAnswer: () => (++n === 1 ? zipAnswer(PREDICT)() : new Promise<Response>((resolve) => pending.push(resolve))),
+    });
+    await within(card).findByTestId("export-tables");
+    const veilOf = () => within(card).getByTestId("export-veil");
+    const files = () => within(card).getAllByTestId("export-table").map((s) => s.getAttribute("data-file"));
+    const fit = VIEW.stages.fit!;
+    act(() => qc.setQueryData(keys.view(PID), { ...VIEW, stages: { ...VIEW.stages, fit: { ...fit, key: `${fit.key}-b` } } }));
+    await waitFor(() => expect(calls("export")).toBe(2));
+    act(() => qc.setQueryData(keys.view(PID), { ...VIEW, stages: { ...VIEW.stages, fit: { ...fit, key: `${fit.key}-c` } } }));
+    await waitFor(() => expect(calls("export")).toBe(3));
+    const [middle, newest] = pending;
+    await act(async () => newest!(zipAnswer(PREDICT)()));
+    await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "fresh"));
+    expect(files()).toEqual(PREDICT.truth.tables.map((t) => t.file));
+    // The read left behind answers now. Once read, it reads the checklist again, as every read
+    // does, so that read marks it done.
+    const before = calls("checklist");
+    await act(async () => middle!(zipAnswer(ESTIMATE)()));
+    await waitFor(() => expect(calls("checklist")).toBeGreaterThan(before));
+    await settle();
+    expect(veilOf()).toHaveAttribute("data-veil", "fresh");
+    expect(files()).toEqual(PREDICT.truth.tables.map((t) => t.file));
+    expect(within(card).getByTestId("export-tables").closest("[inert]")).toBeNull();
+    expect(calls("export")).toBe(3);
   });
 
   it("keeps what it drew veiled \"stale\" while the export waits after a decision, unread, and live again once it is read", async () => {
