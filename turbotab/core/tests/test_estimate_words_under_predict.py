@@ -334,14 +334,15 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     fit and the stages that draw censored copies when every censored draw came from a certified
     censored-normal fit (the fit also when the univariable screen came to test each term on its
     rank's degrees of freedom), and the proposals stage when its missing-values card came to read
-    the modifications."""
+    the modifications; and, at PP2's third pass, the mattered stage when a specification whose plan
+    holds a pipeline step came to be fitted as that plan (PP2 C1)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     assert (versions["design"], versions["fit"], versions["findings"]) == (36, 43, 23)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
             versions["secondary"], versions["scales"]) == (17, 27, 23, 17, 14)
-    assert (versions["modification"], versions["mattered"]) == (9, 3)
+    assert (versions["modification"], versions["mattered"]) == (9, 4)
     assert versions["proposals"] == 23
 
 

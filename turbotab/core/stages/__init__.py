@@ -1213,7 +1213,10 @@ def build_graph() -> Graph:
             # to the plan the lock records; its routes withhold it as the estimates are withheld.
             # mattered 2: as fit 39 (a specification's Firth table on completely separated rows).
             # mattered 3: as fit 41 (a specification's Firth table on any separated rows).
-            Stage("mattered", 3, ("working", "cohort", "split", "target_info", "design", "fit"),
+            # mattered 4 (PP2 C1): a specification whose plan holds a pipeline step (a fill,
+            # multiple imputation, a declared form, the energy model, blanks as a level) is fitted
+            # as that plan, through ``sensitivity.fit_on_rows``, not refused.
+            Stage("mattered", 4, ("working", "cohort", "split", "target_info", "design", "fit"),
                   MATTERED_READS, mattered_stage, heavy=True, requires=MATTERED_REQUIRES,
                   label="Refitting the estimate with each recorded choice changed"),
         ]

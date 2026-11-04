@@ -34,7 +34,12 @@ estimates alone, no interval, so that specification is not estimated, its reason
 intervals with Bell–McCaffrey degrees of freedom when the rows repeat within a unit.
 The estimate is the exposure's coefficient: a difference in the mean outcome per unit of the
 exposure, or a difference in log-odds. A specification's rows are those its rule keeps with every
-column it reads present; its n is said beside it.
+column it reads present; its n is said beside it. That is :func:`linear_fitter`, which refits the
+raw columns; a caller may fit a specification otherwise (the ``mattered`` stage fits one whose plan
+holds a pipeline step as that plan, ``core/mattered.py``), and a :class:`SpecFit` then carries,
+under multiple imputation, its fraction of missing information and Monte Carlo error beside its
+degrees of freedom, while the curve carries the steps such fits went through
+(:attr:`SpecCurve.through`).
 
 **A survey design** (the surveyed-population answer) is honored: every specification is the
 design-based fit of :func:`turbotab.core.models.survey.survey_table` (Taylor linearization, t on
@@ -164,7 +169,9 @@ class Choice:
 
 @dataclass(frozen=True)
 class SpecFit:
-    """What one specification's fit returns."""
+    """What one specification's fit returns. Under multiple imputation ``df`` is Barnard and
+    Rubin's, ``fmi`` the fraction of missing information and ``mc_se`` the Monte Carlo error of the
+    pooled estimate (``methods.imputation.Pooled``); both None for a fit that imputed nothing."""
 
     estimate: float
     low: float | None
@@ -176,6 +183,8 @@ class SpecFit:
     estimator: str = ""
     covariance: str = ""
     refused: str | None = None  # why it has no estimate, when it has none
+    fmi: float | None = None
+    mc_se: float | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +202,8 @@ class Spec:
     estimator: str = ""
     covariance: str = ""
     scale_key: str = ""
+    fmi: float | None = None  # as :class:`SpecFit`'s
+    mc_se: float | None = None
 
 
 @dataclass(frozen=True)
@@ -235,6 +246,9 @@ class SpecCurve:
     weighted: bool = False
     clustered: bool = False
     exits: list[dict[str, Any]] = field(default_factory=list)
+    # The pipeline steps a caller fitted specifications through as plans, by step name (the
+    # ``mattered`` stage's; :func:`linear_fitter` refits raw columns and goes through none).
+    through: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -392,7 +406,7 @@ def specification_curve(choices: Sequence[Choice], fit: Callable[[Mapping[str, s
             continue
         specs.append(Spec(k, dict(picks), i == 0, float(got.estimate), got.low, got.high,
                           int(got.n), got.se, got.p, got.df, got.estimator, got.covariance,
-                          scale_key))
+                          scale_key, fmi=got.fmi, mc_se=got.mc_se))
     return SpecCurve(estimate_label=estimate_label, choices=described, specs=specs,
                      not_estimated=missing, total=total, drawn=len(picks_list),
                      sampled=rule is not None, rule=rule, crossing=crossing,
