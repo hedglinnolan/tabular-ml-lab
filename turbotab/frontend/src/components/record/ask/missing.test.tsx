@@ -227,34 +227,66 @@ describe("m, within the contract's bounds", () => {
 });
 
 describe("what multiple imputation is said to do", () => {
-  // Under multiple imputation the cross-validated scores are the single fill's and the
-  // coefficients are pooled over the imputations (models/pipeline.py `impute_detail`), and a
-  // column below detection filled by half its minimum is not imputed (`imputation_count`).
-  it("says the coefficients are pooled, and claims no imputation of every blank", () => {
-    renderCard({ proposals: ESTIMATE.proposals, purpose: "inference" });
-    const said = screen.getByTestId("option-multiple_imputation").textContent ?? "";
-    expect(said).toContain("the coefficients are pooled");
-    expect(said).not.toMatch(/each blank|results pooled/i);
+  // Whether the fit draws imputed copies, and pools what over them, is the engine's to decide from
+  // the families chosen and the blanks among the analyzed rows: none where no input has a blank
+  // (models/pipeline.py `imputation_count` 0), and a family with no inference table, elastic net
+  // or boosted trees chosen alone under Estimate, is fit on the single fill (`impute_detail`). So
+  // the option says the server's words for the method, its served label and its sound sentence
+  // (backticks mark data, drawn as code), and nothing the browser composes beside its controls.
+  const served = (proposals: ProposalsArtifact) =>
+    proposals.missing!.methods.find((o) => o.key === "multiple_imputation")!;
+  /** The option's words outside its controls (its m, its imputation model, its levels). */
+  const words = () => {
+    const option = screen.getByTestId("option-multiple_imputation").cloneNode(true) as HTMLElement;
+    option.querySelector('[role="group"]')!.remove();
+    return option.textContent;
+  };
+  /** The option's whole text, controls and all, less every word the server served for them. */
+  const unserved = (proposals: ProposalsArtifact) => {
+    const m = proposals.missing!;
+    const said = [served(proposals), ...m.imputation_models, ...m.below_detection].flatMap((o) => [
+      o.label,
+      o.sound.replaceAll("`", ""),
+    ]);
+    return said.reduce(
+      (text, s) => text.replaceAll(s, ""),
+      screen.getByTestId("option-multiple_imputation").textContent ?? "",
+    );
+  };
+  const asServed = (o: { label: string; sound: string }) => o.label + o.sound.replaceAll("`", "");
+
+  it.each([
+    ["with blanks among the predictors (NHANES)", () => ESTIMATE],
+    // the causal journey's server offers it under Estimate where no predictor has a blank
+    ["where no predictor has a blank (the causal journey)", () => missingOpen("causal")],
+  ])("says the served label and sound sentence %s, and nothing of copies or pooling", (_, at) => {
+    const { proposals, state } = at();
+    expect(state.purpose).toBe("inference");
+    expect(served(proposals).rung).not.toBe("refused");
+    renderCard({ proposals, purpose: "inference" });
+    expect(words()).toBe(asServed(served(proposals)));
+    expect(unserved(proposals)).not.toMatch(/pool|cop(y|ies)/i);
   });
 
-  // The engine draws no copies where no input has a blank among the analyzed rows: the count of
-  // imputations is then 0 and the plan says the coefficients are not imputed (models/pipeline.py
-  // `imputation_count`, `impute_detail`). The causal journey's server serves that case under
-  // Estimate: no predictor with a blank, multiple imputation still offered.
-  it("claims copies are imputed only where a predictor has a blank to impute", () => {
-    const causal = missingOpen("causal");
-    expect(causal.state.purpose).toBe("inference");
-    expect(causal.proposals.missing!.columns).toEqual([]);
-    const served = causal.proposals.missing!.methods.find((o) => o.key === "multiple_imputation")!;
-    expect(served.rung).not.toBe("refused");
-    renderCard({ proposals: causal.proposals, purpose: "inference", current: causal.state.missing });
-    expect(document.body.textContent).toContain("No predictor has a blank cell.");
-    const said = screen.getByTestId("option-multiple_imputation").textContent ?? "";
-    const copies = said.search(/several copies of the data/i);
-    expect(copies).toBeGreaterThan(-1);
-    // what comes before the copies is the condition, so the card says nothing the plan contradicts
-    expect(said.slice(0, copies)).toMatch(/where a predictor has a blank to impute,\s*$/i);
-    expect(said).toContain("the coefficients are pooled");
+  // By construction: the words the engine serves for it where every blank means not asked
+  // (methods/missing.py `_with_not_asked`: rung available, the sound its not-asked caution, the
+  // columns ticked), so the option follows what is served, not a sentence of its own.
+  it("says whatever the server serves for it", () => {
+    const sound =
+      "Not for `smoking`: multiple imputation gives a blank that means not asked an answer drawn " +
+      "from the people who were asked, an answer nobody gave.";
+    const proposals = {
+      ...ESTIMATE.proposals,
+      missing: {
+        ...ESTIMATE.proposals.missing!,
+        methods: ESTIMATE.proposals.missing!.methods.map((o) =>
+          o.key === "multiple_imputation" ? { ...o, rung: "available" as const, sound } : o,
+        ),
+      },
+    } as ProposalsArtifact;
+    renderCard({ proposals, purpose: "inference" });
+    expect(words()).toBe(asServed(served(proposals)));
+    expect(words()).not.toContain(served(ESTIMATE.proposals).sound);
   });
 });
 

@@ -571,14 +571,12 @@ export function MissingAsk({
   const multipleImputation: OptionItem | null = miOffer
     ? {
         key: "multiple_imputation",
-        label: taught(p.entry, "multiple_imputation")?.label ?? "Multiple imputation",
-        // Not the teaching's line, which says 20 times: m is the user's, and the fit may draw more.
-        // What is pooled is the coefficients (the cross-validated scores are the single fill's;
-        // models/pipeline.py `impute_detail`), and a column below detection filled by half its
-        // minimum is not imputed (`imputation_count`), so the line claims no imputation of each blank.
-        // Where no predictor has a blank among the analyzed rows the fit draws no copies
-        // (`imputation_count` 0), so the copies are said under that condition.
-        line: "Where a predictor has a blank to impute, several copies of the data are imputed with the outcome, and the coefficients are pooled across them by Rubin's rules.",
+        // The server's words for the method, its label and its sound sentence, and none of the
+        // browser's: whether the fit draws imputed copies, and pools what over them, depends on
+        // the families chosen and the blanks among the analyzed rows, which the engine decides
+        // (models/pipeline.py `imputation_count`, `impute_detail`).
+        label: miOffer.label,
+        line: miOffer.sound,
         decision:
           m === null
             ? null
