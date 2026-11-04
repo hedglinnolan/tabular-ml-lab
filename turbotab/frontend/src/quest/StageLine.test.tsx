@@ -191,3 +191,30 @@ describe("a stage that asks nothing, before the analysis comes to it (finding 25
     expect(seg.querySelector("span")!.style.width).toBe("100%");
   });
 });
+
+/**
+ * B1 (WO1; the vision audit's V2): under Estimate the engine places each exhibit in Results by
+ * default once it is shown for the answers now, so once the plan is locked and the exhibits are
+ * fresh it serves Results complete and Write-up reached. The log is the engine's
+ * (`estimate_placed`: NHANES, the plan locked, Table 2 and the further-adjusted model fresh).
+ */
+describe("Write-up on the line under Estimate, once Results is placed (B1)", () => {
+  const log = CONTRACT.logs.estimate_placed.log;
+
+  it("reads Write-up as reached, not done while Your question still asks, and Results as done", () => {
+    expect(log.fit?.purpose).toBe("inference");
+    expect(log.fit?.locked).toBe(true);
+    const results = stageOf(log, "results")!;
+    expect(results.progress).toEqual({ answered: results.progress!.required, required: results.progress!.required, complete: true });
+    // Your question's design is still to confirm, so the analysis is not at Write-up yet.
+    expect(stageOf(log, "question")!.progress?.complete).toBe(false);
+    render(<StageLine log={log} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
+    const writeup = screen.getByTestId("segment-writeup");
+    expect(writeup).toHaveAttribute("data-reached");
+    expect(writeup).not.toHaveAttribute("data-done");
+    expect(writeup.textContent).toBe(`${stageOf(log, "writeup")!.name}: not done yet`);
+    const seg = screen.getByTestId("segment-results");
+    expect(seg).toHaveAttribute("data-done");
+    expect(seg.textContent).toBe(`${results.name}: done`);
+  });
+});

@@ -2,9 +2,9 @@
  * The engine's side of the shell's contract (quest-contract.json), written by
  * turbotab/core/tests/test_quest_renderer_contract.py from the path fuzzer's sample datasets: every
  * quest line's (source, key) under every goal, the stages and each question's and declaration's
- * place and name, the sweep words, two quest logs of the NHANES fixture under Predict with what
- * "Confirm all" records in each, and the Fit lock as the engine words it held and pressed. Read by
- * the shell's tests and by the mock server; never edited by hand.
+ * place and name, the sweep words, two quest logs of the NHANES fixture under Predict and one under
+ * Estimate with what "Confirm all" records in each, and the Fit lock as the engine words it held
+ * and pressed. Read by the shell's tests and by the mock server; never edited by hand.
  */
 import type { FitLock, QuestLog, SweptLineInput } from "../../api/schema";
 import raw from "./quest-contract.json";
@@ -35,7 +35,9 @@ export interface Contract {
   declarations: Record<string, Place & { counted: boolean }>;
   /** Each sweep size's heading and action ("Here are the 3 other choices set for you", "Confirm all 3"). */
   sweep_words: Record<string, [string, string]>;
-  logs: Record<"models_open" | "results_reached", { log: QuestLog; swept: Record<string, SweptLineInput[]> }>;
+  /** Under Predict, Models open and Results reached; under Estimate, the plan locked and every
+   *  exhibit fresh, each placed in Results by default, so Write-up is reached (B1). */
+  logs: Record<"models_open" | "results_reached" | "estimate_placed", { log: QuestLog; swept: Record<string, SweptLineInput[]> }>;
   fit_locks: {
     estimate_seconds: number;
     held: FitLock;

@@ -11,7 +11,8 @@ renderer for.
 The fixture also carries what the shell's other tests and the mock server read from the engine
 itself, so that none of them retypes it: the seven stages and their names, each Router question's
 and declaration's place and name, each sweep size's heading and action, two quest logs of the
-NHANES fixture under Predict (Models open; Fit pressed and Results reached) with what "Confirm all"
+NHANES fixture under Predict (Models open; Fit pressed and Results reached) and one under Estimate
+(the plan locked and the exhibits fresh, so Write-up is reached: B1) with what "Confirm all"
 records in each stage, the Fit lock as the engine words it (held, ready, pressed, unlocked under
 Estimate and with no goal), the floor a gain over the no-predictor baseline must reach, and the
 decision kinds each question that can carry the ledger's ask card records.
@@ -27,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from turbotab.core import ask, fit_press, quest, sweep
-from turbotab.core.decisions import SLOTS, ProjectState
+from turbotab.core.decisions import SLOTS, ProjectState, fold, parse_decision
 from turbotab.core.interview import route
 from turbotab.core.models import baseline
 from turbotab.core.sequence import question_of
@@ -80,6 +81,25 @@ def _log(stop: str, pressed: bool) -> dict[str, Any]:
     return {"log": log.model_dump(mode="json"), "swept": swept}
 
 
+def _estimate_log() -> dict[str, Any]:
+    """The NHANES fixture under Estimate, every Router question answered by its first option, the
+    plan locked as pressing Fit records it, and the fit and each exhibit Results serves computed
+    for the answers now: its quest log as GET /quest serves it (B1: each exhibit is placed in
+    Results by default, so Write-up is reached), and what "Confirm all" records."""
+    fx = path_fuzzer.NHANES
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "inference")
+    records.append(path_fuzzer._record(records, parse_decision(
+        {"kind": "lock_plan", "seen_target": state.target})))
+    state = fold(records)
+    artifacts = path_fuzzer.artifacts_for(state, fx, records)
+    stages = {name: {"status": "fresh"} for name in ("fit", *quest.served_exhibits(state))}
+    steps = route(state, stages, artifacts, records, pressed=True)
+    log = path_fuzzer.quest_of(state, records, steps, stages, artifacts, fx, True, True)
+    swept = {s.key: [l.model_dump(mode="json") for l in sweep.sweep_lines(s)]
+             for s in log.stages if s.sweep is not None}
+    return {"log": log.model_dump(mode="json"), "swept": swept}
+
+
 def _locks() -> dict[str, Any]:
     state, _artifacts, records = path_fuzzer.answered_through(path_fuzzer.NHANES, "prediction")
     held = fit_press.fit_lock(state, records, pressed=False, held=True, estimate=HELD_SECONDS)
@@ -109,7 +129,8 @@ def contract() -> dict[str, Any]:
                          for d in quest.DECLARATIONS},
         "sweep_words": {str(n): list(sweep._sweep_words(n)) for n in range(1, 9)},
         "logs": {"models_open": _log("models", pressed=False),
-                 "results_reached": _log("open_seal", pressed=True)},
+                 "results_reached": _log("open_seal", pressed=True),
+                 "estimate_placed": _estimate_log()},
         "fit_locks": _locks(),
         # The floor a score's gain over the no-predictor baseline must reach (the mock's verdict).
         "min_gain": baseline.MIN_GAIN,
@@ -150,3 +171,11 @@ def test_the_samples_are_the_states_they_say():
     # The sweeps the shell's "Confirm all" is held to: Models' three defaults under Predict.
     assert [l["key"] for l in logs["results_reached"]["swept"]["models"]] == [
         "form", "set_validation", "set_levers"]
+    # Under Estimate, locked, Table 2 and the further-adjusted model fresh (B1): both placed in
+    # Results by default, 2 of 2, so Write-up is reached, asking nothing.
+    placed = logs["estimate_placed"]["log"]
+    stages = {s["key"]: s for s in placed["stages"]}
+    assert placed["fit"]["purpose"] == "inference" and placed["fit"]["locked"] is True
+    assert stages["results"]["progress"] == {"answered": 2, "required": 2, "complete": True}
+    assert stages["writeup"]["reached"] and stages["writeup"]["progress"] == {
+        "answered": 0, "required": 0, "complete": True}
