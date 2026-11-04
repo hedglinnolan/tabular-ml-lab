@@ -401,11 +401,24 @@ class NormDrawRefused(ImputationRefused, np.linalg.LinAlgError):
     refuses this one too, and a LinAlgError, as numpy's failure was, so a caller that refuses a
     chained model's linear-algebra failure in its own words naming the column
     (``featurewise_mi.draw_copies``) still does. Its message is words, and ``why`` numpy's own
-    account (never shown)."""
+    account (never shown). A caller that knows the column says so (:meth:`of`)."""
 
     def __init__(self, message: str = NORM_DRAW_WORDS, why: str = ""):
         super().__init__(message)
         self.why = str(why)
+
+    def of(self, column: str) -> "NormDrawRefused":
+        """This failure as ``column``'s: its words name the column (:func:`norm_draw_words`), and
+        an exit may offer to leave it out (``columns``)."""
+        named = NormDrawRefused(norm_draw_words(column), why=self.why)
+        named.columns = [column]
+        return named
+
+
+def norm_draw_words(column: str) -> str:
+    """The refusal of ``column``'s draws where its number's model cannot be computed
+    (:class:`NormDrawRefused`)."""
+    return f"The model that imputes `{column}`'s blanks could not be computed on these rows."
 
 
 def _norm_draw(X: np.ndarray, y: np.ndarray, rng: np.random.Generator

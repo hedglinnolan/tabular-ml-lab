@@ -117,6 +117,7 @@ from turbotab.core.methods.imputation import (
     ImputationRefused,
     Imputations,
     ModelSize,
+    NormDrawRefused,
     _as01,
     _expit,
     _from01,
@@ -747,6 +748,18 @@ def _truncnorm(mu: np.ndarray, sigma: float | np.ndarray, lo: np.ndarray, hi: np
     return out
 
 
+def _number_draw(name: str, X: np.ndarray, y: np.ndarray, rng: np.random.Generator
+                 ) -> tuple[np.ndarray, float]:
+    """(β*, σ*): ``name``'s number's model drawn (``imputation._norm_draw``). Where numpy cannot
+    compute it (:class:`NormDrawRefused`), it is refused in words naming ``name``, which an exit
+    may offer to leave out (``columns``), as a censored column's fit is, never drawn."""
+    try:
+        _, star, sigma = _norm_draw(X, y, rng)
+    except NormDrawRefused as exc:
+        raise exc.of(name) from None
+    return star, sigma
+
+
 class _Chain:
     """One imputation's chain over ``data`` (see :func:`impute`)."""
 
@@ -1181,7 +1194,7 @@ class _Chain:
                 raise CensoredFitRefused(why=f"{type(exc).__name__}: {exc}").of(name) from None
         else:
             rec = self.recorded[name]
-            _, star, sigma = _norm_draw(X[rec], cur[rec].astype(float), self.rng)
+            star, sigma = _number_draw(name, X[rec], cur[rec].astype(float), self.rng)
             lo, hi = self.bounds(name, rows)
             new = self._bounded(X[rows] @ star, sigma, lo, hi, cur[rows])
         self._set(name, rows, new)
@@ -1224,7 +1237,7 @@ class _Chain:
             for k, cls in enumerate(model.classes_):
                 probs[:, at[cls]] = got[:, k]
             return probs, None
-        _, star, sigma = _norm_draw(X, y.astype(float), self.rng)
+        star, sigma = _number_draw(name, X, y.astype(float), self.rng)
         return X @ star, sigma
 
     def _update_smc(self, name: str, var: Variable, skip: Sequence[str]) -> None:
@@ -1354,7 +1367,8 @@ class _Chain:
                 new = _from01(_binary(U, _as01(per_unit, self.data[name]), umiss, self.rng),
                               self.data[name])
             else:
-                _, star, sigma = _norm_draw(U[~umiss], per_unit[~umiss].astype(float), self.rng)
+                star, sigma = _number_draw(name, U[~umiss], per_unit[~umiss].astype(float),
+                                           self.rng)
                 new = self._bounded(U[umiss] @ star, sigma, lo, hi, per_unit[umiss])
             filled = per_unit.copy()
             filled[umiss] = new

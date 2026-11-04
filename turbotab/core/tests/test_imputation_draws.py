@@ -26,7 +26,9 @@ The tests recover R Rᵀ from the draws and their normal deviates and check it a
 drops a predictor whose variance on the recorded rows is at most 10⁻⁴. Where the factor exists,
 every draw is the base's, bit for bit. A cross-product numpy cannot factor is refused in plain
 words, naming no library, and as a LinAlgError too, so the feature-wise copies still refuse their
-study factor in the words that name it and offer to leave it out (the verifier's PP2D-V1).
+study factor in the words that name it and offer to leave it out (the verifier's PP2D-V1); the
+chained equations refuse it in words naming the column whose model it is, which the fit's table
+offers to leave out where it is a covariate (PP2D-V2-2).
 """
 from __future__ import annotations
 
@@ -338,17 +340,96 @@ def test_a_study_factor_whose_number_s_model_cannot_be_computed_is_refused_namin
     assert refused.value.columns == ["f1"]
 
 
-def test_the_imputation_of_the_whole_model_refuses_it_in_the_plain_words(monkeypatch):
+def _number_beside_others(path: str, rows: int = 120, seed: int = 1
+                          ) -> tuple[pd.DataFrame, list[Variable], dict[str, object]]:
+    """A number `f1` = 1 + 0.5 `a1` + N(0, 1), blank on a fifth of its rows, beside a complete
+    number `a1`, drawn by each of the chained equations' three number's models, so that in each
+    `f1`'s is the only number's model the chain fits: ``fcs``, beside `b1`, 0/1 and blank on a
+    fifth of its own (a logistic model); ``smcfcs``, its covariate model under a linear
+    substantive model of an outcome `y` on `f1` and `a1`; ``units``, constant within units of two
+    rows and imputed once per unit from a model of the units."""
+    rng = np.random.default_rng(seed)
+    a1 = rng.normal(size=rows)
+    if path == "units":
+        a1 = np.repeat(a1[: rows // 2], 2)
+    f1 = 1 + 0.5 * a1 + rng.normal(size=rows)
+    blank = rng.random(rows) < 0.2
+    if path == "units":
+        f1, blank = np.repeat(f1[: rows // 2], 2), np.repeat(blank[: rows // 2], 2)
+    frame = pd.DataFrame({"f1": np.where(blank, np.nan, f1), "a1": a1})
+    if path == "fcs":
+        b1 = (rng.random(rows) < 0.4).astype(float)
+        frame["b1"] = np.where(rng.random(rows) < 0.2, np.nan, b1)
+        return frame, [Variable("f1", "numeric"), Variable("b1", "binary")], {}
+    if path == "smcfcs":
+        from turbotab.core.methods.smcfcs import Outcome, Substantive
+
+        y = f1 + 0.5 * a1 + rng.normal(size=rows)
+        design = lambda f: f[["f1", "a1"]].to_numpy(dtype=float)  # noqa: E731
+        return frame, [Variable("f1", "numeric")], {
+            "mode": "smcfcs", "substantive": Substantive(Outcome("linear", y=y), design)}
+    return frame, [Variable("f1", "numeric", unit_level=True)], {
+        "units": np.repeat(np.arange(rows // 2), 2)}
+
+
+@pytest.mark.parametrize("path", ["fcs", "smcfcs", "units"])
+def test_the_imputation_of_the_whole_model_refuses_the_number_whose_model_it_cannot_compute(
+        path, monkeypatch):
     """The copies the fit's coefficient table, calibration and scales draw
-    (``missing.impute_for_inference``, ``smcfcs.impute``) carry the same refusal unchanged: an
-    ImputationRefused, in the plain words (the fit leads them with "Multiple imputation cannot run
-    on these data: "). Where the model is computed, every blank of both columns is drawn."""
-    frame, _ = _factor_beside_a_blank_covariate()
-    variables = [Variable("f1", "numeric"), Variable("a1", "numeric")]
-    drawn = impute(frame, variables, m=2, seed=1, iterations=2)
-    assert all(np.isfinite(f[["f1", "a1"]].to_numpy()).all() for f in drawn.frames)
+    (``missing.impute_for_inference``, ``smcfcs.impute``) refuse a number's model numpy cannot
+    compute in words naming the column, wherever the chain draws it (each of its three number's
+    models), so the researcher reads which model failed and an exit may offer to leave it out
+    (``columns``, the verifier's PP2D-V2-2; on 652cb0bc the words named none). Still an
+    ImputationRefused and a LinAlgError, as the draw's own refusal is. The truth is construction:
+    `f1`'s is the only number's model the chain fits. Where the model is computed, every blank is
+    drawn."""
+    frame, variables, how = _number_beside_others(path)
+    drawn = impute(frame, variables, m=2, seed=1, iterations=2, **how)
+    names = [v.name for v in variables]
+    assert all(np.isfinite(f[names].to_numpy()).all() for f in drawn.frames)
     _pinv_fails_in_the_draw(monkeypatch)
     with pytest.raises(ImputationRefused) as refused:
-        impute(frame, variables, m=2, seed=1, iterations=2)
-    assert str(refused.value) == ("The model that imputes a number's blanks could not be computed "
-                                  "on these rows.")
+        impute(frame, variables, m=2, seed=1, iterations=2, **how)
+    assert str(refused.value) == ("The model that imputes `f1`'s blanks could not be computed on "
+                                  "these rows.")
+    assert refused.value.columns == ["f1"]
+    assert isinstance(refused.value, np.linalg.LinAlgError)
+
+
+def _fit_of_a_blank(folder: object, blank: str) -> dict[str, object]:
+    """The linear family's coefficient table, through the stage graph, on 200 rows of `y` = `x` +
+    0.5 `a1` + N(0, 1) under multiple imputation, `x` the exposure and `a1` a covariate, with
+    ``blank`` blank on a fifth of its rows."""
+    from turbotab.core.decisions import MissingSpec, ProjectState
+    from turbotab.core.tests.test_imputation_width import FIT, _fit_table
+
+    rng = np.random.default_rng(4)
+    x, a1 = rng.normal(size=200), rng.normal(size=200)
+    table = pd.DataFrame({"id": np.arange(200), "y": x + 0.5 * a1 + rng.normal(size=200),
+                          "x": x, "a1": a1})
+    table.loc[rng.random(200) < 0.2, blank] = np.nan
+    path = folder / "blank.csv"
+    table.to_csv(path, index=False)
+    state = ProjectState(target="y", task="regression", purpose="inference",
+                         grain={"grain": "one_row_per_unit"},
+                         roles={"id": "identifier", "x": "exposure", "a1": "covariate"},
+                         exclusions=[], missing=MissingSpec(strategy="multiple_imputation"), **FIT)
+    return _fit_table(path, folder / "project", state)
+
+
+@pytest.mark.parametrize("blank, leave", [("a1", ["Leave `a1` out"]), ("x", [])],
+                         ids=["covariate", "exposure"])
+def test_the_fit_names_the_number_whose_model_it_cannot_compute_and_offers_to_leave_a_covariate_out(
+        tmp_path, monkeypatch, blank, leave):
+    """PP2D-V2-2 through the stage graph: where the model that imputes a covariate's blanks cannot
+    be computed, the fit's table is refused in the words naming it, and offers complete cases and
+    leaving it out; where it is the exposure's, the words name it and offer only complete cases,
+    as the table never offers to leave out what the analysis studies (``modeling._leavable``)."""
+    from turbotab.core.methods.smcfcs import REFUSED_LEAD
+
+    _pinv_fails_in_the_draw(monkeypatch)
+    said = _fit_of_a_blank(tmp_path, blank)
+    assert said["caption"] == (f"No coefficients: {REFUSED_LEAD}The model that imputes `{blank}`'s "
+                               f"blanks could not be computed on these rows.")
+    assert [e["label"] for e in said["exits"]] == [
+        "Complete cases, with their assumption stated", *leave]
