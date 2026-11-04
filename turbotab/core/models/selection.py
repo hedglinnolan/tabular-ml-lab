@@ -32,7 +32,8 @@ paper found, partly because each fold's model learns from four fifths of the row
 on cross-validation before any held-out score is seen; with one family fitted it is that one. Once
 opened, the served fit marks the declared family ``final`` (its held-out score is the reported
 result) and the others ``secondary`` (:func:`mark_final`): the best of several held-out scores,
-picked after seeing them, is optimistic in turn (+0.023 AUC on 150-row holdouts, audit A7).
+picked after seeing them, is optimistic in turn (+0.023 AUC on 150-row holdouts, audit A7). Its
+declared result then states that score as the first opening recorded it (:func:`result_at_opening`).
 
 **With no held-out rows, the result is the selection-corrected estimate** (MODELING_SEQUENCE §1
 row 12 (b), ruling 4, §4; MS6): :func:`declared_result`. Only a family declared before any score
@@ -417,7 +418,8 @@ def declared_result(task: str, metric: str, *, n_holdout: int, families: Sequenc
     """The declared result (MODELING_SEQUENCE §1 row 12):
 
     * held-out rows drawn: the held-out score of the family declared before they are opened
-      (``open_seal``; :func:`mark_final`);
+      (``open_seal``; :func:`mark_final`), which the served fit states once they are opened
+      (:func:`result_at_opening`);
     * one family: its own score (bootstrap optimism-corrected when the split asked for it, else
       cross-validated), or the nested cross-validation interval when it ran. The served fit then
       says whether the record shows it declared before any score was seen, or declares nothing
@@ -893,6 +895,63 @@ def mark_final(out: dict[str, Any], *, opened: bool, family: str | None) -> dict
     return out
 
 
+def result_at_opening(out: dict[str, Any], at: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The served fit's declared result once the held-out rows are opened with a final family named
+    (in place; returned): the held-out score the first opening recorded for that family on its
+    metric (``at``, the served fit's ``at_opening``; ``seal.reported_result``, audit WP16), said in
+    the past tense with the number in it.
+
+    Its interval (``ci_low``, ``ci_high``) is the final family's served held-out interval, given
+    only while the scores served beside it are the opening's (``at["current"]``) and the family's
+    served score is the recorded one; after a fit changed after the opening, a re-seal, or rows
+    drawn and opened again, the score stays and no interval is given, since the opening records
+    scores, not intervals. The sentence states no interval: it is the export's performance table
+    caption, beside a result row that gives the opening's score alone
+    (``export.tables.performance``). A family the opening recorded no score for reports no result.
+    Before any opening, after one that named no family (records from before the rule), and for a
+    result on any other basis, the fit's own declared result stands.
+    """
+    from turbotab.core.models.validation import score_words
+
+    result = out.get("result")
+    if not isinstance(result, dict) or result.get("basis") != "holdout":
+        return out
+    if not isinstance(at, Mapping) or not at.get("family"):
+        return out
+    family = str(at["family"])
+    metric = str(at.get("metric") or result.get("metric") or "")
+    label = score_words(metric)
+    models = [m for m in out.get("models") or [] if isinstance(m, Mapping)]
+    named = next((m for m in models if m.get("family") == family), {})
+    name = family_name(family, out.get("task"), named.get("label"))
+    declared = (f"{name} was declared the final model on cross-validation before the held-out rows "
+                f"were opened")
+    value = ((at.get("scores") or {}).get(family) or {}).get(metric)
+    filled = {**result, "family": family, "name": name, "metric": metric, "ci_low": None,
+              "ci_high": None}
+    if value is None or not math.isfinite(float(value)):
+        out["result"] = {**filled, "estimate": None,
+                         "sentence": (f"{declared}, but the opening (decision #{at['seq']}) "
+                                      f"recorded no held-out {label} for it, so no result is "
+                                      f"reported.")}
+        return out
+    value = float(value)
+    rows = f" on {int(at['n_holdout']):,} held-out rows" if at.get("n_holdout") else ""
+    tail = "; the opening recorded no interval on it."
+    if at.get("current"):
+        tail = "."
+        interval = (((named.get("holdout_detail") or {}).get("intervals") or {}).get(metric)
+                    or {})
+        low, high = interval.get("ci_low"), interval.get("ci_high")
+        if (low is not None and high is not None
+                and (named.get("holdout") or {}).get(metric) == value):
+            filled = {**filled, "ci_low": low, "ci_high": high}
+    out["result"] = {**filled, "estimate": value,
+                     "sentence": (f"{declared}, so its held-out {label} at the opening (decision "
+                                  f"#{at['seq']}) is the result: {_num(value)}{rows}{tail}")}
+    return out
+
+
 # ── the shelf at this size: Riley's minimum first (MODELING_SEQUENCE §1 row 9; EXPLORE) ──────────
 #
 # The prediction review: "No validated rule predicts which family will perform best. The evidence is
@@ -1118,5 +1177,5 @@ __all__ = ["DeclaredResult", "FLEXIBLE_REASON", "LOWER_IS_BETTER", "METHOD", "NO
            "OutOfFold", "QUOTING", "SEEN_FILE", "SELECTION_NOT_NESTED", "SampleSize",
            "SampleSizeCriterion", "compared_families", "declared_family", "declared_result",
            "explained_in", "family_name", "interpretable_cost", "is_flexible", "mark_final",
-           "note_seen", "pooled_score", "quoted_in", "read_seen", "scored_in", "seen_for",
-           "selection_optimism", "shelf_order", "vouch"]
+           "note_seen", "pooled_score", "quoted_in", "read_seen", "result_at_opening", "scored_in",
+           "seen_for", "selection_optimism", "shelf_order", "vouch"]
