@@ -9,17 +9,32 @@
  * a real server's captured NHANES walk under Predict; the quest logs are the engine's
  * (fixtures/quest-contract.json), with the Results lines' statuses set for each moment.
  */
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { keys } from "../api/queries";
-import type { ForTheRecord, ProjectView, QuestLine, QuestLog, QuestStage, Triage } from "../api/schema";
+import type {
+  ChecklistItem,
+  ChecklistReport,
+  DecisionRecord,
+  ForTheRecord,
+  ProjectView,
+  QuestLine,
+  QuestLog,
+  QuestStage,
+  Triage,
+} from "../api/schema";
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { StageFocusProvider } from "../state/focus";
 import { DECLARATION_CARDS } from "./cards/predict";
 import { CONTRACT } from "./fixtures/contract";
 import { type FitPosition, fitPosition } from "./log";
 import { QuestScreen } from "./QuestScreen";
+import REVERTS from "./fixtures/reopened-by-revert.json";
+import CAPTURE from "./results/fixtures/nhanes-predict.json";
 import { StageCard, type OpenRequest } from "./StageCard";
 
 vi.mock("./results", () => ({
@@ -896,5 +911,417 @@ describe("the triage of the open noticings under Estimate (G05)", () => {
     const { card } = cardOf(early, "models", { seed: seed(served("models")) });
     expect(within(card).getByText("May change as you answer")).toBeInTheDocument();
     expect(within(card).queryByTestId("results-triage")).toBeNull();
+  });
+});
+
+// ── G20: served fields the card reads ────────────────────────────────────────
+
+/**
+ * QuestLine.reopened_by, on the captured NHANES walk under Predict (results/fixtures/
+ * nhanes-predict.json, written by its capture.py): confirming the readings in Your data reopened six
+ * of its noticings and one in Who's in. A line the change reopened, not expanded, says the change
+ * that reopened it, in the words of the stage's own reason ("Your change to … reopened"); a line it
+ * did not reopen, and one answered since (the "opened" snapshot still names the change on six
+ * answered lines), says nothing of it. Expected stage names are read off the log.
+ */
+describe("a line a change reopened says which change (G20)", () => {
+  const SEALED = (CAPTURE as unknown as { sealed: { quest: QuestLog } }).sealed.quest;
+  const OPENED = (CAPTURE as unknown as { opened: { quest: QuestLog } }).opened.quest;
+  const note = (card: HTMLElement, key: string) => within(card).queryByTestId(`line-${key}-reopened`);
+
+  it("says a change in its own stage, on each line it reopened, and nothing on a line it did not", () => {
+    const data = stageIn(SEALED, "data");
+    const reopened = data.lines.filter((l) => l.reopened_by);
+    expect(reopened).toHaveLength(6);
+    expect(reopened.every((l) => l.status === "open" && l.reopened_by!.stage === data.key)).toBe(true);
+    const { card } = cardOf(SEALED, "data");
+    const expanded = card.querySelector("[data-expanded]")?.getAttribute("data-line");
+    expect(reopened.some((l) => `${l.source}:${l.key}` === expanded)).toBe(false);
+    for (const l of reopened) {
+      expect(note(card, l.key), l.key).toHaveTextContent(`Reopened by your change to another answer in ${data.name}.`);
+    }
+    // Open too, and not reopened: nothing.
+    const other = data.lines.find((l) => l.status === "open" && l.counted && !l.reopened_by && `${l.source}:${l.key}` !== expanded)!;
+    expect(other).toBeDefined();
+    expect(within(card).getByTestId(`line-${other.key}`)).toBeInTheDocument();
+    expect(note(card, other.key)).toBeNull();
+  });
+
+  it("names the stage the change was made in, where that is another stage", () => {
+    const whos = stageIn(SEALED, "whos_in");
+    const line = whos.lines.find((l) => l.reopened_by)!;
+    expect(line.reopened_by!.stage).toBe("data");
+    // The missing-values question expanded, so the reopened noticing is a collapsed line.
+    const { card } = cardOf(SEALED, "whos_in", { request: { line: "missing", n: 1 } });
+    expect(card.querySelector("[data-expanded]")?.getAttribute("data-line")).toBe("question:missing");
+    expect(note(card, line.key)).toHaveTextContent(`Reopened by your change to ${stageIn(SEALED, "data").name}.`);
+  });
+
+  it("says nothing on a line answered since, though the served line still names the change", () => {
+    const data = stageIn(OPENED, "data");
+    const answered = data.lines.filter((l) => l.reopened_by && l.status === "answered");
+    expect(answered).toHaveLength(6);
+    const { card } = cardOf(OPENED, "data");
+    for (const l of answered) {
+      expect(within(card).getByTestId(`line-${l.key}`)).toBeInTheDocument();
+      expect(note(card, l.key), l.key).toBeNull();
+    }
+  });
+
+  /**
+   * Your question as the engine serves it once the design's own answer was taken back: quest_log on
+   * the records of core/tests/test_quest_reopened_holds_now.py::
+   * test_a_reopened_default_that_confirm_all_answers_clears_its_reason (the purpose under Estimate,
+   * the design answered as r5, and r6 a revert of r5), dumped at 0e7aae5b; each value as served.
+   * The design line names r6, a revert, in its own stage: no other answer changed. The engine names
+   * a revert the cause whichever answer it took back, the line's own included (`_reopened_by`), and
+   * names it by the stage the undone kind sits in, so the line says only that an answer was taken
+   * back. The stage's reason is served as the engine words it, and its head draws that, as served.
+   * The project view holds those records (r1-r4 as fixtures/reopened-by-revert.json has them, the
+   * same _start), so the card can read that r6 undoes r5, an answer.
+   */
+  const RECORDS = (r: { records: unknown[] }) => r.records as DecisionRecord[];
+  const WITHDRAWN_RECORDS: DecisionRecord[] = (() => {
+    const [r5, r6] = RECORDS(REVERTS.taken_back).slice(4, 6) as [DecisionRecord, DecisionRecord];
+    return [
+      ...RECORDS(REVERTS.taken_back).slice(0, 4),
+      { ...r5, decision: { kind: "set_design", design: "observational", declared: null } },
+      { ...r6, decision: { kind: "revert", decision_id: r5.id } },
+    ];
+  })();
+  const withRecords = (decisions: DecisionRecord[]) => (qc: QueryClient) =>
+    qc.setQueryData(keys.view(PID), { ...VIEW, decisions });
+  const WITHDRAWN: QuestStage = (() => {
+    const answered = (id: string, key: string, name: string, order: number): QuestLine => ({
+      id,
+      key,
+      source: "question",
+      label: "Decide",
+      name,
+      status: "answered",
+      counted: true,
+      order,
+      decision_id: `answer-${key}`,
+      reason: null,
+      waiting_for: [],
+      computing: [],
+      reopened_by: null,
+      would_change: null,
+      changes_nothing: null,
+      items: [],
+      changed_since: null,
+    });
+    return {
+      key: "question",
+      name: "Your question",
+      reached: true,
+      progress: { answered: 5, required: 6, complete: false },
+      sweep: {
+        lines: 1,
+        answered: false,
+        id: "other:confirm-sweep:question",
+        heading: "The choice set for you",
+        action: "Confirm it",
+        confirmed_by: null,
+        changed: [],
+      },
+      lines: [
+        answered("q:target", "target", "the outcome question", 1),
+        answered("q:event", "event", "the event question", 2),
+        answered("q:task", "task", "the task question", 3),
+        answered("q:follow_up", "follow_up", "the follow-up question", 7),
+        answered("q:goal", "purpose", "the purpose question", 18),
+        {
+          id: "q:study-design",
+          key: "design",
+          source: "question",
+          label: "Confirm",
+          name: "the study-design question",
+          status: "set_for_you",
+          counted: false,
+          order: 17,
+          decision_id: null,
+          reason: "stated",
+          waiting_for: [],
+          computing: [],
+          reopened_by: { decision_id: "r6", kind: "revert", stage: "question" },
+          would_change:
+            "A trial or a matched case-control study is analyzed another way, so the estimates here would not be the ones for that design.",
+          changes_nothing: null,
+          items: [],
+          changed_since: null,
+        },
+      ],
+      reopened: [
+        {
+          changed_in: "question",
+          decision_id: "r6",
+          kind: "revert",
+          questions: ["q:study-design"],
+          results: [],
+          within: true,
+          sentence: "Your change to another answer in Your question reopened 1 question.",
+        },
+      ],
+    };
+  })();
+
+  it("says only that an answer was taken back where a revert reopened it, never another answer or a stage", () => {
+    const log: QuestLog = { ...SEALED, stages: SEALED.stages.map((s) => (s.key === WITHDRAWN.key ? WITHDRAWN : s)) };
+    const design = WITHDRAWN.lines.find((l) => l.reopened_by)!;
+    expect(design.reopened_by!.kind).toBe("revert");
+    const revert = WITHDRAWN_RECORDS.find((r) => r.id === design.reopened_by!.decision_id)!;
+    expect(revert.decision).toEqual({ kind: "revert", decision_id: "r5" });
+    expect(WITHDRAWN_RECORDS.find((r) => r.id === "r5")!.decision.kind).toBe("set_design");
+    const { card } = cardOf(log, WITHDRAWN.key, { seed: withRecords(WITHDRAWN_RECORDS) });
+    expect(card.querySelector("[data-expanded]")?.getAttribute("data-line")).not.toBe(`${design.source}:${design.key}`);
+    expect(note(card, design.key)!.textContent).toBe("Reopened because an answer was taken back.");
+    expect(lineEl(card, design.key)).not.toHaveTextContent("another answer");
+    expect(lineEl(card, design.key)).not.toHaveTextContent(WITHDRAWN.name);
+  });
+
+  /**
+   * An undo undone (V1), as the engine serves it: fixtures/reopened-by-revert.json, quest_log on
+   * _start('inference') (r1-r4), r5 set_purpose prediction, r6 a revert of r5 and r7 a revert of r6,
+   * dumped at d3f3678c. The fold cancels latest first, so r7 cancels r6 and r5 stands: the purpose is
+   * Predict again, an answer put back, not taken back. The engine names r7, a revert, the cause on
+   * Models' and Your question's lines, by the stage of the answer it put back (`_Log.stage_of`
+   * follows the chain), and words each stage's reason as a change there; the card says the same.
+   * Taken back (`taken_back`, r6 alone) is the other side: a revert of an answer; and
+   * `taken_back_again` (r8, a revert of r7) takes it back once more, though its target is a revert.
+   */
+  const putBack = REVERTS.put_back;
+  const takenBack = REVERTS.taken_back;
+  const mixed = (stages: Record<string, unknown>): QuestLog => ({
+    ...SEALED,
+    stages: SEALED.stages.map((s) => (stages[s.key] as QuestStage | undefined) ?? s),
+  });
+  const collapsed = (card: HTMLElement, l: QuestLine) =>
+    card.querySelector("[data-expanded]")?.getAttribute("data-line") !== `${l.source}:${l.key}`;
+
+  it("says an undo undone as the change it put back, in another stage, never that an answer was taken back", () => {
+    const records = RECORDS(putBack);
+    const [r5, r6, r7] = records.slice(4, 7) as [DecisionRecord, DecisionRecord, DecisionRecord];
+    expect(r5.decision).toEqual({ kind: "set_purpose", purpose: "prediction" });
+    expect(r6.decision).toEqual({ kind: "revert", decision_id: r5.id });
+    expect(r7.decision).toEqual({ kind: "revert", decision_id: r6.id });
+    const models = putBack.stages.models as unknown as QuestStage;
+    const question = putBack.stages.question as unknown as QuestStage;
+    const named = models.lines.filter((l) => l.reopened_by?.decision_id === r7.id);
+    expect(named.map((l) => l.key).sort()).toEqual(["set_levers", "set_selection", "set_validation"]);
+    expect(named.every((l) => l.reopened_by!.kind === "revert" && l.reopened_by!.stage === question.key)).toBe(true);
+    expect(models.reopened.map((r) => r.sentence)).toEqual([`Your change to ${question.name} reopened 3 questions in ${models.name}.`]);
+    const { card } = cardOf(mixed(putBack.stages), models.key, { seed: withRecords(records) });
+    const shown = named.filter((l) => collapsed(card, l));
+    // The waiting validation scheme and the Confirm line set for you, at least, are collapsed.
+    expect(shown.map((l) => l.key)).toEqual(expect.arrayContaining(["set_validation", "set_levers"]));
+    for (const l of shown) {
+      expect(note(card, l.key)!.textContent, l.key).toBe(`Reopened by your change to ${question.name}.`);
+      expect(lineEl(card, l.key), l.key).not.toHaveTextContent("taken back");
+    }
+  });
+
+  it("says an undo undone in the line's own stage as another answer there", () => {
+    const records = RECORDS(putBack);
+    const question = putBack.stages.question as unknown as QuestStage;
+    const line = question.lines.find((l) => l.reopened_by)!;
+    expect(line.key).toBe("set_intended_use");
+    expect(line.reopened_by).toEqual({ decision_id: records[6]!.id, kind: "revert", stage: question.key });
+    // It is the open line: another line expanded, so it is drawn collapsed.
+    const { card } = cardOf(mixed(putBack.stages), question.key, { seed: withRecords(records), request: { line: "target", n: 1 } });
+    expect(collapsed(card, line)).toBe(true);
+    expect(note(card, line.key)!.textContent).toBe(`Reopened by your change to another answer in ${question.name}.`);
+    expect(lineEl(card, line.key)).not.toHaveTextContent("taken back");
+  });
+
+  it("says a revert of an answer, in another stage, as an answer taken back", () => {
+    const records = RECORDS(takenBack);
+    const models = takenBack.stages.models as unknown as QuestStage;
+    const line = models.lines.find((l) => l.reopened_by)!;
+    expect(line.reopened_by).toEqual({ decision_id: "r6", kind: "revert", stage: "question" });
+    expect(records.find((r) => r.id === "r6")!.decision).toEqual({ kind: "revert", decision_id: "r5" });
+    expect(records.find((r) => r.id === "r5")!.decision.kind).toBe("set_purpose");
+    const { card } = cardOf(mixed(takenBack.stages), models.key, { seed: withRecords(records), request: { line: "models", n: 1 } });
+    expect(collapsed(card, line)).toBe(true);
+    expect(note(card, line.key)!.textContent).toBe("Reopened because an answer was taken back.");
+  });
+
+  it("says a revert of an undo undone as an answer taken back again, as the fold reads it", () => {
+    // taken_back_again: r8 reverts r7, so r7 is cancelled, r6 stands and r5 is taken back again
+    // (the purpose is Estimate); the engine names r8, whose target is itself a revert.
+    const again = REVERTS.taken_back_again;
+    const records = RECORDS(again);
+    const r8 = records.find((r) => r.id === "r8")!;
+    expect(r8.decision).toEqual({ kind: "revert", decision_id: "r7" });
+    expect(records.find((r) => r.id === "r7")!.decision).toEqual({ kind: "revert", decision_id: "r6" });
+    const models = again.stages.models as unknown as QuestStage;
+    const line = models.lines.find((l) => l.reopened_by)!;
+    expect(line.reopened_by).toEqual({ decision_id: r8.id, kind: "revert", stage: "question" });
+    const { card } = cardOf(mixed(again.stages), models.key, { seed: withRecords(records), request: { line: "models", n: 1 } });
+    expect(collapsed(card, line)).toBe(true);
+    expect(note(card, line.key)!.textContent).toBe("Reopened because an answer was taken back.");
+  });
+
+  it("says nothing of a revert the project's records do not hold, since it cannot say what the revert did", () => {
+    const records = RECORDS(putBack).slice(0, 6); // r7, the cause, absent
+    const models = putBack.stages.models as unknown as QuestStage;
+    const { card } = cardOf(mixed(putBack.stages), models.key, { seed: withRecords(records) });
+    const named = models.lines.filter((l) => l.reopened_by && collapsed(card, l));
+    expect(named.length).toBeGreaterThan(0);
+    for (const l of named) {
+      expect(within(card).getByTestId(`line-${l.key}`)).toBeInTheDocument();
+      expect(note(card, l.key), l.key).toBeNull();
+    }
+  });
+});
+
+/**
+ * ChecklistItem.owed and scope on Write-up's checklist, as the bundle's checklist states them
+ * (core/export/checklists.py `markdown`): each partly answered item by its number and its topic,
+ * then "The author must supply …", behind one closed disclosure counted as For the record's is
+ * (FOUNDATION §2: one click away, never all on screen at once). TRIPOD+AI's scope is said in plain
+ * words, with its code as the quiet label; the words are checked against the source's own legend,
+ * read from the engine's copy of TRIPOD+AI (core/export/data/tripod_ai.json, Table 2's footnote).
+ * The reports are built in the served shape; each item's number, scope, topic and owed words are
+ * read off the report.
+ */
+describe("Write-up's checklist says what the author still owes (G20)", () => {
+  const where: ChecklistItem["where"] = [
+    { source: "file", file: "results/performance.md", quote: "A caption.", record_id: null, record_ids: null, seq: null, seqs: null, kind: null },
+  ];
+  const item = (over: Partial<ChecklistItem> & Pick<ChecklistItem, "id" | "status">): ChecklistItem => ({
+    section: "Methods",
+    topic: "Analytical methods",
+    text: "The item, quoted from its source.",
+    kind: null,
+    scope: null,
+    where: over.status === "unanswered" ? [] : where,
+    owed: null,
+    note: "",
+    ...over,
+  });
+  const reportOf = (checklist: ChecklistReport["checklist"], items: ChecklistItem[]): ChecklistReport => ({
+    checklist,
+    title: `${checklist} checklist`,
+    citation: "A citation.",
+    source: { table: "Table 2", pmcid: "PMC0", doi: "10.0/0", url: "https://example.org", retrieved: "2026-10-05", sha256: "0", license: "CC BY 4.0" },
+    purpose: checklist === "TRIPOD+AI" ? "prediction" : "inference",
+    items,
+    counts: {
+      items: items.length,
+      answered: items.filter((i) => i.status === "answered").length,
+      partly_answered: items.filter((i) => i.status === "partly answered").length,
+      unanswered: items.filter((i) => i.status === "unanswered").length,
+    },
+    unanswered: items.filter((i) => i.status === "unanswered").map((i) => i.id),
+    note: "",
+    waiting: [],
+  });
+  const writeup = (report: ChecklistReport) =>
+    cardOf(REACHED, "writeup", { seed: (qc) => qc.setQueryData(keys.checklist(PID), report) }).card;
+  const owedOf = (card: HTMLElement) => within(card).queryByTestId("checklist-owed");
+  const rowsOf = (list: HTMLElement) => [...list.querySelectorAll("li")];
+  const TRIPOD = JSON.parse(
+    readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../../core/export/data/tripod_ai.json"), "utf-8"),
+  ) as { footnote: string; items: { id: string; scope?: string | null }[] };
+  /** The legend, as Table 2's footnote gives it: "*D=…; E=…; D;E=…." */
+  const LEGEND = (() => {
+    const m = /\*D=([^;]+); E=([^;]+); D;E=([^.]+)\./.exec(TRIPOD.footnote);
+    if (!m) throw new Error("TRIPOD+AI's footnote holds no D, E and D;E legend");
+    return { D: m[1]!, E: m[2]!, "D;E": m[3]! };
+  })();
+
+  it("puts each partly answered item behind one closed disclosure, counted, with what the author must supply; no other item", () => {
+    expect(stageIn(REACHED, "writeup").reached).toBe(true);
+    const owed = [
+      item({ id: "12e", scope: "D;E", status: "partly answered", owed: "the rationale for each measure" }),
+      item({ id: "9a", scope: "D", topic: "Predictors", status: "partly answered", owed: "why these predictors" }),
+    ];
+    const rest = [item({ id: "12a", scope: "D", status: "answered" }), item({ id: "1", scope: "D;E", topic: "Title", status: "unanswered" })];
+    const report = reportOf("TRIPOD+AI", [owed[0]!, rest[0]!, owed[1]!, rest[1]!]);
+    const card = writeup(report);
+    const list = owedOf(card)!;
+    expect(list).not.toBeNull();
+    // One quiet disclosure, closed until opened, counted by what it holds: the partly answered items.
+    expect(list.tagName).toBe("DETAILS");
+    expect((list as HTMLDetailsElement).open).toBe(false);
+    expect(report.counts.partly_answered).toBe(owed.length);
+    expect(list.querySelector("summary")!.textContent).toBe(`Partly answered · ${report.counts.partly_answered}`);
+    const rows = rowsOf(list);
+    expect(rows).toHaveLength(owed.length);
+    owed.forEach((i, n) => {
+      expect(rows[n]).toHaveTextContent(`${i.id} · ${i.topic}`);
+      expect(rows[n]).toHaveTextContent(`The author must supply ${i.owed}.`);
+    });
+    for (const i of rest) expect(list).not.toHaveTextContent(`${i.id} · ${i.topic}`);
+    // The counts line stays open above it.
+    expect(within(card).getByTestId("checklist")).toHaveTextContent(`${report.counts.partly_answered} partly answered`);
+  });
+
+  it("says TRIPOD+AI's scope in plain words, as the source's legend defines each code, with the code as its quiet label", () => {
+    // The legend: D only development, E only (solely) evaluation, D;E both.
+    expect(LEGEND.D).toMatch(/\bonly\b/);
+    expect(LEGEND.D).toMatch(/development/);
+    expect(LEGEND.D).not.toMatch(/evaluation/);
+    expect(LEGEND.E).toMatch(/\bsolely\b/);
+    expect(LEGEND.E).toMatch(/evaluation/);
+    expect(LEGEND.E).not.toMatch(/development/);
+    expect(LEGEND["D;E"]).toMatch(/\bboth\b/);
+    expect(LEGEND["D;E"]).toMatch(/development and evaluation/);
+    // Every scope the source gives an item is a code the legend defines.
+    const codes = [...new Set(TRIPOD.items.map((i) => i.scope))];
+    expect(codes.sort()).toEqual(Object.keys(LEGEND).sort());
+    const owed = Object.keys(LEGEND).map((scope, n) =>
+      item({ id: `${n + 1}a`, scope, status: "partly answered", owed: `the thing ${n + 1}` }),
+    );
+    const list = owedOf(writeup(reportOf("TRIPOD+AI", owed)))!;
+    const words = (id: string) => within(list).getByTestId(`checklist-scope-${id}`).textContent ?? "";
+    const code = (id: string) => within(list).getByTestId(`checklist-scope-code-${id}`).textContent;
+    const [d, e, both] = owed as [ChecklistItem, ChecklistItem, ChecklistItem];
+    expect([d.scope, e.scope, both.scope]).toEqual(["D", "E", "D;E"]);
+    expect(words(d.id)).toMatch(/\bonly\b/i);
+    expect(words(d.id)).toMatch(/develop/i);
+    expect(words(d.id)).not.toMatch(/evaluat/i);
+    expect(words(e.id)).toMatch(/\bonly\b/i);
+    expect(words(e.id)).toMatch(/evaluat/i);
+    expect(words(e.id)).not.toMatch(/develop/i);
+    expect(words(both.id)).toMatch(/develop/i);
+    expect(words(both.id)).toMatch(/evaluat/i);
+    expect(words(both.id)).not.toMatch(/\bonly\b/i);
+    for (const i of owed) expect(code(i.id)).toBe(i.scope);
+    // The bare code beside the number is gone.
+    expect(list.textContent).not.toMatch(/\((D|E|D;E)\)/);
+  });
+
+  it("says no words for a scope the legend does not define, and shows its code as served", () => {
+    const odd = item({ id: "5x", scope: "X", status: "partly answered", owed: "something" });
+    expect(Object.keys(LEGEND)).not.toContain(odd.scope);
+    const list = owedOf(writeup(reportOf("TRIPOD+AI", [odd])))!;
+    expect(within(list).queryByTestId(`checklist-scope-${odd.id}`)).toBeNull();
+    expect(within(list).getByTestId(`checklist-scope-code-${odd.id}`).textContent).toBe(odd.scope);
+  });
+
+  it("labels STROBE-nut's items as the bundle does, with no scope, where the source gives none", () => {
+    const owed = [
+      item({ id: "6a", kind: "STROBE", topic: "Participants", status: "partly answered", owed: "the sources and methods of selection" }),
+      item({ id: "nut-6", kind: "STROBE-nut", topic: "Participants", status: "partly answered", owed: "the dietary assessment method" }),
+    ];
+    const card = writeup(reportOf("STROBE-nut", owed));
+    const list = owedOf(card)!;
+    const rows = rowsOf(list);
+    expect(rows).toHaveLength(owed.length);
+    expect(rows[0]).toHaveTextContent(new RegExp(`^${owed[0]!.kind} ${owed[0]!.id} · ${owed[0]!.topic}`));
+    expect(rows[1]).toHaveTextContent(new RegExp(`^${owed[1]!.id} · ${owed[1]!.topic}`));
+    for (const r of rows) expect(r.textContent).not.toMatch(/\(.*\)/);
+    for (const i of owed) {
+      expect(within(list).queryByTestId(`checklist-scope-${i.id}`)).toBeNull();
+      expect(within(list).queryByTestId(`checklist-scope-code-${i.id}`)).toBeNull();
+    }
+  });
+
+  it("lists nothing where the author owes nothing", () => {
+    const card = writeup(reportOf("TRIPOD+AI", [item({ id: "12a", scope: "D", status: "answered" }), item({ id: "1", scope: "D;E", status: "unanswered" })]));
+    expect(within(card).getByTestId("checklist")).toBeInTheDocument();
+    expect(owedOf(card)).toBeNull();
   });
 });

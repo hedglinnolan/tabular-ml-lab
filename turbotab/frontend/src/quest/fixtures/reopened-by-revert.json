@@ -1,0 +1,1261 @@
+{
+ "source": "quest.quest_log on these records through turbotab/core/tests/test_quest_reopened_holds_now.py _log (its _start('inference') as r1-r4), dumped at d3f3678c: taken_back adds r5 set_purpose prediction and r6 a revert of r5; put_back adds r7 a revert of r6; taken_back_again adds r8 a revert of r7. Each stage as served.",
+ "taken_back": {
+  "records": [
+   {
+    "id": "r1",
+    "seq": 1,
+    "at": "2026-10-08T00:01:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_lens",
+     "lenses": [
+      "dietary"
+     ]
+    }
+   },
+   {
+    "id": "r2",
+    "seq": 2,
+    "at": "2026-10-08T00:02:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_target",
+     "column": "glucose"
+    }
+   },
+   {
+    "id": "r3",
+    "seq": 3,
+    "at": "2026-10-08T00:03:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_purpose",
+     "purpose": "inference"
+    }
+   },
+   {
+    "id": "r4",
+    "seq": 4,
+    "at": "2026-10-08T00:04:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_roles",
+     "roles": {
+      "SEQN": "identifier",
+      "kcal": "energy",
+      "sugar": "exposure",
+      "age": "covariate"
+     },
+     "unconfirmed": []
+    }
+   },
+   {
+    "id": "r5",
+    "seq": 5,
+    "at": "2026-10-08T00:05:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_purpose",
+     "purpose": "prediction"
+    }
+   },
+   {
+    "id": "r6",
+    "seq": 6,
+    "at": "2026-10-08T00:06:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "revert",
+     "decision_id": "r5"
+    }
+   }
+  ],
+  "stages": {
+   "models": {
+    "key": "models",
+    "name": "Models",
+    "reached": true,
+    "progress": {
+     "answered": 8,
+     "required": 9,
+     "complete": false
+    },
+    "sweep": {
+     "lines": 2,
+     "answered": true,
+     "id": "other:confirm-sweep",
+     "heading": "The 2 choices set for you",
+     "action": "Confirm all 2",
+     "confirmed_by": null,
+     "changed": []
+    },
+    "lines": [
+     {
+      "id": "q:estimand",
+      "key": "estimand",
+      "source": "question",
+      "label": "Decide",
+      "name": "the question on what you study and its effect",
+      "status": "answered",
+      "counted": true,
+      "order": 1.0,
+      "decision_id": "answer-estimand",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:adjustment",
+      "key": "adjustment",
+      "source": "question",
+      "label": "Decide",
+      "name": "the adjustment-set question",
+      "status": "answered",
+      "counted": true,
+      "order": 2.0,
+      "decision_id": "answer-adjustment",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:time_varying",
+      "key": "time_varying",
+      "source": "question",
+      "label": "Decide",
+      "name": "the question on what you study over time",
+      "status": "answered",
+      "counted": true,
+      "order": 3.0,
+      "decision_id": "answer-time_varying",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:energy_adjustment",
+      "key": "energy_adjustment",
+      "source": "question",
+      "label": "Decide",
+      "name": "the energy-adjustment question",
+      "status": "answered",
+      "counted": true,
+      "order": 4.0,
+      "decision_id": "answer-energy_adjustment",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:form",
+      "key": "form",
+      "source": "question",
+      "label": "Decide",
+      "name": "the functional-form question",
+      "status": "answered",
+      "counted": true,
+      "order": 5.0,
+      "decision_id": "answer-form",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:models",
+      "key": "models",
+      "source": "question",
+      "label": "Decide",
+      "name": "the model families question",
+      "status": "answered",
+      "counted": true,
+      "order": 9.0,
+      "decision_id": "answer-models",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "decision:set_model_sequence",
+      "key": "set_model_sequence",
+      "source": "declaration",
+      "label": "Decide",
+      "name": "the Model 1 question",
+      "status": "open",
+      "counted": true,
+      "order": 10.0,
+      "decision_id": null,
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": {
+       "decision_id": "r6",
+       "kind": "revert",
+       "stage": "question"
+      },
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "decision:substitution-pair",
+      "key": "substitution",
+      "source": "question",
+      "label": "Decide",
+      "name": "the substitution question",
+      "status": "answered",
+      "counted": true,
+      "order": 13.0,
+      "decision_id": "answer-substitution",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:modification",
+      "key": "modification",
+      "source": "question",
+      "label": "Confirm",
+      "name": "the effect-modifier question",
+      "status": "answered",
+      "counted": false,
+      "order": 133.0,
+      "decision_id": "answer-modification",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:causal",
+      "key": "causal",
+      "source": "question",
+      "label": "Confirm",
+      "name": "the causal question",
+      "status": "answered",
+      "counted": false,
+      "order": 134.0,
+      "decision_id": "answer-causal",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     }
+    ],
+    "reopened": [
+     {
+      "changed_in": "question",
+      "decision_id": "r6",
+      "kind": "revert",
+      "questions": [
+       "decision:set_model_sequence"
+      ],
+      "results": [],
+      "within": false,
+      "sentence": "Your change to Your question reopened 1 question in Models."
+     }
+    ]
+   }
+  }
+ },
+ "put_back": {
+  "records": [
+   {
+    "id": "r1",
+    "seq": 1,
+    "at": "2026-10-08T00:01:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_lens",
+     "lenses": [
+      "dietary"
+     ]
+    }
+   },
+   {
+    "id": "r2",
+    "seq": 2,
+    "at": "2026-10-08T00:02:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_target",
+     "column": "glucose"
+    }
+   },
+   {
+    "id": "r3",
+    "seq": 3,
+    "at": "2026-10-08T00:03:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_purpose",
+     "purpose": "inference"
+    }
+   },
+   {
+    "id": "r4",
+    "seq": 4,
+    "at": "2026-10-08T00:04:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_roles",
+     "roles": {
+      "SEQN": "identifier",
+      "kcal": "energy",
+      "sugar": "exposure",
+      "age": "covariate"
+     },
+     "unconfirmed": []
+    }
+   },
+   {
+    "id": "r5",
+    "seq": 5,
+    "at": "2026-10-08T00:05:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_purpose",
+     "purpose": "prediction"
+    }
+   },
+   {
+    "id": "r6",
+    "seq": 6,
+    "at": "2026-10-08T00:06:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "revert",
+     "decision_id": "r5"
+    }
+   },
+   {
+    "id": "r7",
+    "seq": 7,
+    "at": "2026-10-08T00:07:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "revert",
+     "decision_id": "r6"
+    }
+   }
+  ],
+  "stages": {
+   "question": {
+    "key": "question",
+    "name": "Your question",
+    "reached": true,
+    "progress": {
+     "answered": 6,
+     "required": 7,
+     "complete": false
+    },
+    "sweep": null,
+    "lines": [
+     {
+      "id": "q:target",
+      "key": "target",
+      "source": "question",
+      "label": "Decide",
+      "name": "the outcome question",
+      "status": "answered",
+      "counted": true,
+      "order": 1.0,
+      "decision_id": "answer-target",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:event",
+      "key": "event",
+      "source": "question",
+      "label": "Decide",
+      "name": "the event question",
+      "status": "answered",
+      "counted": true,
+      "order": 2.0,
+      "decision_id": "answer-event",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:task",
+      "key": "task",
+      "source": "question",
+      "label": "Decide",
+      "name": "the task question",
+      "status": "answered",
+      "counted": true,
+      "order": 3.0,
+      "decision_id": "answer-task",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:follow_up",
+      "key": "follow_up",
+      "source": "question",
+      "label": "Decide",
+      "name": "the follow-up question",
+      "status": "answered",
+      "counted": true,
+      "order": 7.0,
+      "decision_id": "answer-follow_up",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:study-design",
+      "key": "design",
+      "source": "question",
+      "label": "Decide",
+      "name": "the study-design question",
+      "status": "answered",
+      "counted": true,
+      "order": 17.0,
+      "decision_id": "answer-design",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:goal",
+      "key": "purpose",
+      "source": "question",
+      "label": "Decide",
+      "name": "the purpose question",
+      "status": "answered",
+      "counted": true,
+      "order": 18.0,
+      "decision_id": "answer-purpose",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:intended_use",
+      "key": "set_intended_use",
+      "source": "declaration",
+      "label": "Decide",
+      "name": "the intended-use question",
+      "status": "open",
+      "counted": true,
+      "order": 20.0,
+      "decision_id": null,
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": {
+       "decision_id": "r7",
+       "kind": "revert",
+       "stage": "question"
+      },
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     }
+    ],
+    "reopened": [
+     {
+      "changed_in": "question",
+      "decision_id": "r7",
+      "kind": "revert",
+      "questions": [
+       "q:intended_use"
+      ],
+      "results": [],
+      "within": true,
+      "sentence": "Your change to another answer in Your question reopened 1 question."
+     }
+    ]
+   },
+   "models": {
+    "key": "models",
+    "name": "Models",
+    "reached": true,
+    "progress": {
+     "answered": 7,
+     "required": 9,
+     "complete": false
+    },
+    "sweep": {
+     "lines": 4,
+     "answered": false,
+     "id": "other:confirm-sweep",
+     "heading": "The 4 choices set for you",
+     "action": "Confirm all 4",
+     "confirmed_by": null,
+     "changed": []
+    },
+    "lines": [
+     {
+      "id": "q:estimand",
+      "key": "estimand",
+      "source": "question",
+      "label": "Decide",
+      "name": "the question on what you study and its effect",
+      "status": "answered",
+      "counted": true,
+      "order": 1.0,
+      "decision_id": "answer-estimand",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:adjustment",
+      "key": "adjustment",
+      "source": "question",
+      "label": "Decide",
+      "name": "the adjustment-set question",
+      "status": "answered",
+      "counted": true,
+      "order": 2.0,
+      "decision_id": "answer-adjustment",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:time_varying",
+      "key": "time_varying",
+      "source": "question",
+      "label": "Decide",
+      "name": "the question on what you study over time",
+      "status": "answered",
+      "counted": true,
+      "order": 3.0,
+      "decision_id": "answer-time_varying",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:energy_adjustment",
+      "key": "energy_adjustment",
+      "source": "question",
+      "label": "Decide",
+      "name": "the energy-adjustment question",
+      "status": "answered",
+      "counted": true,
+      "order": 4.0,
+      "decision_id": "answer-energy_adjustment",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:form",
+      "key": "form",
+      "source": "question",
+      "label": "Decide",
+      "name": "the functional-form question",
+      "status": "answered",
+      "counted": true,
+      "order": 5.0,
+      "decision_id": "answer-form",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "decision:set_selection",
+      "key": "set_selection",
+      "source": "declaration",
+      "label": "Decide",
+      "name": "the predictor-selection question",
+      "status": "open",
+      "counted": true,
+      "order": 8.5,
+      "decision_id": null,
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": {
+       "decision_id": "r7",
+       "kind": "revert",
+       "stage": "question"
+      },
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:models",
+      "key": "models",
+      "source": "question",
+      "label": "Decide",
+      "name": "the model families question",
+      "status": "answered",
+      "counted": true,
+      "order": 9.0,
+      "decision_id": "answer-models",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "decision:substitution-pair",
+      "key": "substitution",
+      "source": "question",
+      "label": "Decide",
+      "name": "the substitution question",
+      "status": "answered",
+      "counted": true,
+      "order": 13.0,
+      "decision_id": "answer-substitution",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:modification",
+      "key": "modification",
+      "source": "question",
+      "label": "Confirm",
+      "name": "the effect-modifier question",
+      "status": "answered",
+      "counted": false,
+      "order": 133.0,
+      "decision_id": "answer-modification",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:causal",
+      "key": "causal",
+      "source": "question",
+      "label": "Confirm",
+      "name": "the causal question",
+      "status": "answered",
+      "counted": false,
+      "order": 134.0,
+      "decision_id": "answer-causal",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "default:validation-scheme",
+      "key": "set_validation",
+      "source": "declaration",
+      "label": "Confirm",
+      "name": "the validation scheme",
+      "status": "waiting",
+      "counted": false,
+      "order": 136.0,
+      "decision_id": null,
+      "reason": null,
+      "waiting_for": [
+       {
+        "key": "split",
+        "stage": "whos_in",
+        "name": "the held-out rows question"
+       }
+      ],
+      "computing": [],
+      "reopened_by": {
+       "decision_id": "r7",
+       "kind": "revert",
+       "stage": "question"
+      },
+      "would_change": "Another scheme (more folds, repeated folds, the bootstrap) changes the cross-validated scores and how much they vary.",
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "decision:set_levers",
+      "key": "set_levers",
+      "source": "declaration",
+      "label": "Confirm",
+      "name": "the rules repeated inside each fold",
+      "status": "set_for_you",
+      "counted": false,
+      "order": 137.0,
+      "decision_id": null,
+      "reason": "Predictor forms: none; variance filter: none; imbalance correction: none.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": {
+       "decision_id": "r7",
+       "kind": "revert",
+       "stage": "question"
+      },
+      "would_change": "An in-fold rule (a spline, a variance filter, an imbalance correction) changes what each model is fit on.",
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     }
+    ],
+    "reopened": [
+     {
+      "changed_in": "question",
+      "decision_id": "r7",
+      "kind": "revert",
+      "questions": [
+       "decision:set_selection",
+       "default:validation-scheme",
+       "decision:set_levers"
+      ],
+      "results": [],
+      "within": false,
+      "sentence": "Your change to Your question reopened 3 questions in Models."
+     }
+    ]
+   }
+  }
+ },
+ "taken_back_again": {
+  "records": [
+   {
+    "id": "r1",
+    "seq": 1,
+    "at": "2026-10-08T00:01:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_lens",
+     "lenses": [
+      "dietary"
+     ]
+    }
+   },
+   {
+    "id": "r2",
+    "seq": 2,
+    "at": "2026-10-08T00:02:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_target",
+     "column": "glucose"
+    }
+   },
+   {
+    "id": "r3",
+    "seq": 3,
+    "at": "2026-10-08T00:03:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_purpose",
+     "purpose": "inference"
+    }
+   },
+   {
+    "id": "r4",
+    "seq": 4,
+    "at": "2026-10-08T00:04:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_roles",
+     "roles": {
+      "SEQN": "identifier",
+      "kcal": "energy",
+      "sugar": "exposure",
+      "age": "covariate"
+     },
+     "unconfirmed": []
+    }
+   },
+   {
+    "id": "r5",
+    "seq": 5,
+    "at": "2026-10-08T00:05:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "set_purpose",
+     "purpose": "prediction"
+    }
+   },
+   {
+    "id": "r6",
+    "seq": 6,
+    "at": "2026-10-08T00:06:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "revert",
+     "decision_id": "r5"
+    }
+   },
+   {
+    "id": "r7",
+    "seq": 7,
+    "at": "2026-10-08T00:07:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "revert",
+     "decision_id": "r6"
+    }
+   },
+   {
+    "id": "r8",
+    "seq": 8,
+    "at": "2026-10-08T00:08:00Z",
+    "note": null,
+    "sentence": null,
+    "post_seal": false,
+    "after_estimates": false,
+    "recorded_by": "you",
+    "early": null,
+    "decision": {
+     "kind": "revert",
+     "decision_id": "r7"
+    }
+   }
+  ],
+  "stages": {
+   "models": {
+    "key": "models",
+    "name": "Models",
+    "reached": true,
+    "progress": {
+     "answered": 8,
+     "required": 9,
+     "complete": false
+    },
+    "sweep": {
+     "lines": 2,
+     "answered": true,
+     "id": "other:confirm-sweep",
+     "heading": "The 2 choices set for you",
+     "action": "Confirm all 2",
+     "confirmed_by": null,
+     "changed": []
+    },
+    "lines": [
+     {
+      "id": "q:estimand",
+      "key": "estimand",
+      "source": "question",
+      "label": "Decide",
+      "name": "the question on what you study and its effect",
+      "status": "answered",
+      "counted": true,
+      "order": 1.0,
+      "decision_id": "answer-estimand",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:adjustment",
+      "key": "adjustment",
+      "source": "question",
+      "label": "Decide",
+      "name": "the adjustment-set question",
+      "status": "answered",
+      "counted": true,
+      "order": 2.0,
+      "decision_id": "answer-adjustment",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:time_varying",
+      "key": "time_varying",
+      "source": "question",
+      "label": "Decide",
+      "name": "the question on what you study over time",
+      "status": "answered",
+      "counted": true,
+      "order": 3.0,
+      "decision_id": "answer-time_varying",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:energy_adjustment",
+      "key": "energy_adjustment",
+      "source": "question",
+      "label": "Decide",
+      "name": "the energy-adjustment question",
+      "status": "answered",
+      "counted": true,
+      "order": 4.0,
+      "decision_id": "answer-energy_adjustment",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:form",
+      "key": "form",
+      "source": "question",
+      "label": "Decide",
+      "name": "the functional-form question",
+      "status": "answered",
+      "counted": true,
+      "order": 5.0,
+      "decision_id": "answer-form",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:models",
+      "key": "models",
+      "source": "question",
+      "label": "Decide",
+      "name": "the model families question",
+      "status": "answered",
+      "counted": true,
+      "order": 9.0,
+      "decision_id": "answer-models",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "decision:set_model_sequence",
+      "key": "set_model_sequence",
+      "source": "declaration",
+      "label": "Decide",
+      "name": "the Model 1 question",
+      "status": "open",
+      "counted": true,
+      "order": 10.0,
+      "decision_id": null,
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": {
+       "decision_id": "r8",
+       "kind": "revert",
+       "stage": "question"
+      },
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "decision:substitution-pair",
+      "key": "substitution",
+      "source": "question",
+      "label": "Decide",
+      "name": "the substitution question",
+      "status": "answered",
+      "counted": true,
+      "order": 13.0,
+      "decision_id": "answer-substitution",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:modification",
+      "key": "modification",
+      "source": "question",
+      "label": "Confirm",
+      "name": "the effect-modifier question",
+      "status": "answered",
+      "counted": false,
+      "order": 133.0,
+      "decision_id": "answer-modification",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     },
+     {
+      "id": "q:causal",
+      "key": "causal",
+      "source": "question",
+      "label": "Confirm",
+      "name": "the causal question",
+      "status": "answered",
+      "counted": false,
+      "order": 134.0,
+      "decision_id": "answer-causal",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [],
+      "changed_since": null
+     }
+    ],
+    "reopened": [
+     {
+      "changed_in": "question",
+      "decision_id": "r8",
+      "kind": "revert",
+      "questions": [
+       "decision:set_model_sequence"
+      ],
+      "results": [],
+      "within": false,
+      "sentence": "Your change to Your question reopened 1 question in Models."
+     }
+    ]
+   }
+  }
+ }
+}
