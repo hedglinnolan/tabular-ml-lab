@@ -212,3 +212,61 @@ def test_the_journeys_export_leaves_a_blocking_noticing_s_refusal_as_it_is():
     r, server, run = exported(held)
     assert r.status_code == 409 and r.json() == PLAN_OPEN
     assert server.posts == [("fit", None), ("fit", None)] and run.log == []
+
+
+# ── the reference journeys' FitPresser, once the Router reaches Fit ──────────
+
+AT_FIT = {"interview": [{"key": "open_seal", "status": "waiting", "waiting_on": ["fit"]}],
+          "decisions": [], "stages": {"fit": {"status": "fresh", "key": "k1"}},
+          "state": {"purpose": "inference"}}
+AT_END = {"interview": [{"key": "open_seal", "status": "answered", "waiting_on": []}],
+          "decisions": [{}], "stages": {"fit": {"status": "fresh", "key": "k1"}},
+          "state": {"purpose": "inference"}}
+WAY = "the way forward of Fit's refusal, “Keep the recommended dispositions”"
+
+
+def followed(held: Refusal | None):
+    """``journeys.follow`` on :class:`Served` with ``held`` (None: Fit taken at its first press):
+    the Router at Fit, the seal waiting for it, until the plan locks, then at its end; the drivers'
+    last answer, before Fit, the WP17 questions' (its source the run's own). The run (its log, each
+    decision posted with where its answer came from) and the server."""
+    from types import SimpleNamespace
+
+    from turbotab.core.reference import journeys as J
+
+    server = Served(held or Refusal("unused", "unused"))
+    server.triaged = held is None
+    run = J.Run(SimpleNamespace(name="stub", timeout=30.0, before={}))
+    run.pid, run.source = "p1", J.WP17_SOURCE
+    run.client = J.Recording(server, run)
+    run.drive = SimpleNamespace(c=run.client, view=lambda: AT_END if server.locked else AT_FIT)
+    assert J.follow(run)
+    return run, server
+
+
+def test_the_journeys_fit_presser_credits_the_triage_it_confirms_to_fits_way_forward():
+    """P3: where the Router reaches Fit and the open noticings' triage holds the press, the way
+    forward "Keep the recommended dispositions" the drivers take (``journeys.FitPresser``) is the
+    source of the confirmation it posts, in the run's log and in the review packet's table of
+    answers (``packet.answers_rows``), not the answer posted before it (the WP17 questions')."""
+    from turbotab.core.reference import journeys as J
+    from turbotab.core.reference import packet
+
+    held = fit_press.triage_refusal(triage(item("binary_text__gender", "`gender` is two-level text")))
+    run, server = followed(held)
+    assert server.posts == [("fit", None), ("decisions", CONFIRM), ("fit", None)]
+    assert [(e["kind"], e["status"], e["source"]) for e in run.log] == [
+        ("confirm_sweep", 200, WAY)]
+    rows = packet.answers_rows({"answers": run.log})
+    assert len(rows) == 3 and f"| {WAY} |" in rows[2] and J.WP17_SOURCE not in rows[2]
+    assert "Fit waited for the open noticings' triage: took “Keep the recommended dispositions”" \
+        in run.notes
+
+
+def test_the_journeys_fit_presser_posts_nothing_where_no_triage_holds_fit():
+    """Both ways: Fit taken at its first press, nothing is posted beside it and the run's source
+    is the answer's before it, as it was."""
+    from turbotab.core.reference import journeys as J
+
+    run, server = followed(None)
+    assert server.posts == [("fit", None)] and run.log == [] and run.source == J.WP17_SOURCE

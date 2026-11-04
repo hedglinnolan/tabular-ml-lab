@@ -18,14 +18,15 @@ from turbotab.core.graph import artifact_dir
 from turbotab.core.tests.truths import Truth, answer_refusal, asked  # noqa: F401 - re-exported
 
 
-def press_fit(client: Any, pid: str) -> bool:
+def press_fit(client: Any, pid: str,
+              taking: Callable[[dict[str, Any]], None] | None = None) -> bool:
     """Fit, pressed as the user does on the analysis flowchart (SIZING P0.8): no estimate stage is
     served before it (under Estimate and Describe it locks the plan). True when it was taken; False
     when it was refused because there is nothing to fit yet or a question the estimates rest on is
     open, so the estimates stay withheld, as WP17 withholds them. Under Estimate and Describe a
     press the open noticings' triage holds is pressed again once the triage is confirmed as the
-    user confirms it (:func:`fit_response`)."""
-    r = fit_response(client, pid)
+    user confirms it (:func:`fit_response`, which tells ``taking`` the way forward it takes)."""
+    r = fit_response(client, pid, taking=taking)
     if r.status_code == 409 and r.json()["error"]["code"] == "fit_not_yet":
         return False
     assert r.status_code == 200, r.text[:600]

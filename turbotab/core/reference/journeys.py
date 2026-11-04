@@ -556,14 +556,32 @@ def reaches_fit(view: dict[str, Any]) -> bool:
     return fit.get("status") not in ("queued", "running", "error") and not fit.get("cancelled")
 
 
+def taking_fits_way(run: Run) -> Callable[[dict[str, Any]], None]:
+    """What a driver does as it takes the way forward of Fit's refusal while the open noticings'
+    triage holds the press (``server_drive.fit_response``'s ``taking``): the decision that way
+    posts is recorded as that way forward's (``run.source``, the packet's "Where the answer came
+    from"), and the run is told."""
+
+    def taking(way: dict[str, Any]) -> None:
+        run.source = f"the way forward of Fit's refusal, “{way['label']}”"
+        run.note(f"Fit waited for the open noticings' triage: took “{way['label']}”")
+
+    return taking
+
+
 class FitPresser:
     """Fit, pressed as the person walking the journey presses it: once the Router reaches it
     (:func:`reaches_fit`), through ``POST /projects/{pid}/fit`` (``server_drive.press_fit``), at
     most once for each state of the log and the fit, so a refused press (``fit_not_yet``) is not
-    sent again until something changes. ``note``: told what happened, in a sentence."""
+    sent again until something changes. ``note``: told what happened, in a sentence. Under
+    Estimate and Describe, where the open noticings' triage holds the press, the refusal's way
+    forward "Keep the recommended dispositions" is taken and Fit pressed again
+    (``server_drive.fit_response``); ``taking`` is told that way forward before it is taken (a
+    run's :func:`taking_fits_way`, which credits the decision it posts to it)."""
 
-    def __init__(self, client: Any, pid: str, note: Callable[[str], None] | None = None):
-        self.c, self.pid, self.note = client, pid, note
+    def __init__(self, client: Any, pid: str, note: Callable[[str], None] | None = None,
+                 taking: Callable[[dict[str, Any]], None] | None = None):
+        self.c, self.pid, self.note, self.taking = client, pid, note, taking
         self.pressed: set[tuple[int, str | None, str | None]] = set()
 
     def __call__(self, view: dict[str, Any]) -> bool:
@@ -578,7 +596,7 @@ class FitPresser:
         if at in self.pressed:
             return False
         self.pressed.add(at)
-        taken = press_fit(self.c, self.pid)
+        taken = press_fit(self.c, self.pid, taking=self.taking)
         if self.note is not None:
             self.note("the Router reached Fit: pressed" if taken else
                       "the Router reached Fit: pressed, and refused (nothing to fit yet)")
@@ -591,7 +609,7 @@ def follow(run: Run) -> bool:
     spec, d = run.spec, run.drive
     end = run.started + spec.timeout
     done_before: set[str] = set()
-    fit = FitPresser(d.c, run.pid, run.note)
+    fit = FitPresser(d.c, run.pid, run.note, taking=taking_fits_way(run))
     while time.monotonic() < end:
         view = d.view()
         first = next((s for s in view["interview"] if s["status"] in OPEN), None)
@@ -627,7 +645,7 @@ def wait_results(run: Run, timeout: float = 3600.0) -> bool:
     from turbotab.core.decisions import ProjectState
 
     end = time.monotonic() + timeout
-    fit = FitPresser(run.drive.c, run.pid, run.note)
+    fit = FitPresser(run.drive.c, run.pid, run.note, taking=taking_fits_way(run))
     while time.monotonic() < end:
         view = run.drive.view()
         fit(view)  # a result the scheduler holds for Fit is released as the person releases it
@@ -693,12 +711,8 @@ def export(run: Run) -> Any:
             # (``server_drive.fit_response``); a blocking noticing's refusal stands.
             from turbotab.core.tests.acceptance.server_drive import fit_response
 
-            def taking(way: dict[str, Any]) -> None:
-                run.source = f"the way forward of Fit's refusal, “{way['label']}”"
-                run.note(f"Fit waited for the open noticings' triage: took “{way['label']}”")
-
             presses += 1
-            taken = fit_response(d.c, run.pid, taking=taking)
+            taken = fit_response(d.c, run.pid, taking=taking_fits_way(run))
             run.note(f"the export waited for Fit: pressed ({taken.status_code})")
             if taken.status_code == 200 and d.view()["state"].get("purpose") == "inference":
                 from turbotab.core.estimand import ESTIMATE_STAGES

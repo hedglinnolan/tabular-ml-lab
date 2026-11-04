@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Response } from "@playwright/test";
 
 /**
  * Fit, pressed as the person presses it (SIZING P0.8; calm/FOUNDATION §7). Until it is, no score or
@@ -23,11 +23,58 @@ export async function fitState(page: Page, pid: string): Promise<FitState> {
   }, pid);
 }
 
+/** A press of Fit as the server answers it: POST /api/projects/:pid/fit (not its Cancel). */
+const fitPress = (r: Response) => r.request().method() === "POST" && /\/projects\/[^/]+\/fit$/.test(new URL(r.url()).pathname);
+
+/** A way forward a refusal offers that records a decision: its label and the decision it posts. */
+export interface DecidingWay {
+  label: string;
+  decision: Record<string, unknown>;
+}
+
+/**
+ * The way forward of a refused press of Fit that confirms the open noticings' triage before the
+ * lock, or null. Under Estimate and Describe the server refuses the press (`triage_open`) while a
+ * noticing has no recorded disposition, and offers "Keep the recommended dispositions": the
+ * triage's Confirm all, a `confirm_sweep` that records each noticing as the engine recommends
+ * (core/fit_press.py `triage_refusal`). A blocking noticing's refusal offers no such way (each is
+ * decided on its own), nor does any other refusal.
+ */
+export function triageWay(body: unknown): DecidingWay | null {
+  const error = (body as { error?: { code?: string; exits?: { label?: string; decision?: Record<string, unknown> | null }[] } } | null)
+    ?.error;
+  if (error?.code !== "triage_open") return null;
+  const way = (error.exits ?? []).find((e) => e.decision?.kind === "confirm_sweep");
+  return way?.decision ? { label: String(way.label ?? ""), decision: way.decision } : null;
+}
+
+/** ``way`` taken: its decision posted as the app posts a decision (POST /decisions), which must
+ *  be recorded. */
+async function takeWay(page: Page, way: DecidingWay): Promise<void> {
+  const said = await page.evaluate(
+    async ({ p, decision }) => {
+      const res = await fetch(`/api/projects/${encodeURIComponent(p)}/decisions`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(decision),
+      });
+      return { status: res.status, text: (await res.text()).slice(0, 600) };
+    },
+    { p: pidOf(page), decision: way.decision },
+  );
+  expect(said.status, `“${way.label}” is recorded (${said.text})`).toBe(200);
+}
+
 /** The Results' Fit, pressed: the Results are shown on the stage (the banner's result segment,
  *  when the stage shows something else), Fit is pressed, and the stage goes back to what it
  *  showed. Waits for Fit to be offered, then for the press to be taken (the Fit gone from the
  *  Results, for as long as the fit job runs) or refused (the Results say why, and this fails with
- *  it). */
+ *  it). Under Estimate and Describe a press the open noticings' triage holds (`triage_open`) takes
+ *  that refusal's way forward "Keep the recommended dispositions", the triage's Confirm all, and
+ *  Fit is pressed again, once. Neither screen draws that triage yet (the shell draws one only
+ *  under Predict, in Results: quest/log.ts `triageStage`), nor the refusal's ways forward beside
+ *  Fit (its words alone), so the way the served refusal offers (:func:`triageWay`) is posted as
+ *  the app posts a decision. A blocking noticing's refusal, or any other, fails as before. */
 export async function pressFit(page: Page, timeout = 300_000): Promise<{ waited: number; firstBusy: number | null }> {
   const press = page.getByTestId("press-fit");
   const segment = page.getByTestId("banner-result");
@@ -40,18 +87,48 @@ export async function pressFit(page: Page, timeout = 300_000): Promise<{ waited:
     .then(() => true)
     .catch(() => false);
   expect(offered, "the Results offer Fit").toBe(true);
-  await press.click();
+  // The server's answer to the press, kept as it comes (a refusal's ways forward are not drawn).
+  let served: Response | null = null;
+  const keep = (r: Response) => {
+    if (fitPress(r)) served = r;
+  };
   const section = page.getByTestId("fit-press");
   const refusal = section.getByRole("alert");
   // A fit that was already computed shows its results at once. A held one starts to compute, and a
   // screen that still shows an older withheld fit keeps the Fit until the new one arrives: the
   // wait lasts while the fit job runs, and ends once none has for the quiet time.
-  const answered = await waitWhileComputing(
-    page,
-    async () => (await section.count()) === 0 || (await refusal.count()) > 0,
-    ["fit"],
-    { quiet: Math.min(timeout, FIT_QUIET), cap: Math.max(timeout, FIT_CAP) },
-  );
+  const answer = () =>
+    waitWhileComputing(page, async () => (await section.count()) === 0 || (await refusal.count()) > 0, ["fit"], {
+      quiet: Math.min(timeout, FIT_QUIET),
+      cap: Math.max(timeout, FIT_CAP),
+    });
+  page.on("response", keep);
+  let answered: Awaited<ReturnType<typeof answer>>;
+  try {
+    await press.click();
+    answered = await answer();
+  } finally {
+    page.off("response", keep);
+  }
+  const first = served as Response | null;
+  const way = (await refusal.count()) && first && first.status() === 409 ? triageWay(await first.json().catch(() => null)) : null;
+  if (way) {
+    await takeWay(page, way);
+    await expect(press, "Fit is offered again once the triage is recorded").toBeEnabled({ timeout });
+    const again = page.waitForResponse(fitPress, { timeout });
+    await press.click();
+    const second = await again;
+    if (second.status() !== 200)
+      throw new Error(`Fit was refused after “${way.label}”: ${JSON.stringify(await second.json().catch(() => null)).slice(0, 600)}`);
+    // Taken: the first press's refusal leaves with the press's error.
+    await expect(refusal, "the refusal of the first press is gone once Fit is taken").toHaveCount(0, { timeout: 30_000 });
+    answered = await answer();
+    try {
+      test.info().annotations.push({ type: "triage", description: `Fit waited for the open noticings' triage: took “${way.label}”` });
+    } catch {
+      /* not inside a test */
+    }
+  }
   if (await refusal.count()) throw new Error(`Fit was refused: ${(await refusal.first().innerText()).trim()}`);
   expect(answered.done, `Fit was taken (waited ${answered.waited} s; ${answered.seen})`).toBe(true);
   if (!shown && (await segment.getAttribute("aria-pressed")) === "true") await segment.click();
