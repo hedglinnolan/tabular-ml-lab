@@ -337,11 +337,12 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     the modifications; and, at PP2's third pass, the mattered stage when a specification whose plan
     holds a pipeline step came to be fitted as that plan (PP2 C1), and the findings when, beside
     pooled-QC rows, their counts came to read the participants and their two-level levels came to
-    be named as the file spells them."""
+    be named as the file spells them; and, at PP2's fourth pass, the findings when their served
+    reasons came to name only the stages, views and diagnostics v2 has."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (36, 43, 24)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (36, 43, 25)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
             versions["secondary"], versions["scales"]) == (17, 27, 23, 17, 14)
     assert (versions["modification"], versions["mattered"]) == (9, 4)

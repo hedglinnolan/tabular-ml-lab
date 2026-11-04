@@ -317,9 +317,12 @@ def build_graph() -> Graph:
             # and the implausible intake count the participants; the energy finding counts the rows
             # its correlation pairs; and a two-level column's levels are named in every spelling
             # the file gives them.
+            # findings 25 (PP2 why-true): a served reason names only the stages, views and
+            # diagnostics v2 has (finding_words.UNTRUE_CLAUSES, and the restated pack reasons); the
+            # text-booleans finding serves no reason (finding_words.UNTRUE_REASONS).
             Stage(
                 "findings",
-                24,
+                25,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings", "numbers_read",
                  "shape_confirmations", "categorical", "aggregation"),
