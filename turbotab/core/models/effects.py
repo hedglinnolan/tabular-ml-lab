@@ -110,22 +110,28 @@ def column_basis(X: np.ndarray, tol: float = ALIAS_TOL) -> list[int]:
     """The columns ``lm`` keeps, in order: each column is kept unless its part outside the span of
     the kept columns before it is below ``tol`` of its own length (R's limited pivoting, which
     moves an aliased column to the end and reports its coefficient as NA). Two passes of
-    Gram–Schmidt against the kept columns make the residual exact to rounding."""
+    Gram–Schmidt against the kept columns make the residual exact to rounding. Their orthonormal
+    basis fills one buffer allocated once, column-major so the kept block is contiguous, where a
+    copy grown by a column each time made the loop several times slower."""
     X = np.asarray(X, dtype=float)
+    n, p = X.shape
     kept: list[int] = []
-    Q = np.zeros((X.shape[0], 0))
-    for j in range(X.shape[1]):
+    Q = np.empty((n, min(n, p)), order="F")
+    for j in range(p):
+        if len(kept) == Q.shape[1]:
+            break  # n orthonormal columns span every later column
         x = X[:, j]
         length = float(np.linalg.norm(x))
         if length == 0.0:
             continue
-        r = x - Q @ (Q.T @ x)
-        r = r - Q @ (Q.T @ r)
+        basis = Q[:, :len(kept)]
+        r = x - basis @ (basis.T @ x)
+        r = r - basis @ (basis.T @ r)
         rest = float(np.linalg.norm(r))
         if rest <= tol * length:
             continue
+        Q[:, len(kept)] = r / rest
         kept.append(j)
-        Q = np.column_stack([Q, r / rest])
     return kept
 
 

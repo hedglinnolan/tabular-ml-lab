@@ -211,7 +211,12 @@ def univariable_p(Z: np.ndarray, y: np.ndarray, task: str,
     """Each term's univariable p-value (a term: one column, or several, ``groups``): for one column
     the slope's t test of least squares or the Wald z test of a logistic regression, as R's ``lm``
     and ``glm`` report them; for several, the F test of least squares (``anova``) or the
-    likelihood-ratio test of a logistic regression (``anova(…, test = "LRT")``)."""
+    likelihood-ratio test of a logistic regression (``anova(…, test = "LRT")``). As ``lm`` and
+    ``glm`` fit, the fit is on the identified columns (:func:`identified`) and the test's degrees
+    of freedom are the rank's: rank − 1 and n − rank, so a category coded by every level beside the
+    intercept is tested as one coded by all but one. A term whose columns add nothing to the
+    intercept (rank 1: R gives NA), or whose logistic fit fails, has no test and p 1, so it is
+    never kept."""
     from scipy import stats
 
     from turbotab.core.models.performance import logistic_fit
@@ -222,29 +227,33 @@ def univariable_p(Z: np.ndarray, y: np.ndarray, task: str,
     ones = np.ones((n, 1))
     for t, cols in enumerate(terms):
         X = np.hstack([ones, Z[:, cols]])
-        k = len(cols)
         if task == "binary":
-            if k == 1:
+            if len(cols) == 1:
                 fitted = logistic_fit(X, y)
                 if fitted is None:
                     continue
                 se = math.sqrt(fitted[1][1, 1])
                 out[t] = float(2 * stats.norm.sf(abs(fitted[0][1]) / se)) if se > 0 else 1.0
                 continue
-            full, null = _loglik(X, y), _loglik(ones, y)
+            kept = identified(X)
+            if len(kept) < 2:
+                continue
+            full, null = _loglik(X[:, kept], y), _loglik(ones, y)
             if full is not None and null is not None:
-                out[t] = float(stats.chi2.sf(2.0 * (full - null), k))
+                out[t] = float(stats.chi2.sf(2.0 * (full - null), len(kept) - 1))
             continue
-        beta, rss, inv, _ = _ols(X, y)
-        df = n - k - 1
-        if k == 1:
+        beta, rss, inv, rank = _ols(X, y)
+        if rank < 2:
+            continue
+        df = n - rank
+        if len(cols) == 1:
             s2 = rss / df
             se = math.sqrt(s2 * inv[1, 1]) if s2 > 0 else 0.0
             out[t] = float(2 * stats.t.sf(abs(beta[1]) / se, df)) if se > 0 else 0.0
             continue
         rss0 = float(((y - y.mean()) ** 2).sum())
-        f = ((rss0 - rss) / k) / (rss / df) if rss > 0 else float("inf")
-        out[t] = float(stats.f.sf(f, k, df))
+        f = ((rss0 - rss) / (rank - 1)) / (rss / df) if rss > 0 else float("inf")
+        out[t] = float(stats.f.sf(f, rank - 1, df))
     return out
 
 
