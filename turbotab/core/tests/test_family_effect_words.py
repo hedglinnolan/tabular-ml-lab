@@ -40,8 +40,10 @@ DESIGN = {"crude": [], "model_2": FW.MODEL_2, "model_3": [*FW.MODEL_2, *FURTHER]
 NUMERIC = {"fiber": "exposure", "sugar": "exposure"}
 BH = "Benjamini & Hochberg 1995, J R Stat Soc B 57:289"
 ROTHMAN = "Rothman 1990, Epidemiology 1:43"
+# A Table 2 that draws a category member as its levels draws none of them (the shell's, the
+# verifier's FW-V2-3), so the sentence it footnotes says nothing of every member being shown.
 TOGETHER = ("2 exposures were fit together in each model, so each estimate is adjusted for the "
-            "other, and every member is shown.")
+            "other.")
 JOINT = {
     "fdr_bh": (f"{TOGETHER} Their p-values are not adjusted for multiplicity: Benjamini–Hochberg "
                f"q-values are computed only where each member is tested in its own model."),
@@ -279,6 +281,66 @@ def test_one_fit_per_member_keeps_every_word(apart):
     assert out["effects"]["methods"].endswith(f" {EACH['fdr_bh']}")
 
 
+# What feature-wise regression's methods text says of {`fiber`, `grp`, `arm`}: it tests `fiber`
+# alone, and each of its models holds the indicators of the two categories, as it did.
+CATEGORY_WORDS = ("the estimate of each exposure is reported across a declared sequence of models "
+                  "fit on all 400 analyzed rows: without the covariates, adjusted for `grp` and "
+                  "`arm` alone; Model 2, the primary, adjusted for `age`, `sex`, `smoking`, "
+                  "`activity`, `grp` and `arm`; Model 3, further adjusted for `bmi`, a possible "
+                  "mediator, so not a total effect.")
+# The linear model's for the same family: the three fit together in each model.
+CATEGORY_JOINT_WORDS = ("the estimate of each exposure is reported across a declared sequence of "
+                        "models fit on all 400 analyzed rows: without the covariates, with `fiber`, "
+                        "`grp` and `arm` fit together, each adjusted for the others; Model 2, the "
+                        "primary, adjusted for `age`, `sex`, `smoking`, `activity` and the other "
+                        "exposures; Model 3, further adjusted for `bmi`, a possible mediator, so not "
+                        "a total effect.")
+
+
+@pytest.mark.parametrize("models", [["featurewise"], ["linear", "featurewise"],
+                                    ["featurewise", "linear"]])
+def test_the_categories_feature_wise_regression_holds_are_never_said_fit_together(tmp_path,
+                                                                                  models):
+    """Silent (the verifier's FW-V2-1): {`fiber`, `grp`, `arm`} under feature-wise regression,
+    alone and beside the linear model in either order. Feature-wise regression tests `fiber` alone:
+    each of its rows is statsmodels' glucose ~ `fiber` + the indicators of `grp` and `arm` (and the
+    model's covariates), never `fiber` without them, so each model names both categories among the
+    columns it is adjusted for, two members of the family. Its methods text says each model was
+    adjusted for them alone, as it did, never that they were fit together, each adjusted for the
+    other: only `effects._together`'s guard that a family testing each member in its own model
+    holds none together keeps the joint fit's words off it (with {`fiber`, `sugar`} its models
+    name no member, so the guard never runs). Beside it the linear model fits the three together
+    (statsmodels' one fit of glucose on `fiber` and both categories' indicators), and its text says
+    so."""
+    frame = FW._frame()
+    out = ef.run(frame, tmp_path, FW._family(
+        {"fiber": "exposure", "grp": "exposure", "arm": "exposure"}, models))
+    held = [*FW.GRP, *_columns(frame, ["arm"])]  # grp_b, grp_c and arm_y
+    featurewise = _sequence(out, "featurewise")
+    for key, adjust in DESIGN.items():
+        (row,) = featurewise[key]["effects"]
+        want = _fit(frame, ["fiber", *held, *adjust])["fiber"]
+        assert row["feature"] == "fiber" and row["estimate"] == pytest.approx(want, rel=1e-9), key
+        alone = _fit(frame, ["fiber", *adjust])["fiber"]
+        assert abs(row["estimate"] - alone) > 1e-3 * abs(alone), key  # the categories are held
+        assert set(featurewise[key]["adjusted_for"]) == _raw(adjust) | {"grp", "arm"}, key
+    assert featurewise["crude"]["label"] == "Without covariates"
+    methods = out["effects"]["methods"]
+    if models == ["featurewise"]:
+        assert methods.startswith(f"T{CATEGORY_WORDS[1:]}"), methods[:400]
+    else:
+        assert f"Under the feature-wise regression, {CATEGORY_WORDS}" in methods, methods
+        linear = _sequence(out, "linear")
+        for key, adjust in DESIGN.items():
+            together = _fit(frame, [*held, "fiber", *adjust])
+            rows = {r["feature"]: r["estimate"] for r in linear[key]["effects"]}
+            assert list(rows) == [*held, "fiber"], key
+            for c in rows:
+                assert rows[c] == pytest.approx(together[c], rel=1e-9), (key, c)
+        assert f"Under the linear model, {CATEGORY_JOINT_WORDS}" in methods, methods
+    assert "with `grp` and `arm` fit together" not in methods
+
+
 # ── both chosen ──────────────────────────────────────────────────────────────
 
 
@@ -350,7 +412,7 @@ def test_three_members_fit_together_are_each_adjusted_for_the_others():
                    multiplicity="fdr_bh")
     assert est.multiplicity_statement(st, st.estimand, 3).startswith(
         "3 exposures were fit together in each model, so each estimate is adjusted for the "
-        "others, and every member is shown. ")
+        "others. ")
 
 
 def test_the_frame_holds_what_the_constructions_say():

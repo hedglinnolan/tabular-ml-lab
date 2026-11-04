@@ -16,6 +16,9 @@ its category `grp` and its two-level `arm`) and run through the real design and 
 * ``family_level``: the family {`fiber`, `arm`}, so every model serves `fiber` and `arm_y`;
 * ``family_three``: the family {`fiber`, `sugar`, `supplement`} under the linear model, so every
   model serves the three, each adjusted for the 2 others;
+* ``family_mixed``: the family {`fiber`, `sugar`, `grp`} under the linear model, so every model
+  serves `grp` as two rows and `fiber` and `sugar` as their own columns, each adjusted for the
+  other and for `grp`;
 * ``family_apart``: the family {`fiber`, `sugar`} under feature-wise regression, which fits each
   member in its own model, so every model serves `fiber` and `sugar`, neither adjusted for the
   other;
@@ -173,6 +176,19 @@ def family_three(folder: Path) -> dict[str, Any]:
     return {"artifact": effects, "truth": {"crude": CS._crude(frame, effects, frame[served])}}
 
 
+def family_mixed(folder: Path) -> dict[str, Any]:
+    frame = FW._frame()
+    members = ["fiber", "sugar", "grp"]
+    st = FW._family(dict.fromkeys(members, "exposure"), ["linear"])
+    effects = ef.run(frame, folder, st, fit=False)["effects"]
+    assert effects["exposure"] == d.EXPOSURE_FAMILY and effects["exposures"] == members
+    _served(effects, ["grp_b", "grp_c", "fiber", "sugar"])
+    _holds(effects, members)
+    X = pd.DataFrame({**{f"grp_{v}": (frame["grp"] == v).astype(float) for v in ("b", "c")},
+                      "fiber": frame["fiber"], "sugar": frame["sugar"]})
+    return {"artifact": effects, "truth": {"crude": CS._crude(frame, effects, X)}}
+
+
 def family_apart(folder: Path) -> dict[str, Any]:
     frame = FW._frame()
     st = FW._family({"fiber": "exposure", "sugar": "exposure"}, ["featurewise"])
@@ -203,7 +219,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="estimate-terms-") as folder:
         for name, build in (("density", density), ("cut", cut), ("two_level", two_level),
                             ("family_category", family_category), ("family_level", family_level),
-                            ("family_three", family_three),
+                            ("family_three", family_three), ("family_mixed", family_mixed),
                             ("family_apart", family_apart), ("family_q", family_q)):
             out[name] = build(Path(folder) / name)
     head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,

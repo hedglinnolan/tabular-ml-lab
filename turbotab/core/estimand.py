@@ -1222,10 +1222,13 @@ def multiplicity_statement(state: Any, spec: Any, n: int) -> str:
 
 def _together_statement(state: Any, n: int) -> str:
     """:func:`multiplicity_statement` for members fit together in one model: no q-value is
-    computed for its rows, so none is claimed."""
+    computed for its rows, so none is claimed. It says nothing of every member being shown: a
+    Table 2 that draws one row per model draws no row of a category member served as its levels
+    (the shell's Estimate Results), and this sentence footnotes it there (the verifier's
+    FW-V2-3)."""
     method, _ = family_multiplicity(state)
     head = (f"{n:,} exposures were fit together in each model, so each estimate is adjusted for "
-            f"the other{'s' if n > 2 else ''}, and every member is shown.")
+            f"the other{'s' if n > 2 else ''}.")
     if method == "none":
         return f"{head} Their p-values have no multiplicity control, recorded as a limitation."
     if method == "fdr_bh":

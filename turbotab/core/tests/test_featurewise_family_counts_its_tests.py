@@ -82,8 +82,8 @@ ALL_TWO = (f"2 exposures were tested, each in turn; Benjamini–Hochberg q-value
 # Beside the linear model, which fits the members together and gives its rows no q-value, each
 # family's sentence under its name (pp2-family-effect-words, ``test_family_effect_words``).
 BOTH_TWO = (f"Under the feature-wise regression, {ALL_TWO} Under the linear model, 2 exposures were "
-            f"fit together in each model, so each estimate is adjusted for the other, and every "
-            f"member is shown. Their p-values are not adjusted for multiplicity: "
+            f"fit together in each model, so each estimate is adjusted for the other. Their "
+            f"p-values are not adjusted for multiplicity: "
             f"Benjamini–Hochberg q-values are computed only where each member is tested in its "
             f"own model.")
 # The claims a sentence makes only of tests that ran.

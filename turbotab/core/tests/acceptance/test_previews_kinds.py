@@ -392,8 +392,8 @@ def test_3_set_multiplicity_the_family_is_the_effects_stages(fam):
     assert all(r.get("q") is None for fit in effects["families"][0]["sequence"]
                for r in fit["effects"] or [])
     assert effects["multiplicity"] == (
-        "2 exposures were fit together in each model, so each estimate is adjusted for the other, "
-        "and every member is shown. Their p-values are not adjusted for multiplicity: "
+        "2 exposures were fit together in each model, so each estimate is adjusted for the other. "
+        "Their p-values are not adjusted for multiplicity: "
         "Benjamini–Hochberg q-values are computed only where each member is tested in its own "
         "model.")
 
