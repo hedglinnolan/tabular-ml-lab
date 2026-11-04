@@ -35,10 +35,12 @@ So the plan is locked before any inference estimate is displayed:
   registration.
 * **After.** Every later decision is marked ``after_estimates`` and its sentence says "After the
   estimates were seen, …" (``decisions.disclose``); the methods text keeps the plan as declared and
-  every change after it (``turbotab.core.provenance``), and the export lists those changes. A
-  features-in-rows reading the analysis read at no moment from its record on, the table unturned
-  while it stood, is no change, so neither the methods nor the export states it or its revert
-  (``provenance.never_read``).
+  every change after it (``turbotab.core.provenance``), and the export lists every later
+  decision. One that changes nothing in the analysis as it stands is left out of the methods (an
+  answer held now, its condition failing or the goal holding it, or a features-in-rows reading
+  read at no moment, the table unturned while it stood, or a revert of either:
+  ``provenance.never_applied``), and the export's text names it as left out of them
+  (:func:`plan_text`).
 * **Wording.** The lock says what was declared in the software before estimates were displayed.
   It is never called prespecified or preregistered (MODELING_SEQUENCE §1 row 12): the analyst may
   have seen the data, and nothing was registered outside the software.
@@ -171,7 +173,7 @@ def plan_document(records: Sequence[Any]) -> PlanExport:
     read): once locked, the plan the lock recorded and the lock's own time; before, the plan in
     force and the time of the last decision it holds. The hash covers every field but itself and
     the text, which quotes it."""
-    from turbotab.core.provenance import in_force, never_read
+    from turbotab.core.provenance import in_force, in_methods
 
     ordered = sorted(records, key=lambda r: r.seq)
     lock = current_lock(ordered)
@@ -180,14 +182,14 @@ def plan_document(records: Sequence[Any]) -> PlanExport:
         held = [r for r in ordered if r.seq < lock.seq]
         status, at, through = "locked", lock.at, lock.seq
         # Each later decision made after an estimate was shown (one made while nothing had been
-        # shown under the lock is not marked so; ``ProjectService.decide``), but a reading the
-        # analysis never read, which the methods leave out too (``provenance.never_read``).
-        unread = never_read(ordered, lock.seq)
-        later = [r for r in ordered if r.seq > lock.seq and r.after_estimates and r.sentence
-                 and r.id not in unread]
+        # shown under the lock is not marked so; ``ProjectService.decide``), and of them, those
+        # the methods leave out, which the text names (``provenance.in_methods``).
+        later = [r for r in ordered if r.seq > lock.seq and r.after_estimates and r.sentence]
+        stated = in_methods(ordered)
+        left_out = [r.seq for r in later if r.id not in stated]
     else:
         plan = plan_of(decisions.fold(ordered))
-        held, later = ordered, []
+        held, later, left_out = ordered, [], []
         status = "declared"
         at = ordered[-1].at if ordered else None
         through = ordered[-1].seq if ordered else None
@@ -202,21 +204,21 @@ def plan_document(records: Sequence[Any]) -> PlanExport:
     }
     content = json.loads(canonical(content))  # every value as JSON holds it
     sha = hashlib.sha256(canonical(content)).hexdigest()
-    return PlanExport(**content, sha256=sha, text=plan_text(content, sha))
+    return PlanExport(**content, sha256=sha, text=plan_text(content, sha, left_out))
 
 
-def plan_text(content: Mapping[str, Any], sha: str) -> str:
+def plan_text(content: Mapping[str, Any], sha: str, left_out: Sequence[int] = ()) -> str:
     """What the export says of itself: what was declared in the software, and when; never that it
-    was registered or specified before the data were seen (the analyst may have seen them)."""
+    was registered or specified before the data were seen (the analyst may have seen them).
+
+    ``left_out``: the seqs of the decisions it lists as made after the estimates were seen that
+    the methods leave out (:func:`plan_document`), which it names (:func:`_later_text`)."""
     at = content.get("declared_at") or "an unrecorded time"
     when = at.replace("T", " at ").replace("Z", " UTC") if isinstance(at, str) else at
-    later = len(content.get("after_estimates") or [])
     if content.get("status") == "locked":
         lead = (f"This is the analysis plan as declared in TurboTab before any estimate was "
                 f"displayed; it was locked on {when}, before the first estimate was shown.")
-        tail = (f" {later:,} decision{'s were' if later != 1 else ' was'} made after the estimates "
-                f"were seen, listed with it and marked so in the methods." if later else
-                " No decision has been made since the estimates were seen.")
+        tail = _later_text(len(content.get("after_estimates") or []), left_out)
     elif (content.get("plan") or {}).get("purpose") == "prediction":
         # EXPORT: under prediction no plan is locked (the held-out rows are the seal), and scores
         # may already have been shown, so the plan says neither that it was locked nor that no
@@ -239,6 +241,30 @@ def plan_text(content: Mapping[str, Any], sha: str) -> str:
     if any(word in text.lower() for word in NEVER_SAID):
         raise RuntimeError('the plan text must never call the plan prespecified or preregistered')
     return text
+
+
+def _later_text(later: int, left_out: Sequence[int]) -> str:
+    """What a locked plan's text says of the ``later`` decisions it lists as made after the
+    estimates were seen, of which the methods leave out those numbered ``left_out``: each changes
+    nothing in the analysis as it stands (``provenance.in_methods``), so the text names it rather
+    than call it marked so in the methods."""
+    from turbotab.core.voice import listing
+
+    if not later:
+        return " No decision has been made since the estimates were seen."
+    made = (f" {later:,} decision{'s were' if later != 1 else ' was'} made after the estimates "
+            f"were seen, listed with it")
+    if not left_out:
+        return f"{made} and marked so in the methods."
+    one = len(left_out) == 1
+    numbers = listing([f"#{seq}" for seq in left_out], len(left_out), ticked=False)
+    named = f"decision{'' if one else 's'} {numbers} {'is' if one else 'are'} left out of"
+    why = f"as {'it changes' if one else 'they change'} nothing in the current analysis."
+    stated = later - len(left_out)
+    if not stated:
+        return f"{made}; {named} the methods, {why}"
+    return (f"{made}; {stated:,} of them {'is' if stated == 1 else 'are'} marked so in the "
+            f"methods, and {named} them, {why}")
 
 
 def plan_export(records: Sequence[Any]) -> bytes:

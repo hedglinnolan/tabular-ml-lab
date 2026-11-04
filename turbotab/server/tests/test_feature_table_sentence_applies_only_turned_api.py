@@ -10,14 +10,17 @@ table: the untargeted metabolomics sample supplied turned round (features in row
 the real server.
 
 After a seen lock the methods fold nothing out, but a reading recorded on a table no answer turns,
-and withdrawn before one does, is read at no moment, so neither the methods nor the exported plan
-(``GET …/plan``: ``plan_lock.plan_document``, which the bundle's ``analysis_plan.json`` holds too)
-states it or its revert, and the plan's count of decisions made after the estimates were seen
-leaves both out. One recorded on the turned table
-is listed and counted, and stays so, not in force, once the table is answered back as samples
-(``provenance.never_read``). The lock is recorded in the project's log as the server records one
-after estimates were shown under prediction (``seen="prediction"``; the routing gate), so no fit
-is run; every other decision is posted to the real server.
+and withdrawn before one does, is read at no moment, so the methods state neither it nor its
+revert; the exported plan (``GET …/plan``: ``plan_lock.plan_document``, which the bundle's
+``analysis_plan.json`` holds too) still lists and counts both, as the Record holds them, and its
+text names each as left out of the methods (V2-1). One recorded on the turned table is listed,
+counted and marked so in the methods, and stays so, not in force, once the table is answered back
+as samples (``provenance.never_read``). A reading in force when it was recorded but unturned before
+the lock and since is stated nowhere in the methods, so its revert after the lock writes no
+sentence either and is named as left out; one in force at the lock is in the plan as declared, and
+its revert is said and marked (V2-2). The lock is recorded in the project's log as the server
+records one after estimates were shown under prediction (``seen="prediction"``; the routing gate),
+so no fit is run; every other decision is posted to the real server.
 """
 from __future__ import annotations
 
@@ -102,7 +105,8 @@ def test_a_feature_table_reading_is_said_only_while_the_table_is_turned(client, 
     assert _said(client, pid, reading["id"]) == ([], [])
 
 
-COUNTED = "made after the estimates were seen, listed with it and marked so in the methods."
+MADE = "made after the estimates were seen, listed with it"
+NOW = "nothing in the current analysis."
 
 
 def _later(client, pid) -> tuple[list[int], list[int], str]:
@@ -116,41 +120,46 @@ def _later(client, pid) -> tuple[list[int], list[int], str]:
             plan.json()["text"])
 
 
-def _counts(text: str, n: int) -> bool:
-    """Whether the plan's text counts ``n`` decisions made after the estimates were seen."""
-    if n == 0:
-        return COUNTED not in text
-    return f" {n:,} decision{'s were' if n != 1 else ' was'} {COUNTED}" in text
-
-
 def _reading(response: dict) -> dict:
     return next(r for r in reversed(response["decisions"])
                 if r["decision"]["kind"] == "set_feature_table")
 
 
-def test_after_a_seen_lock_the_plan_lists_a_reading_only_once_the_table_turned(client, tmp_path):
+def _lock(client, pid) -> None:
     from turbotab.core.decisions import LockPlan
     from turbotab.core.plan_lock import digest
 
-    pid = _opened(client, tmp_path)
-    _answer(client, pid, "orientation", {"kind": "set_orientation", "orientation": "sample_major"})
     client.app.state.service.log(pid).append(
         LockPlan(plan={}, digest=digest({}), seen="prediction"))
-    listed, stated, text = _later(client, pid)
-    assert listed == stated == [] and _counts(text, 0)
 
-    # A turn exit pressed on the unturned table, then withdrawn: neither listed nor counted.
+
+def test_after_a_seen_lock_the_plan_counts_every_reading_and_names_the_unread(client, tmp_path):
+    pid = _opened(client, tmp_path)
+    _answer(client, pid, "orientation", {"kind": "set_orientation", "orientation": "sample_major"})
+    _lock(client, pid)
+    listed, stated, text = _later(client, pid)
+    assert listed == stated == []
+    assert text.endswith(" No decision has been made since the estimates were seen.")
+
+    # A turn exit pressed on the unturned table, then withdrawn: listed and counted as the Record
+    # holds them, and named as left out of the methods, which state neither.
     unread = _reading(_post(client, pid, {"kind": "set_feature_table", "label": "feature_id",
                                           "annotations": []}))
     assert unread["after_estimates"] is True and unread["sentence"]
     listed, stated, text = _later(client, pid)
-    assert listed == stated == [] and _counts(text, 0)
+    assert (listed, stated) == ([unread["seq"]], [])
+    assert text.endswith(f" 1 decision was {MADE}; decision #{unread['seq']} is left out of the "
+                         f"methods, as it changes {NOW}")
     undone = _post(client, pid, {"kind": "revert", "decision_id": unread["id"]})["decisions"][-1]
     assert undone["decision"]["kind"] == "revert" and undone["sentence"]
+    left = f"decisions #{unread['seq']} and #{undone['seq']}"
     listed, stated, text = _later(client, pid)
-    assert listed == stated == [] and _counts(text, 0)
+    assert (listed, stated) == ([unread["seq"], undone["seq"]], [])
+    assert text.endswith(f" 2 decisions were {MADE}; {left} are left out of the methods, as they "
+                         f"change {NOW}")
 
-    # Turned after the lock, the table reads by the reading recorded then: listed and counted.
+    # Turned after the lock, the table reads by the reading recorded then: listed, counted and
+    # marked so in the methods, beside the two still named as left out.
     wait_for(client, pid, {"oriented": "fresh"})
     turn = _post(client, pid, {"kind": "set_orientation", "orientation": "feature_major"})
     turn = turn["decisions"][-1]
@@ -158,13 +167,61 @@ def test_after_a_seen_lock_the_plan_lists_a_reading_only_once_the_table_turned(c
                                         "annotations": []}))
     assert read["sentence"].startswith("After the estimates were seen, for the features-in-rows")
     listed, stated, text = _later(client, pid)
-    assert listed == stated == [turn["seq"], read["seq"]] and _counts(text, 2)
+    assert listed == [unread["seq"], undone["seq"], turn["seq"], read["seq"]]
+    assert stated == [turn["seq"], read["seq"]]
+    assert text.endswith(f" 4 decisions were {MADE}; 2 of them are marked so in the methods, and "
+                         f"{left} are left out of them, as they change {NOW}")
 
     # Answered back as samples: the reading is a change made after the estimates were seen, kept.
     back = _post(client, pid, {"kind": "set_orientation", "orientation": "sample_major"})
     back = back["decisions"][-1]
     listed, stated, text = _later(client, pid)
-    assert listed == stated == [turn["seq"], read["seq"], back["seq"]] and _counts(text, 3)
+    assert listed == [unread["seq"], undone["seq"], turn["seq"], read["seq"], back["seq"]]
+    assert stated == [turn["seq"], read["seq"], back["seq"]]
+    assert text.endswith(f" 5 decisions were {MADE}; 3 of them are marked so in the methods, and "
+                         f"{left} are left out of them, as they change {NOW}")
     lines = client.get(f"/api/projects/{pid}/methods").json()["lines"]
     assert [(line["record_id"], line["in_force"]) for line in lines
             if line["kind"] == "set_feature_table"] == [(read["id"], False)]
+
+
+def _withdrawn_after_the_lock(client, tmp_path, *, unturned: bool) -> tuple[dict, dict, str]:
+    """A reading recorded on the turned table before the lock, the table answered back as samples
+    first when ``unturned``, and reverted after the lock: the reading, its revert, and the pid."""
+    pid = _opened(client, tmp_path)
+    _answer(client, pid, "orientation", {"kind": "set_orientation", "orientation": "feature_major"})
+    wait_for(client, pid, {"oriented": "fresh"})
+    reading = _reading(_post(client, pid, {"kind": "set_feature_table", "label": "feature_id",
+                                           "annotations": []}))
+    target = "bmi"  # a column once the table is turned (features in columns)
+    if unturned:
+        _post(client, pid, {"kind": "set_orientation", "orientation": "sample_major"})
+        wait_for(client, pid, {"oriented": "fresh"})
+        target = "S002"  # a column of the table as supplied (one per sample)
+    _post(client, pid, {"kind": "set_target", "column": target})
+    _lock(client, pid)
+    undone = _post(client, pid, {"kind": "revert", "decision_id": reading["id"]})["decisions"][-1]
+    assert undone["decision"]["kind"] == "revert" and undone["after_estimates"] is True
+    assert undone["sentence"]
+    return reading, undone, pid
+
+
+def test_a_reading_withdrawn_after_the_lock_unturned_since_writes_no_revert(client, tmp_path):
+    reading, undone, pid = _withdrawn_after_the_lock(client, tmp_path, unturned=True)
+    lines = client.get(f"/api/projects/{pid}/methods").json()["lines"]
+    assert not {reading["id"], undone["id"]} & {line["record_id"] for line in lines}
+    listed, stated, text = _later(client, pid)
+    assert (listed, stated) == ([undone["seq"]], [])
+    assert text.endswith(f" 1 decision was {MADE}; decision #{undone['seq']} is left out of the "
+                         f"methods, as it changes {NOW}")
+
+
+def test_a_reading_in_force_at_the_lock_and_withdrawn_after_is_said(client, tmp_path):
+    reading, undone, pid = _withdrawn_after_the_lock(client, tmp_path, unturned=False)
+    lines = {line["record_id"]: line
+             for line in client.get(f"/api/projects/{pid}/methods").json()["lines"]}
+    assert lines[reading["id"]]["sentence"] == reading["sentence"]  # the plan as declared
+    assert lines[undone["id"]]["after_estimates"] is True
+    listed, stated, text = _later(client, pid)
+    assert listed == stated == [undone["seq"]]
+    assert text.endswith(f" 1 decision was {MADE} and marked so in the methods.")

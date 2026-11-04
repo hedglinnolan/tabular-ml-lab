@@ -229,47 +229,99 @@ def test_after_the_lock_a_feature_table_reading_read_at_any_moment_is_a_fork(tmp
     assert undone.id in [line.record_id for line in methods_text(withdrawn.records()).lines]
 
 
-def test_the_plan_export_lists_after_the_lock_only_the_readings_the_methods_state(tmp_path):
-    """The exported plan lists each decision made after the estimates were seen and says each is
-    marked so in the methods (``plan_lock.plan_text``), so it leaves out a features-in-rows reading
-    read at no moment since it was recorded (``provenance.never_read``), and its revert: recorded
-    after the lock on a table no answer turns, or before the lock and reverted after it, neither is
-    listed or counted. A reading read at some moment after the lock is listed and counted. Truth:
-    the decisions each log is built with, and their orientation answers."""
+MADE = "made after the estimates were seen, listed with it"
+NOW = "nothing in the current analysis."
+
+
+def _plan(log: DecisionLog) -> tuple[list[int], list[int], str]:
+    """The seqs the exported plan lists as made after the estimates were seen, the seqs of the
+    methods' lines so marked, and the plan's text."""
     from turbotab.core.plan_lock import plan_document
 
-    counted = "made after the estimates were seen, listed with it and marked so in the methods."
+    records = log.records()
+    document = plan_document(records)
+    return ([entry["seq"] for entry in document.after_estimates],
+            [line.seq for line in methods_text(records).lines if line.after_estimates],
+            document.text)
 
-    def listed(log: DecisionLog) -> tuple[list[int], str]:
-        records = log.records()
-        document = plan_document(records)
-        seqs = [entry["seq"] for entry in document.after_estimates]
-        stated = [line.seq for line in methods_text(records).lines if line.after_estimates]
-        assert seqs == stated  # "marked so in the methods"
-        return seqs, document.text
+
+def test_the_plan_export_counts_every_later_decision_and_names_those_the_methods_leave_out(
+        tmp_path):
+    """V2-1: the exported plan lists and counts every decision recorded after the estimates were
+    seen, as the Record holds them, and says which the methods state (``plan_lock.plan_text``): a
+    features-in-rows reading read at no moment (``provenance.never_read``), or its revert, is
+    listed, counted and named as left out of the methods, never "no decision since". Only a
+    decision the methods state: counted and "marked so in the methods", as before; none at all: "no
+    decision". Truth: the decisions each log is built with after its lock, and their orientation
+    answers (the oriented stage turns the table only on `feature_major`)."""
+    listed, stated, text = _plan(_locked(tmp_path / "none", "sample_major"))
+    assert listed == stated == []
+    assert text.endswith(" No decision has been made since the estimates were seen.")
 
     plain = _locked(tmp_path / "plain", "sample_major")
     reading = _said(plain, SetFeatureTable(label="feature_id"))
-    seqs, text = listed(plain)
-    assert seqs == [] and counted not in text
-    _said(plain, Revert(decision_id=reading.id))
-    seqs, text = listed(plain)
-    assert seqs == [] and counted not in text
+    listed, stated, text = _plan(plain)
+    assert (listed, stated) == ([reading.seq], [])
+    assert text.endswith(f" 1 decision was {MADE}; decision #{reading.seq} is left out of the "
+                         f"methods, as it changes {NOW}")
+    undone = _said(plain, Revert(decision_id=reading.id))
+    listed, stated, text = _plan(plain)
+    assert (listed, stated) == ([reading.seq, undone.seq], [])
+    assert text.endswith(f" 2 decisions were {MADE}; decisions #{reading.seq} and #{undone.seq} "
+                         f"are left out of the methods, as they change {NOW}")
 
-    before = _locked(tmp_path / "before", "sample_major", SetFeatureTable(label="feature_id"))
-    early = next(r for r in before.records() if r.decision.kind == "set_feature_table")
-    _said(before, Revert(decision_id=early.id))
-    seqs, text = listed(before)
-    assert seqs == [] and counted not in text
+    # An unread reading beside a decision the methods state: both counted, the reading named.
+    mixed = _locked(tmp_path / "mixed", "sample_major")
+    unread = _said(mixed, SetFeatureTable(label="feature_id"))
+    rule = _said(mixed, SetExclusions(rules=[{"column": "fiber_g", "high": 70,
+                                               "reason": "a plausible intake"}]))
+    listed, stated, text = _plan(mixed)
+    assert (listed, stated) == ([unread.seq, rule.seq], [rule.seq])
+    assert text.endswith(f" 2 decisions were {MADE}; 1 of them is marked so in the methods, and "
+                         f"decision #{unread.seq} is left out of them, as it changes {NOW}")
 
+    # Silent: every later decision is in the methods.
     turned = _locked(tmp_path / "turned", "feature_major")
     forked = _said(turned, SetFeatureTable(label="feature_id"))
-    seqs, text = listed(turned)
-    assert seqs == [forked.seq] and text.endswith(f" 1 decision was {counted}")
+    listed, stated, text = _plan(turned)
+    assert listed == stated == [forked.seq]
+    assert text.endswith(f" 1 decision was {MADE} and marked so in the methods.")
 
     superseded = _locked(tmp_path / "superseded", "sample_major")
-    _said(superseded, SetFeatureTable(label="feature_id"))  # replaced before any turn
+    first = _said(superseded, SetFeatureTable(label="feature_id"))  # replaced before any turn
     read = _said(superseded, SetFeatureTable(label="other"))
     turn = _said(superseded, SetOrientation(orientation="feature_major"))
-    seqs, text = listed(superseded)
-    assert seqs == [read.seq, turn.seq] and text.endswith(f" 2 decisions were {counted}")
+    listed, stated, text = _plan(superseded)
+    assert (listed, stated) == ([first.seq, read.seq, turn.seq], [read.seq, turn.seq])
+    assert text.endswith(f" 3 decisions were {MADE}; 2 of them are marked so in the methods, and "
+                         f"decision #{first.seq} is left out of them, as it changes {NOW}")
+
+
+def test_a_reading_withdrawn_after_the_lock_is_a_change_only_if_it_was_read_from_the_lock_on(
+        tmp_path):
+    """V2-2: a features-in-rows reading recorded before the lock and reverted after it. In force
+    at the lock, it is in the plan as declared, and its revert is a change made after the estimates
+    were seen: said, listed and marked so. In force when it was recorded, but the table answered as
+    one row per sample before the lock and since, the analysis read it at no moment from the lock
+    on and the methods state it nowhere, so its revert writes no sentence; the plan lists and
+    counts the revert and names it as left out. Truth: the orientation answers each log is built
+    with (the oriented stage turns the table only on `feature_major`)."""
+    def withdrawn(at: str, *before) -> tuple[DecisionLog, object, object]:
+        log = _locked(tmp_path / at, "feature_major", SetFeatureTable(label="feature_id"), *before)
+        reading = next(r for r in log.records() if r.decision.kind == "set_feature_table")
+        return log, reading, _said(log, Revert(decision_id=reading.id))
+
+    log, reading, undone = withdrawn("declared")
+    lines = {line.record_id: line for line in methods_text(log.records()).lines}
+    assert reading.id in lines and undone.id in lines and lines[undone.id].after_estimates
+    listed, stated, text = _plan(log)
+    assert listed == stated == [undone.seq]
+    assert text.endswith(f" 1 decision was {MADE} and marked so in the methods.")
+
+    log, reading, undone = withdrawn("orphan", SetOrientation(orientation="sample_major"))
+    kept = [line.record_id for line in methods_text(log.records()).lines]
+    assert reading.id not in kept and undone.id not in kept
+    listed, stated, text = _plan(log)
+    assert (listed, stated) == ([undone.seq], [])
+    assert text.endswith(f" 1 decision was {MADE}; decision #{undone.seq} is left out of the "
+                         f"methods, as it changes {NOW}")
