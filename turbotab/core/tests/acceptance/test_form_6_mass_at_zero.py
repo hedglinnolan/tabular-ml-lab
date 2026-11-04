@@ -53,17 +53,20 @@ def _info(frame: pd.DataFrame) -> dict:
                 "n_unique": int(frame[c].nunique())} for c in frame.columns}
 
 
-def test_6_the_card_sees_the_mass_at_zero_and_leads_with_non_consumers_apart(frame):
+def test_6_the_card_sees_the_mass_at_zero_and_offers_non_consumers_apart_after_the_line(frame):
+    """Batch 1 (the owner's ruling of 2026-11-04): what you study is proposed as a straight line, a
+    mass at zero or not; non-consumers apart and the consumers-only domain are offered next (on
+    the base they led, and were the proposal)."""
     st = _state()
     card = ef.forms_card(st, frame, _info(frame), frame["glucose"], "regression")
     fish = next(n for n in card["needs"] if n["column"] == "fish_g")
     share = float(np.mean(frame["fish_g"].to_numpy() == 0))
     assert fish["zero_share"] == pytest.approx(round(share, 4), abs=1e-12) and share > 0.5
     assert fish["mass_at_zero"] is True
-    assert [o["value"] for o in fish["options"]][:2] == ["zero_spline", "consumers_only"]
-    assert fish["options"][1]["sound"] == ("Answers a different question: the effect among "
+    assert [o["value"] for o in fish["options"]][:3] == ["linear", "zero_spline", "consumers_only"]
+    assert fish["options"][2]["sound"] == ("Answers a different question: the effect among "
                                            "consumers, not in everyone.")
-    assert fish["proposal"] == {"form": "zero_spline", "knots": 5, "knots_rule": "harrell"}
+    assert fish["proposal"] == {"form": "linear"}
 
 
 @pytest.fixture(scope="module")

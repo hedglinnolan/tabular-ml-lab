@@ -58,17 +58,25 @@ answer, the knots, the cut points and the estimand's unit"). A spline or categor
 residual is the nutrient's curve on the energy-adjusted scale at mean energy, not the substitution
 curve (its label says so, and spline(N) + E is offered as that route).
 
-**The leash** (MODELING_SEQUENCE §4): under inference, quintiles rank lower and sit beside the
-spline; data-derived "optimal" cut points (Altman & Royston 2006: "seriously biased") and a
-continuous confounder cut into three or fewer groups (Brenner & Blettner 1997: "serious residual
-confounding") are blocked and recorded. **Continuous confounders get a declared form too**, a
-spline by default. **Mass at zero** (STROBE-nut nut-11, nut-14): non-consumers as their own
-category beside a spline among consumers with knots at consumers' percentiles, or the
+**The proposal and its check** (the owner's rulings of 2026-11-04, batch 1): under inference the
+declared exposure is proposed as a straight line, the spline offered beside it, and whichever of
+the two is kept, the other is set in the plan as its check, fit beside the estimate by the effects
+stage and never replacing it (:func:`check_shape`: a straight line is checked by the same model
+with its restricted cubic spline in its place and that spline's nonlinearity test; a spline by its
+straight line's one coefficient).
+
+**The leash** (MODELING_SEQUENCE §4): under inference, quintiles rank lower and sit beside an
+exposure's spline; data-derived "optimal" cut points (Altman & Royston 2006: "seriously biased")
+and a continuous confounder cut into three or fewer groups (Brenner & Blettner 1997: "serious
+residual confounding") are blocked and recorded. **Continuous confounders get a declared form
+too**, a spline by default. **Mass at zero** (STROBE-nut nut-11, nut-14): non-consumers as their
+own category beside a spline among consumers with knots at consumers' percentiles, or the
 consumers-only domain recorded as an estimand change.
 """
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
@@ -1154,12 +1162,17 @@ def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool 
     *customary in* (with its source) and *sound for* (with the reason), independently, with its
     leash rung (MODELING_SEQUENCE §4).
 
-    Under inference the spline leads (for a mass at zero, non-consumers beside a spline among
-    consumers leads), quintiles rank lower and are produced beside it anyway, and data-derived cut
-    points are blocked and recorded; a confounder's categories into three or fewer groups too.
-    Under prediction the spline still leads (it nests the line), and the cut forms come last.
+    Under inference the declared exposure's straight line leads, recommended (the owner's ruling of
+    2026-11-04: one number per unit for Results to report, the other shape set in the plan as its
+    check, :func:`check_shape`), the spline and, for a mass at zero, non-consumers beside a spline
+    among consumers offered next; a confounder's spline leads (a curve its line misses leaves
+    residual confounding). Quintiles rank lower and are produced beside an exposure's spline, and
+    data-derived cut points are blocked and recorded; a confounder's categories into three or fewer
+    groups too. Under prediction the spline leads for every role (it nests the line), and the cut
+    forms come last.
     """
     inference = purpose == "inference"
+    lined = inference and role == "exposure"  # the declared exposure's straight line leads
     on_residual = (" On a residual it is the curve on the energy-adjusted scale at mean energy, "
                    "not the substitution curve." if residual else "")
     spline = _option(
@@ -1168,14 +1181,23 @@ def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool 
         "(NUTRITION_PACK §07G; Desquilbet & Mariotti 2010).",
         "Sound: a smooth curve with few parameters, linear in the tails, with a test of "
         "nonlinearity; knots at Harrell's percentiles of the fitting rows." + on_residual,
-        "Adds a curve's terms for what you study and a test of whether it bends.", "recommended")
+        ("Adds a curve's terms for what you study and a test of whether it bends; the plan's "
+         "check, the same model with a straight line in its place, reports the line's one "
+         "coefficient beside it." if lined else
+         "Adds a curve's terms for what you study and a test of whether it bends."),
+        "available" if lined else "recommended")
     linear = _option(
         "linear", "Straight line", "Customary: one coefficient per unit of intake.",
-        ("Sound when the relation is close to a line; a curve it misses biases the slope."
+        ("Sound when the relation is close to a line; a curve it misses biases the slope, so the "
+         "plan checks it: the same model with a restricted cubic spline in its place, and its "
+         "test of whether the relation bends." if lined else
+         "Sound when the relation is close to a line; a curve it misses biases the slope."
          if role == "exposure" else
          "Often controls a covariate that could explain the link well (Brenner & Blettner 1997); a curve it misses leaves "
          "residual confounding."),
-        "One coefficient per unit; no curvature.", "available")
+        ("One coefficient per unit; the spline's fit beside it is the plan's check, never its "
+         "replacement." if lined else "One coefficient per unit; no curvature."),
+        "recommended" if lined else "available")
     quintiles = _option(
         "quintiles", "Quintiles with a trend test",
         "Customary in nutritional epidemiology: \"quintiles remain expected alongside\" the "
@@ -1202,6 +1224,7 @@ def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool 
         "Two groups split where the outcome differs most on these rows.",
         "block_and_record" if inference else "rank_lower")
     out = [spline, linear, categories, quintiles, optimal] if role == "confounder" else \
+        [linear, spline, quintiles, categories, optimal] if lined else \
         [spline, linear, quintiles, categories, optimal]
     if mass_at_zero and role == "exposure":
         zero = _option(
@@ -1209,10 +1232,12 @@ def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool 
             "STROBE-nut nut-11 asks how non-consumers were handled.",
             "Sound for a mass at zero: the non-consumers are their own category (the reference) "
             "and the curve among consumers has knots at consumers' percentiles.",
-            "A consumer indicator and a spline among consumers.", "recommended")
-        out.insert(0, zero)
+            "A consumer indicator and a spline among consumers.",
+            "available" if lined else "recommended")
+        at = 1 if lined else 0  # after the straight line that leads under inference
+        out.insert(at, zero)
         if inference:
-            out.insert(1, _option(
+            out.insert(at + 1, _option(
                 "consumers_only", "Consumers only (changes the comparison you want)",
                 "Common for episodically consumed foods; STROBE-nut nut-14 asks which population.",
                 "Answers a different question: the effect among consumers, not in everyone.",
@@ -1443,8 +1468,12 @@ def zero_share(values: Any) -> tuple[float, bool]:
 
 
 def proposal(role: str, purpose: str | None, k: int, *, mass_at_zero: bool) -> dict[str, Any]:
-    """The form the card leads with: a spline with k by the rule; for an exposure with a mass at
-    zero, non-consumers apart and a spline among consumers."""
+    """The form the card leads with: under inference the declared exposure's straight line, a mass
+    at zero or not (the owner's ruling of 2026-11-04: the other shape is set in the plan as its
+    check, :func:`check_shape`); else a spline with k by the rule, and for an exposure with a mass
+    at zero, non-consumers apart and a spline among consumers."""
+    if purpose == "inference" and role == "exposure":
+        return {"form": "linear"}
     form = "zero_spline" if (mass_at_zero and role == "exposure") else "spline"
     return {"form": form, "knots": k, "knots_rule": "harrell"}
 
@@ -1513,6 +1542,14 @@ class FormsArtifact(_Card):
     beside: str | None
 
 
+# What the card says is reported beside the estimate of what you study, whichever shape is kept
+# (:func:`check_shape`; the quintiles beside an exposure's spline, :func:`design_forms`).
+BESIDE = ("Whichever shape you keep for what you study, the other is set in your plan as its check "
+          "and reported beside the estimate: with a straight line, the same model with a "
+          "restricted cubic spline in its place and its test of whether the relation bends; with "
+          "a restricted cubic spline, the straight line's one coefficient. Quintiles are produced "
+          "beside a restricted cubic spline of what you study, their boundaries and reference "
+          "stated, with the p for linear trend (customary).")
 FORMS_READS = ("purpose", "target", "task", "event", "estimand", "adjustment", "clusters",
                "energy_adjustment", "scales", "findings", "batch", "categorical", "lens",
                "missing", "aggregation", "outcome_order", "roles", "roles_unconfirmed",
@@ -1566,9 +1603,7 @@ def forms_card(state: Any, frame: pd.DataFrame | None, info: Mapping[str, Any] |
             "rule": rule_words(k, n_eff, task), "needs": entries, "stated": stated,
             "waiting": plan["waiting"],
             "answer": ({"kind": "set_forms", "forms": answer} if answer else None),
-            "beside": ("Quintiles are produced beside the spline of what you study, their boundaries and "
-                       "reference stated, with the p for linear trend (customary)."
-                       if purpose == "inference" else None)}
+            "beside": (BESIDE if purpose == "inference" else None)}
     return FormsArtifact.model_validate(card).model_dump(mode="json")
 
 
@@ -2209,6 +2244,189 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
     return out, worries
 
 
+# ── the plan's check of the exposure's shape (the owner's rulings of 2026-11-04) ──
+#
+# calm/BEATS_MODELS_RESULTS M4: "Whichever you choose, the other shape is set in your plan, and
+# Results reports it beside your estimate." Under inference a straight line declared for what you
+# study is checked by the primary model refitted with its restricted cubic spline in its place (k by
+# Harrell's rule on the analyzed rows' effective sample size, knots at Harrell's percentiles of the
+# values the line is fit on, placed once on the observed values under multiple imputation): the
+# Wald test that its nonlinear terms are zero (``rms::anova``'s "Nonlinear" row) and its curve. A
+# restricted cubic spline declared is checked by the same model with the line in its place, its
+# one coefficient. The check is the plan's, fixed with the form at the lock, and it never replaces
+# the shape kept, whatever it shows (Grambsch & O'Brien 1991). The effects stage fits it
+# (``stages.effects``).
+
+# The check's curve: this many values, evenly spaced from its lowest knot to its highest.
+CHECK_POINTS = 50
+CHECK_KEPT = {"linear": "straight line", "spline": "curve"}
+
+
+def check_shape(state: Any) -> str | None:
+    """The shape the plan checks the declared exposure's against, under inference: ``"spline"``
+    where its standing form is a straight line, ``"linear"`` where it is a restricted cubic spline;
+    None otherwise (prediction, no single exposure declared, no form declared for it, or any other
+    form: quintiles, categories, a cut point or non-consumers apart carry their own companions)."""
+    if getattr(state, "purpose", None) != "inference":
+        return None
+    exposure = exposure_of(state)
+    if exposure is None:
+        return None
+    spec = current_forms(state).get(exposure)
+    if spec is None:
+        return None
+    return {"linear": "spline", "spline": "linear"}.get(_form_of(spec)[0])
+
+
+def check_knots_rule(task: str | None, y: Any, event: Any = None) -> tuple[int, str]:
+    """The check's k by Harrell's rule on the effective sample size of ``y`` (the analyzed rows'
+    outcome), and the rule in words (:func:`rule_words`)."""
+    n_eff = effective_n(task, y, event)
+    k = knots_by_rule(n_eff)
+    return k, rule_words(k, n_eff, task)
+
+
+def with_check_spline(matrix: pd.DataFrame, column: str,
+                      knots: Sequence[float]) -> tuple[pd.DataFrame, list[str]]:
+    """``matrix`` with ``column``'s straight line turned into its restricted cubic spline at
+    ``knots``: the nonlinear terms (:func:`rcs_basis`) inserted after it, named as the form step
+    names a spline's (:func:`spline_names`). The column's own values are the ones the form step
+    would receive (it runs after the energy step and the fill, and nothing after it changes a
+    numeric column), so this is the matrix the plan would fit with the spline declared."""
+    names = spline_names(column, len(knots))
+    basis = rcs_basis(matrix[column].to_numpy(dtype=float, na_value=np.nan), knots)
+    out = matrix.copy()
+    at = list(out.columns).index(column)
+    for j, name in enumerate(names[1:]):
+        out.insert(at + 1 + j, name, basis[:, j])
+    return out, names
+
+
+def check_test(tables: Sequence[Any], names: Sequence[str], *,
+               df_com: float | None = None) -> dict[str, Any] | None:
+    """The Wald test that the check's nonlinear terms (``names`` after the first) are zero, on each
+    table's own covariance: one table's :func:`wald_test`; over m completed copies, Li, Raghunathan
+    & Rubin's D1 (``imputation.pooled_wald``, Reiter's df on ``df_com``) as the fit pools a declared
+    spline's (``stages.modeling._pool_form_tests``). None where a table has no covariance to test
+    on (a Firth table, say) or lacks a term."""
+    from turbotab.core.methods.imputation import pooled_wald
+
+    nonlinear = list(names[1:])
+    picked: list[tuple[np.ndarray, np.ndarray, Any]] = []
+    for table in tables:
+        if table is None or getattr(table, "cov", None) is None:
+            return None
+        where = {str(r["feature"]): j for j, r in enumerate(table.rows)}
+        if any(n not in where for n in nonlinear):
+            return None
+        idx = [where[n] for n in nonlinear]
+        estimates = np.array([np.nan if r["estimate"] is None else r["estimate"]
+                              for r in table.rows], dtype=float)
+        picked.append((estimates, np.asarray(table.cov, dtype=float), idx))
+    if not picked:
+        return None
+    if len(picked) == 1:
+        estimates, cov, idx = picked[0]
+        return wald_test(estimates, cov, idx, dict(tables[0].info or {}), list(tables[0].rows))
+    Q = np.array([e[idx] for e, _, idx in picked])
+    U = np.array([c[np.ix_(idx, idx)] for _, c, idx in picked])
+    if not (np.all(np.isfinite(Q)) and np.all(np.isfinite(U))):
+        return None
+    found = pooled_wald(Q, U, df_com)
+    if found is None:
+        return None
+    f_ref = found["df_den"] is not None
+    return {"statistic": found["statistic"] if f_ref else found["statistic"] * found["df_num"],
+            "df_num": int(found["df_num"]), "df_den": found["df_den"],
+            "distribution": "F" if f_ref else "chi2", "p": found["p"],
+            "basis": f"pooled over {len(picked)} imputations by Li, Raghunathan & Rubin's D1"
+                     + (f", on Reiter's denominator df from the design's {df_com:g}"
+                        if df_com is not None and f_ref else "")}
+
+
+def check_curve(tables: Sequence[Any], names: Sequence[str], knots: Sequence[float],
+                slope: float | None) -> tuple[float, list[dict[str, Any]]] | None:
+    """The check's curve: (its reference, the lowest knot; :data:`CHECK_POINTS` values from the
+    lowest knot to the highest, each with the spline's difference from the reference on the scale
+    of the model's coefficients, its terms' estimates averaged over the copies under multiple
+    imputation as Rubin's rules average them, and the straight line's, ``slope`` times the
+    distance). None where a term has no estimate. Points only: no interval is drawn around them."""
+    t = np.asarray(knots, dtype=float)
+    b = []
+    for name in names:
+        values = []
+        for table in tables:
+            row = next((r for r in table.rows if str(r["feature"]) == name), None)
+            if row is None or row.get("estimate") is None:
+                return None
+            values.append(float(row["estimate"]))
+        b.append(float(np.mean(values)))
+    reference = float(t[0])
+    grid = np.linspace(t[0], t[-1], CHECK_POINTS)
+    design = (np.column_stack([grid, rcs_basis(grid, t)])
+              - np.concatenate([[reference], rcs_basis(np.array([reference]), t)[0]]))
+    curve = design @ np.asarray(b, dtype=float)
+    return reference, [{"x": float(x), "curve": float(c),
+                        "line": None if slope is None else float(slope * (x - reference))}
+                       for x, c in zip(grid, curve)]
+
+
+def spline_check_caption(column: str, knots: Sequence[float], notes: Sequence[str], rule: str,
+                         test: Mapping[str, Any], *, imputed: bool = False,
+                         survey: bool = False) -> str:
+    """What the check of a straight line reports, in words: the refit, its k and knots, its test."""
+    q = int(test["df_num"])
+    what = (f"its {q} nonlinear terms are" if q > 1 else "its nonlinear term is")
+    text = (f"The plan's check of the straight line: the primary model refitted with a restricted "
+            f"cubic spline of `{column}` in its place, {rule}, "
+            f"{knot_sentence(column, knots, notes)}. "
+            f"Wald test that {what} zero ({test['basis']}): {_statistic_words(test)}.")
+    if imputed:
+        text += " The knots are placed once on the observed values, the same in every imputation."
+    if survey:
+        text += (" The knots are the analyzed rows' own percentiles, unweighted; the test is "
+                 "design-based, over the survey design.")
+    return text + " The estimate stays the straight line's: the check never replaces it."
+
+
+def line_check_caption(column: str, row: Mapping[str, Any]) -> str:
+    """What the check of a curve reports, in words: the line's one coefficient."""
+    said = f"{row['estimate']:+.4g} per unit"
+    if row.get("ci_low") is not None and row.get("ci_high") is not None:
+        said += f", 95% CI {row['ci_low']:.4g} to {row['ci_high']:.4g}"
+    if row.get("ratio") is not None and row.get("ratio_low") is not None:
+        said += f" (ratio {row['ratio']:.3g}, {row['ratio_low']:.3g} to {row['ratio_high']:.3g})"
+    return (f"The plan's check of the curve: the primary model refitted with `{column}` as a "
+            f"straight line, its one coefficient {said}{_p_words(row)}. The estimate stays the "
+            f"curve's: the check never replaces it.")
+
+
+def check_methods(column: str, shape: str, *, rule: str | None = None,
+                  knots: Sequence[float] | None = None, notes: Sequence[str] = (),
+                  refused: str | None = None, imputed: bool = False) -> str:
+    """The methods text's one sentence on the plan's check (the effects stage's
+    ``methods_sentence``): what was fit beside the estimate, or why it was not."""
+    kept = CHECK_KEPT["linear" if shape == "spline" else "spline"]
+    if refused is not None:
+        head = re.split(r"(?<=[.!?])\s+", str(refused).strip(), maxsplit=1)[0].rstrip(".")
+        return f"The plan's check of the {kept} was not made: {head}."
+    if shape == "spline":
+        pooled = ", pooled over the imputations by D1," if imputed else ""
+        return (f"As the plan's check of the straight line, the primary model was also fit with a "
+                f"restricted cubic spline of `{column}` in its place ({rule}, "
+                f"{knot_sentence(column, knots or [], notes)}), and its Wald test that the "
+                f"nonlinear terms are zero{pooled} is reported beside the estimate, never "
+                f"replacing it.")
+    return (f"As the plan's check of the curve, the primary model was also fit with `{column}` as "
+            f"a straight line, its one coefficient reported beside the curve, never replacing it.")
+
+
+def check_refused(shape: str, reason: str) -> str:
+    """The check's caption where it could not be made."""
+    kept = CHECK_KEPT["linear" if shape == "spline" else "spline"]
+    return f"The plan's check of the {kept} could not be made: {reason}"
+
+
 def describe(forms: Mapping[str, Any]) -> str:
     """The pipeline step's detail line: which column takes which form, and where its knots or cut
     points come from."""
@@ -2492,8 +2710,14 @@ def _cuts_are_declared_or_recorded(decision: Any, ctx: Any) -> None:
         return
     column = decision.column
     role = _role_of(state, column)
-    spline = {"label": "A restricted cubic spline (recommended)",
+    # The recommended form leads the ways forward, as it leads the card (:func:`options`): the
+    # declared exposure's straight line, a confounder's spline.
+    spline = {"label": ("A restricted cubic spline" if role == "exposure"
+                        else "A restricted cubic spline (recommended)"),
               "decision": SetExposureForm(column=column, form="spline")}
+    lead = ([{"label": "A straight line (recommended)",
+              "decision": SetExposureForm(column=column, form="linear")}]
+            if role == "exposure" else [])
     keep = {"label": "Keep it, recorded as a limitation",
             "decision": decision.model_copy(update={"acknowledged": True})}
     if decision.form == "optimal":
@@ -2502,8 +2726,9 @@ def _cuts_are_declared_or_recorded(decision: Any, ctx: Any) -> None:
             f"A cut point chosen where the outcome differs most on these rows is data-derived: "
             f"its estimate and p-value are biased away from the null (Altman & Royston 2006: "
             f"\"the use of a data-derived 'optimal' cutpoint leads to serious bias\").",
-            exits=[spline, {"label": "Quintiles", "decision": SetExposureForm(column=column,
-                                                                              form="quintiles")},
+            exits=[*lead, spline,
+                   {"label": "Quintiles", "decision": SetExposureForm(column=column,
+                                                                      form="quintiles")},
                    {"label": "Declare the cut points from outside these data", "decision": None},
                    keep])
     if decision.form == "categories" and role == "confounder" and \
@@ -2917,7 +3142,8 @@ def _register_contracts() -> None:
                              "Sound for a mass at zero", "Sound for a mass at zero",
                              "recommended", "recommended"),
             _contract_option("linear", "Straight line", "customary",
-                             "Sound when the relation is close to a line",
+                             "Sound when the relation is close to a line; proposed for the "
+                             "declared exposure, a restricted cubic spline its check",
                              "Sound when close to a line", "available", "available"),
             _contract_option("quintiles", "Quintiles, beside the spline",
                              "customary: the field's primary-analysis convention (Turner 2010)",
@@ -2968,13 +3194,31 @@ def _register_contracts() -> None:
                       "the quintiles are produced beside it, boundaries and reference stated, the "
                       "p for linear trend (customary) from category medians",
                       purposes=("inference",), enforced_by=f"{me}:design_forms"),
+            # The owner's rulings of 2026-11-04 (batch 1, Estimate end to end).
+            _relation("exposure-line-proposed", "implies", "the form proposed for what you study",
+                      "the declared exposure under inference",
+                      "a straight line is proposed and recommended, the restricted cubic spline "
+                      "and every other form offered beside it; a confounder's spline still leads",
+                      purposes=("inference",), enforced_by=f"{me}:proposal"),
+            _relation("line-checked-by-spline", "implies", "the plan's check of the shape",
+                      "the declared exposure as a straight line under inference",
+                      "the primary model refitted with a restricted cubic spline (k by Harrell's "
+                      "rule) in its place, its Wald test that the nonlinear terms are zero and "
+                      "its curve reported beside the estimate, never replacing the line",
+                      purposes=("inference",), enforced_by=f"{me}:check_shape"),
+            _relation("spline-checked-by-line", "implies", "the plan's check of the shape",
+                      "the declared exposure as a restricted cubic spline under inference",
+                      "the primary model refitted with it as a straight line, its one coefficient "
+                      "reported beside the curve, never replacing it",
+                      purposes=("inference",), enforced_by=f"{me}:check_shape"),
             _relation("form-mi-d1", "implies", "D1 pooling", "multiple imputation",
                       "the overall, nonlinearity and global tests are pooled by D1 at knots fixed "
                       "on the observed values", purposes=("inference",),
                       enforced_by="turbotab.core.stages.modeling:_pool_form_tests"),
             _relation("optimal-cut-blocked", "conflicts", "a data-derived cut point",
                       "inference", "blocked and recorded (serious bias)", rung="block_and_record",
-                      exits=("a restricted cubic spline", "quintiles",
+                      exits=("a straight line, for what you study", "a restricted cubic spline",
+                             "quintiles",
                              "cut points declared from outside these data",
                              "keep it, recorded as a limitation"),
                       purposes=("inference",), enforced_by=f"{me}:_cuts_are_declared_or_recorded"),
@@ -3062,6 +3306,9 @@ __all__ = [
     "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "SPLINE_MIN_KNOTS",
     "SPLINE_MIN_VALUES",
     "TREND_LABEL",
+    "BESIDE", "CHECK_KEPT", "CHECK_POINTS", "check_curve", "check_knots_rule", "check_methods",
+    "check_refused", "check_shape", "check_test", "line_check_caption", "spline_check_caption",
+    "with_check_spline",
     "adjusted_forms", "boundaries_words", "category_names", "complete_spec", "current_forms",
     "describe", "design_forms", "domain_columns", "effective_n", "estimand_unit",
     "exposure_tests", "form_answer", "form_columns", "form_gate", "form_needs", "form_sentence",

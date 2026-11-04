@@ -9,10 +9,12 @@ fixture's declared truth (``form_fixtures.TRUTH``):
    families; the families are refused "not yet" while it is open, and no estimate is served before
    it is answered (the served gate).
 2. Its card asks about the declared exposure and the adjusted continuous confounder (``age``),
-   states ``activity`` (eight whole values) and total energy instead, and proposes a spline with k
-   by Harrell's rule on the effective sample size (900 rows: 5 knots).
-3. The one-tap answer records each form on its present scale with its unit; the fit's knots are
-   Harrell's percentiles of the raw values (written out by hand here).
+   states ``activity`` (eight whole values) and total energy instead, and proposes a straight line
+   for the exposure (batch 1) and a spline with k by Harrell's rule on the effective sample size
+   (900 rows: 5 knots) for the confounder.
+3. The one-tap answer, the exposure's line exchanged for the spline offered next, records each
+   form on its present scale with its unit; the fit's knots are Harrell's percentiles of the raw
+   values (written out by hand here).
 4. After the estimates were seen, the energy model becomes the residual method: a transform of the
    exposure. The exposure's form, its knots and the estimand's unit are stale: the form question
    opens again (``followup`` "stale"), the fit is withheld, the design applies no stale spline, the
@@ -80,7 +82,12 @@ def journey(tmp_path_factory) -> dict[str, Any]:
         early = drive.post({"kind": "select_models", "models": ["linear"]})
         seen["models_early"] = (early.status_code, early.json())
         seen["card"] = drive.artifact("forms")
-        r = drive.post(seen["card"]["answer"])
+        # The one-tap answer with the exposure's proposed straight line exchanged for the spline
+        # the card offers next (batch 1: a straight line is proposed for what you study), so the
+        # journey goes on to a declared spline of the exposure.
+        answer = seen["card"]["answer"]
+        r = drive.post({**answer, "forms": {**answer["forms"], "protein_g": {
+            "form": "spline", "knots": 5, "knots_rule": "harrell"}}})
         assert r.status_code == 200, r.text[:600]
         seen["record_forms"] = drive.view()["decisions"][-1]
         drive.answer("models", {"kind": "select_models", "models": ["linear"]})
@@ -138,10 +145,14 @@ def test_1_the_card_asks_the_exposure_and_the_continuous_confounder_with_k_by_th
     assert card["n_effective"] == 900 and card["rule_knots"] == 5
     assert card["rule"] == ("k = 5 by Harrell's rule (3 knots below an effective sample size of "
                             "30, 5 from 100, else 4; here 900, the number of analyzed rows)")
-    for n in needs.values():
-        assert n["scale"] == "raw" and n["proposal"] == {"form": "spline", "knots": 5,
-                                                          "knots_rule": "harrell"}
-        assert [o["value"] for o in n["options"]][0] == "spline"
+    # Batch 1 (the owner's ruling of 2026-11-04): what you study is proposed as a straight line,
+    # the spline offered next; the confounder's spline still leads.
+    assert needs["protein_g"]["scale"] == "raw" and needs["protein_g"]["proposal"] == {
+        "form": "linear"}
+    assert [o["value"] for o in needs["protein_g"]["options"]][:2] == ["linear", "spline"]
+    assert needs["age"]["scale"] == "raw" and needs["age"]["proposal"] == {
+        "form": "spline", "knots": 5, "knots_rule": "harrell"}
+    assert [o["value"] for o in needs["age"]["options"]][0] == "spline"
     assert needs["protein_g"]["unit"] == "unit of `protein_g`"
     # a confounder in three or fewer groups and a data-derived cut point are blocked and recorded
     rungs = {o["value"]: o["rung"] for o in needs["age"]["options"]}

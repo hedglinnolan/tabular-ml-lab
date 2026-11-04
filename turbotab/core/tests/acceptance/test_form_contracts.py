@@ -22,6 +22,7 @@ SIX = HERE + "test_form_6_mass_at_zero::"
 SEVEN = HERE + "test_form_7_modification::"
 EIGHT = HERE + "test_form_8_energy_labels::"
 REPAIR = HERE + "test_form_repair_1::"
+CHECK = "turbotab/core/tests/test_form_check_beside_the_estimate::"
 RELATION_TESTS = {
     ("exposure_transform", "transform-invalidates-form"):
         ONE + "test_1_a_transform_of_the_exposure_leaves_its_form_stale_and_reasks_it",
@@ -33,6 +34,14 @@ RELATION_TESTS = {
         THREE + "test_3_a_non_significant_nonlinearity_test_keeps_every_spline_term",
     ("functional_form", "quintiles-beside"):
         THREE + "test_5_quintiles_are_produced_beside_the_spline_with_boundaries_and_reference",
+    # batch 1, Estimate end to end (``test_form_check_beside_the_estimate``)
+    ("functional_form", "exposure-line-proposed"):
+        CHECK + "test_under_estimate_the_exposure_is_proposed_as_a_straight_line_and_a_confounder_"
+                "as_a_spline",
+    ("functional_form", "line-checked-by-spline"):
+        CHECK + "test_with_a_bend_the_plans_check_reports_it_as_statsmodels_tests_it",
+    ("functional_form", "spline-checked-by-line"):
+        CHECK + "test_a_spline_kept_has_the_straight_lines_one_coefficient_beside_it",
     ("functional_form", "form-mi-d1"):
         TWO + "test_2_under_multiple_imputation_the_tests_are_pooled_by_d1_as_mitml_pools_them",
     ("functional_form", "optimal-cut-blocked"):
@@ -40,7 +49,7 @@ RELATION_TESTS = {
     ("functional_form", "coarse-confounder-blocked"):
         FOUR + "test_4_a_confounder_in_three_or_fewer_groups_is_blocked_and_recorded",
     ("functional_form", "mass-at-zero"):
-        SIX + "test_6_the_card_sees_the_mass_at_zero_and_leads_with_non_consumers_apart",
+        SIX + "test_6_the_card_sees_the_mass_at_zero_and_offers_non_consumers_apart_after_the_line",
     ("functional_form", "consumers-only-domain"):
         SIX + "test_6_the_consumers_only_domain_is_an_estimand_change_in_the_flow_and_the_caption",
     ("functional_form", "residual-curve-label"):
