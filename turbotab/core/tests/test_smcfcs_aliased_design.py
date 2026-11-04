@@ -341,9 +341,11 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     column of a plan wider than the lineage shows unfolded (PP2 N1); and the modification's one
     more at PP2's integration, the move PP1 left out when the chained equations that draw its
     copies changed; and one more each at PP2's second pass, when every censored draw came from a
-    censored-normal fit returned only at a certified maximum."""
+    censored-normal fit returned only at a certified maximum; and one more each at PP2's fifth
+    pass, when a one-level 0/1 column came to be drawn as its level and a number's draw with no
+    Cholesky factor from its eigendecomposition, or refused in words naming its column."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (43, 27, 23, 17, 14, 17, 9)
+    assert tuple(versions[s] for s in stages) == (44, 28, 24, 18, 15, 18, 10)

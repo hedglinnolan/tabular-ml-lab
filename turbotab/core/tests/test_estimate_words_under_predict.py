@@ -340,15 +340,21 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     be named as the file spells them; and, at PP2's fourth pass, the findings when their served
     reasons came to name only the stages, views and diagnostics v2 has; and, with PP2's
     proposals-key-reads package, the proposals stage when its key came to read the missing-values
-    answer."""
+    answer; and, at PP2's fifth pass, the fit and every stage that draws the chained equations'
+    copies (the curve among them) when a one-level 0/1 column came to be drawn as its level and a
+    number's draw with no Cholesky factor from its eigendecomposition, the findings when their
+    served reasons came to hold under either goal and the lens contradiction to keep from the
+    left-censoring finding, the effects when a joint model's family words came to say what each
+    model holds, and the proposals when multiple imputation's label and sound and the survey
+    card's four-year weight came to read the plan."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (36, 43, 25)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (36, 44, 26)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (17, 27, 23, 17, 14)
-    assert (versions["modification"], versions["mattered"]) == (9, 4)
-    assert versions["proposals"] == 24
+            versions["secondary"], versions["scales"]) == (18, 28, 24, 18, 15)
+    assert (versions["modification"], versions["mattered"]) == (10, 5)
+    assert versions["proposals"] == 25
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:
