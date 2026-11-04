@@ -34,6 +34,7 @@ from turbotab.core.graph import StageContext
 from turbotab.core.shape_memo import remembered
 from turbotab.core.stages.data import LENSES, open_store
 from turbotab.core.stages.finding_words import (
+    LEFT_CENSORED,
     FindingContext,
     family,
     flag_columns,
@@ -218,7 +219,14 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
 
     own.extend(batch_findings(frame, lens, target))
     # WP14 (audit IN-13): the stated lens against the table, answered by changing it or recorded.
-    own.extend(detectors.own_findings(frame, lens))
+    # PP2 LC1: never beside the left-censoring finding served here, which reads the participants'
+    # features and says their blanks are non-detections; the contradiction would say they are not.
+    from turbotab.core.detectors import lenses
+
+    censored = any(family(f["id"]) == LEFT_CENSORED for _, f in spoken)
+    clash = lenses.contradiction_finding(frame, lens, censored=censored)
+    if clash is not None:
+        own.append(({"confidence": "high"}, clash))
     for _, f in spoken:
         if family(f["id"]) == "pack::genomics::data_type":
             omics.restate_raw_counts(f)

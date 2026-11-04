@@ -6238,7 +6238,8 @@ def _lens_attest(what: str) -> Dict[str, Any]:
         exits.ACKNOWLEDGE_CONTRADICTION)
 
 
-def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, Any]]:
+def contradiction(df: pd.DataFrame, lens: Sequence[str], *,
+                  censored: bool = False) -> Optional[Dict[str, Any]]:
     """Evidence that the stated lens and the table disagree. **Both directions.**
 
     §01, and the same escalation rule as everywhere else: *escalate on evidence
@@ -6261,6 +6262,12 @@ def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, A
 
     Advisory, not a refusal — both exits are terminal and one of them is *"my
     answer is right"*. The user may be right and the shape unusual.
+
+    `censored` says the left-censoring finding is served on this table (the app
+    reads it on the participants' features, the pooled-QC rows and the outcome
+    set aside: `turbotab.core.stages.finding_words.left_censoring_on_the_participants`).
+    Direction 2 then says nothing: it would tell the user the blanks do not look
+    like non-detections beside a finding that says, on those rows, they do.
     """
     chosen = normalize_quiet(lens)
     if not chosen or chosen == [OTHER] or df is None or df.empty:
@@ -6333,8 +6340,15 @@ def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, A
     # track abundance. Where there are enough blanks to read and they do NOT,
     # the lens has predicted something and the data has disagreed — evidence a
     # reading is wrong, in the only form that earns an interruption.
+    #
+    # NEVER BESIDE THE LEFT-CENSORING FINDING (PP2 LC1). This reads every row and
+    # every numeric column, the pooled-QC rows and the outcome among them; that
+    # finding reads the participants' features. On labs more abundant than any
+    # feature, blank on the QC rows, this read +0.04 and said the blanks do not
+    # look like non-detections while that finding, served on the same page, read
+    # -0.70 and said they do. Where it is served (`censored`), this is silent.
     assay = [k for k in chosen if k in _ASSAY_PACKS]
-    if assay:
+    if assay and not censored:
         blanks = [c for c in numeric if bool(df[c].isna().any())]
         if len(blanks) >= _MIN_BLANKS_TO_READ:
             rate = df[numeric].isna().mean()

@@ -239,14 +239,16 @@ def hints(df: pd.DataFrame | None) -> list[dict[str, str]]:
     return out
 
 
-def contradiction_finding(df: pd.DataFrame, lens: Sequence[str]) -> dict[str, Any] | None:
+def contradiction_finding(df: pd.DataFrame, lens: Sequence[str], *,
+                          censored: bool = False) -> dict[str, Any] | None:
     """The stated lens against the table (``packs.contradiction``), as a finding the user answers:
-    change the lens, or dismiss it to record that the answer stands."""
+    change the lens, or dismiss it to record that the answer stands. ``censored``: the
+    left-censoring finding is served beside it, so the contradiction says nothing of the blanks."""
     from turbotab import packs
     from turbotab.core.stages.finding_words import _finding
 
     try:
-        found = packs.contradiction(df, list(lens))
+        found = packs.contradiction(df, list(lens), censored=censored)
     except Exception:  # noqa: BLE001 - a check that cannot read the table says nothing
         return None
     if not found:

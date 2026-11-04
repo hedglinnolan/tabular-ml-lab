@@ -22,7 +22,8 @@ finding                                legacy reading                           
 
 Where the lens serves the pooled-QC finding, the impossible-values card (``pack::clinical::
 impossible_…``) still counts every row, as its repairs act, and its detail counts the values on the
-rows that finding names apart from the others'.
+rows that finding names apart from the others'. Each of its columns read after a unit's conversion
+carries its band in the unit the column is written in, the band its repairs compare the values to.
 
 :func:`pack_findings` runs every other pack detector exactly as ``packs.findings`` does (same
 order, same failure handling), so a superseded detector is never computed twice. These are the
@@ -72,8 +73,10 @@ def _superseding(units: Any = None, codings: Any = None, target: str | None = No
 
     def bands(df: pd.DataFrame) -> dict[str, Any] | None:
         found = plausibility.impossible_vs_extreme_finding(df, units=units, codings=codings)
-        if found is not None and qc_served:
-            _impossible_apart(found, df, _reference_rows(df, pooled_qc(df)).to_numpy())
+        if found is not None:
+            _as_written(found, df)
+            if qc_served:
+                _impossible_apart(found, df, _reference_rows(df, pooled_qc(df)).to_numpy())
         return found
 
     return {
@@ -84,7 +87,10 @@ def _superseding(units: Any = None, codings: Any = None, target: str | None = No
         # INBOX:1033, PP2 LC1: read over every row, as its repairs act, the pooled-QC rows' zeros
         # (an export's missing glucose) were counted among values "no living adult is expected to
         # show" beside a finding that says those rows are not participants; the detail now counts
-        # them apart (``_impossible_apart``), and the repairs' consequences say both counts.
+        # them apart (``_impossible_apart``), and the repairs' consequences say both counts. Each
+        # band is also given in the unit written (``_as_written``): the repairs compared the values
+        # as written to the band in the card's unit, so under a conversion (a `cholesterol` in
+        # mg/dL against 0.3–40 mmol/L) they blanked every value where the card counted 11.
         "_clinical_impossible_vs_extreme": one(bands),
         "_genomics_data_type": genomics.findings,
         # Audit RO-13 (WP18): the pooled-QC level of a Case/Control/QC label, read by variance,
@@ -114,14 +120,41 @@ def _pooled_qc_reading(df: pd.DataFrame) -> dict[str, Any] | None:
     return pooled_qc_finding(df)
 
 
+def _as_written(found: dict[str, Any], df: pd.DataFrame) -> None:
+    """Each column of the impossible-values card read after a unit's conversion, in place: its
+    band in the unit the column is written in (``band_as_written``) and that unit
+    (``unit_as_written``), the band and unit its repairs compare the values to and label their
+    marks with (``repairs._offer_impossible``). The card reads a value as written times the
+    conversion factor its unit reading gives (``plausibility._read``: ``ml.clinical_units.
+    infer_unit`` on the column's values, read here the same way), so the band as written is the
+    card's band divided by that factor: a `cholesterol` in mg/dL is read against 0.3–40 mmol/L,
+    11.6–1544 mg/dL as written. A column read in the card's own unit (a factor of 1) carries
+    neither, and its repairs read the card's band."""
+    from ml.clinical_units import infer_unit
+
+    for e in (found.get("params") or {}).get("columns") or []:
+        if not isinstance(e, dict) or not e.get("impossible_band") \
+                or e.get("column") not in df.columns:
+            continue
+        column = e["column"]
+        present = pd.to_numeric(df[column], errors="coerce").dropna()
+        unit = infer_unit(str(column), present) or {}
+        factor = unit.get("conversion_factor")
+        if not factor or float(factor) == 1.0:
+            continue
+        low, high = (float(v) for v in e["impossible_band"])
+        e["band_as_written"] = [low / float(factor), high / float(factor)]
+        if unit.get("inferred_unit"):
+            e["unit_as_written"] = str(unit["inferred_unit"])
+
+
 def _impossible_apart(found: dict[str, Any], df: pd.DataFrame, qc: np.ndarray) -> None:
     """The impossible-values card's detail, with each count it states of a column its repairs act
     on followed by how many of those values are on the non-QC rows and how many on the pooled-QC
     rows ``qc``, in place: the lead column (the age-unit card: the first two). Counted as the
-    repairs count (``repairs._offer_impossible``: a value outside its column's band as written),
-    and said only where the two counts sum to the card's own, which reads after its unit's
-    conversion (a `cholesterol` in mg/dL against a band in mmol/L): otherwise no split is said.
-    Nothing is said where the QC rows hold none."""
+    repairs count (``repairs._offer_impossible``: a value as written outside its column's band in
+    the unit written, :func:`_as_written`), and said only where the two counts sum to the card's
+    own: otherwise no split is said. Nothing is said where the QC rows hold none."""
     from turbotab.core.repairs import _outside
 
     params = found.get("params") or {}
@@ -132,7 +165,8 @@ def _impossible_apart(found: dict[str, Any], df: pd.DataFrame, qc: np.ndarray) -
     at = 0
     for e in entries[:2] if params.get("age_unit_question") else entries[:1]:
         column, n = str(e["column"]), int(e.get("n_impossible") or 0)
-        outside = _outside(df[column], *[float(v) for v in e["impossible_band"]]).to_numpy()
+        band = e.get("band_as_written") or e["impossible_band"]
+        outside = _outside(df[column], *[float(v) for v in band]).to_numpy()
         on_qc, on_other = int((outside & qc).sum()), int((outside & ~qc).sum())
         named = detail.find(f"`{column}`", at)
         mark = f"(a convention: {e.get('impossible_source')})."

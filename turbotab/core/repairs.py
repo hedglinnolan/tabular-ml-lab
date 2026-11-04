@@ -291,9 +291,15 @@ def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferConte
                and oc.has(e.get("column")) and e.get("impossible_band")]
     if not entries:
         return []
-    bands = {str(e["column"]): [float(e["impossible_band"][0]), float(e["impossible_band"][1])]
+    # The band in the unit the column is written in (``detectors._as_written``), since the card
+    # reads each value after its unit's conversion and these compare the values as written: a
+    # `cholesterol` in mg/dL is read against 0.3–40 mmol/L, and against that band as written every
+    # value was blanked where the card counted 11. Without a conversion it is the card's band.
+    bands = {str(e["column"]): [float(v) for v in (e.get("band_as_written")
+                                                   or e["impossible_band"])][:2]
              for e in entries}
-    units = {str(e["column"]): str(e["unit"]) for e in entries if e.get("unit")}
+    units = {str(e["column"]): str(e.get("unit_as_written") or e["unit"]) for e in entries
+             if e.get("unit_as_written") or e.get("unit")}
     cols = list(bands)
     outside = {c: _outside(oc.frame[c], *bands[c]) for c in cols}
     n_values = int(sum(int(m.sum()) for m in outside.values()))
@@ -302,7 +308,8 @@ def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferConte
     # Both repairs act on every row, the pooled-QC rows (:attr:`OfferContext.reference_rows`)
     # too, so where those hold any impossible value each consequence says the non-QC and the QC
     # rows' counts apart, as the card's detail does (``detectors._superseding``) and in the
-    # shorter wording that keeps both counts within CONSEQUENCE_WORDS.
+    # shorter wording that keeps both counts within CONSEQUENCE_WORDS: the columns are named where
+    # that fits and counted where their names would run past it (a name of several words).
     qc = np.zeros(len(oc.frame), dtype=bool)
     qc[sorted(oc.reference_rows)] = True
     qc_values = int(sum(int((m.to_numpy() & qc).sum()) for m in outside.values()))
@@ -319,10 +326,17 @@ def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferConte
     leaving = (f"{_count(n_rows)} {_plural(n_rows, 'row')} holding {holding} leave the analysis "
                f"before the seal.")
     if qc_values:
-        where = named if len(cols) <= 2 else f"{_count(len(cols))} columns"
-        blanked = (f"{_apart(n_values - qc_values, qc_values)} impossible "
-                   f"{_plural(n_values, 'value')} in {where} {_plural(n_values, 'becomes', 'become')} "
-                   f"blank; the rest stay.")
+        from turbotab.core.voice import words
+
+        def blank_in(where: str) -> str:
+            return (f"{_apart(n_values - qc_values, qc_values)} impossible "
+                    f"{_plural(n_values, 'value')} in {where} "
+                    f"{_plural(n_values, 'becomes', 'become')} blank; the rest stay.")
+
+        counted = f"{_count(len(cols))} {_plural(len(cols), 'column')}"
+        blanked = blank_in(named if len(cols) <= 2 else counted)
+        if words(blanked) > CONSEQUENCE_WORDS:
+            blanked = blank_in(counted)
         leaving = (f"{_apart(n_rows - qc_rows, qc_rows)} {_plural(n_rows, 'row')} holding an "
                    f"impossible value {_plural(n_rows, 'leaves', 'leave')} the analysis before the "
                    f"seal.")
