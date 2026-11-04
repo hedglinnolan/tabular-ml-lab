@@ -9537,6 +9537,46 @@ export interface components {
             then: string;
         };
         /**
+         * CheckPoint
+         * @description One value of the check's curve: ``x`` on the exposure's scale, the spline's difference from
+         *     the reference (``curve``) and the straight line's (``line``), on the scale of the model's
+         *     coefficients; points only, no interval.
+         */
+        CheckPoint: {
+            /** X */
+            x: number;
+            /** Curve */
+            curve: number;
+            /**
+             * Line
+             * @default null
+             */
+            line: number | null;
+        };
+        /**
+         * CheckTest
+         * @description The check's Wald test that the spline's nonlinear terms are zero (``rms::anova``'s
+         *     "Nonlinear" row): F on the table's df (HC3, cluster-robust, design-based) or χ² on the model's
+         *     information.
+         */
+        CheckTest: {
+            /** Statistic */
+            statistic: number;
+            /** Df Num */
+            df_num: number;
+            /** Df Den */
+            df_den: number | null;
+            /**
+             * Distribution
+             * @enum {string}
+             */
+            distribution: "F" | "chi2";
+            /** P */
+            p: number;
+            /** Basis */
+            basis: string;
+        };
+        /**
          * ClusterScore
          * @description One held-out cluster: its rows, its scores, and the primary metric's interval.
          */
@@ -10373,6 +10413,8 @@ export interface components {
              * @default []
              */
             concerns: string[];
+            /** @default null */
+            check: components["schemas"]["FormCheck"] | null;
         };
         /**
          * EnergyRanking
@@ -11560,6 +11602,72 @@ export interface components {
             max: number;
             /** Varies */
             varies: boolean;
+        };
+        /**
+         * FormCheck
+         * @description The plan's check of the declared exposure's shape (the owner's rulings of 2026-11-04;
+         *     ``exposure_form.check_shape``): the primary model refitted with the other shape in place of
+         *     the one kept, fixed with the form at the lock and never replacing it. With a straight line
+         *     kept (``shape`` "spline"): the restricted cubic spline's ``knots`` and k by the ``rule``, its
+         *     ``test`` that the nonlinear terms are zero, its ``terms`` and its curve (``points``, the
+         *     difference from ``reference``, the lowest knot); refused under multiple imputation, whose
+         *     copies were imputed for the line. With a restricted cubic spline kept (``shape`` "linear"):
+         *     the straight line's one coefficient (``line``). ``refused``: why the check could not be
+         *     made.
+         */
+        FormCheck: {
+            /** Exposure */
+            exposure: string;
+            /** Column */
+            column: string;
+            /**
+             * Kept
+             * @enum {string}
+             */
+            kept: "linear" | "spline";
+            /**
+             * Shape
+             * @enum {string}
+             */
+            shape: "spline" | "linear";
+            /** Caption */
+            caption: string;
+            /** Methods */
+            methods: string;
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+            /**
+             * Rule
+             * @default null
+             */
+            rule: string | null;
+            /**
+             * Knots
+             * @default null
+             */
+            knots: number[] | null;
+            /** @default null */
+            test: components["schemas"]["CheckTest"] | null;
+            /**
+             * Terms
+             * @default null
+             */
+            terms: components["schemas"]["Coefficient"][] | null;
+            /**
+             * Reference
+             * @default null
+             */
+            reference: number | null;
+            /**
+             * Points
+             * @default []
+             */
+            points: components["schemas"]["CheckPoint"][];
+            /** @default null */
+            line: components["schemas"]["Coefficient"] | null;
         };
         /**
          * FormNeed
