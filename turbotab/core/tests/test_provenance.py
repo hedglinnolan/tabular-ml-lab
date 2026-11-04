@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from turbotab.core import voice
 from turbotab.core.decisions import (DecisionLog, LockPlan, OpenSeal, Reseal, Revert,
-                                     SetExclusions, SetPurpose, SetSplit, SetTarget, disclose)
+                                     SetExclusions, SetFeatureTable, SetOrientation, SetPurpose,
+                                     SetSplit, SetTarget, disclose)
 from turbotab.core.provenance import methods_text
 
 
@@ -106,3 +107,69 @@ def test_the_plan_locks_on_an_estimate_in_view_and_never_on_a_refusal_or_a_withh
     secondary = {"families": [{"fits": [{"coefficients": [shown], "inference": None}]}]}
     assert shows_estimates("secondary", secondary)
     assert not shows_estimates("secondary", withhold("secondary", secondary, {"reason": "…"}))
+
+
+def _feature_lines(log: DecisionLog) -> list:
+    return [line for line in methods_text(log.records()).lines if line.kind == "set_feature_table"]
+
+
+def test_a_feature_table_reading_is_in_force_only_while_the_table_is_turned(tmp_path):
+    """FT1: the features-in-rows reading (a turn check's exit) says how a turned table reads, and
+    the oriented stage turns the table only on `feature_major` (``stages.working.oriented_stage``).
+    Recorded on a table no answer turned, or one answered as one row per sample, it is not in
+    force: no methods sentence, no sentence of the plan, none of a fit's records in force (``runs``
+    reads them from ``in_force``). Turned, it is; a later "one row per sample" folds it out again."""
+    from turbotab.core.plan_lock import plan_document
+    from turbotab.core.provenance import in_force
+
+    log = _log(tmp_path)
+    reading = _said(log, SetFeatureTable(label="feature_id", annotations=["mz"]))
+    assert reading.sentence.startswith("For the features-in-rows table, ")
+
+    def said() -> tuple[bool, bool, bool]:
+        records = log.records()
+        return (reading.id in in_force(records), any(line.record_id == reading.id
+                                                     for line in methods_text(records).lines),
+                reading.sentence in plan_document(records).sentences)
+
+    assert said() == (False, False, False)  # never turned
+    _said(log, SetOrientation(orientation="sample_major"))
+    assert said() == (False, False, False)  # rows are samples
+    _said(log, SetOrientation(orientation="feature_major"))
+    assert said() == (True, True, True)  # turned: the reading is how the table reads
+    assert [line.sentence for line in _feature_lines(log)] == [reading.sentence]
+    _said(log, SetOrientation(orientation="sample_major"))
+    assert said() == (False, False, False)  # turned back: folded out again
+
+
+def test_after_the_lock_a_feature_table_reading_on_an_unturned_table_changes_nothing(tmp_path):
+    """After the lock nothing is folded out, but a features-in-rows reading recorded while no answer
+    turns the table, and turning none since, changed nothing the analysis is (the oriented stage
+    reads it only to turn the table), so it is no fork and writes no sentence, nor does its revert
+    (``provenance.never_applied``). Recorded while the table is turned, it is a change made after
+    the estimates were seen, and kept so; one the table is turned for later is in force."""
+    def locked(orientation: str, at: str) -> DecisionLog:
+        log = _log(tmp_path / at)
+        _said(log, SetTarget(column="bmi"))
+        _said(log, SetPurpose(purpose="inference"))
+        _said(log, SetOrientation(orientation=orientation))
+        _said(log, LockPlan(plan={}, digest="ab" * 32))
+        return log
+
+    plain = locked("sample_major", "plain")
+    reading = _said(plain, SetFeatureTable(label="feature_id"))
+    assert reading.after_estimates and _feature_lines(plain) == []
+    undone = _said(plain, Revert(decision_id=reading.id))
+    kept = [line.record_id for line in methods_text(plain.records()).lines]
+    assert reading.id not in kept and undone.id not in kept
+
+    turned = locked("feature_major", "turned")
+    forked = _said(turned, SetFeatureTable(label="feature_id"))
+    assert [(line.record_id, line.in_force)
+            for line in _feature_lines(turned)] == [(forked.id, True)]
+    assert forked.sentence.startswith("After the estimates were seen, for the features-in-rows")
+
+    later = locked("sample_major", "later")
+    first = _said(later, SetFeatureTable(label="feature_id"))
+    _said(later, SetOrientation(orientation="feature_major"))
+    assert [(line.record_id, line.in_force) for line in _feature_lines(later)] == [(first.id, True)]
