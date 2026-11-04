@@ -1,0 +1,233 @@
+/* First look's gallery on the canvas, and its guide on the card (FOUNDATION §3 stage 3, §4 color
+   by role: gray is the data now). Tokens only (the kit's, under [data-kit]); the drawings' frame,
+   table alternative and one line are the exhibit views' shared parts, restyled nowhere here. */
+
+/* ── the gallery ──────────────────────────────────────────────────────────── */
+.gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  scroll-margin-top: 96px;
+}
+.section:focus {
+  outline: none;
+}
+.section:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 6px;
+  border-radius: 6px;
+}
+.sectionTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--canvas-ink);
+}
+.caption {
+  margin: 0;
+  font-size: 14px;
+  color: var(--canvas-muted);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--canvas-line);
+  border-radius: 10px;
+}
+.wide {
+  grid-column: 1 / -1;
+}
+.cellHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.cellName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cellKind {
+  flex: none;
+  font-size: 13px;
+  color: var(--canvas-muted);
+}
+.claim {
+  margin: 0;
+  font-size: 14px;
+}
+.quiet {
+  margin: 0;
+  font-size: 13px;
+  color: var(--canvas-muted);
+}
+.pairs {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 13px;
+  color: var(--canvas-muted);
+}
+.act {
+  align-self: flex-start;
+}
+.refused {
+  margin: 0;
+  font-size: 13px;
+  color: var(--warn-ink);
+}
+
+/* ── the drawings ─────────────────────────────────────────────────────────── */
+.drawing {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.baseline {
+  stroke: var(--canvas-line);
+  stroke-width: 1;
+}
+.tick {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  fill: var(--canvas-muted);
+}
+.line {
+  fill: none;
+  stroke-width: 1.5;
+}
+.levels {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.level {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  font-size: 13px;
+}
+.levelName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.levelCount {
+  font-variant-numeric: tabular-nums;
+  color: var(--canvas-muted);
+}
+.levelTrack {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--canvas-line);
+  overflow: hidden;
+}
+.levelBar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* the window of the outcome beside the other columns scrolls in its own container */
+.rows {
+  overflow-x: auto;
+  min-width: 0;
+}
+.rows table {
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.rows th,
+.rows td {
+  padding: 3px 10px 3px 0;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--canvas-line);
+}
+.rows th {
+  font-weight: 600;
+}
+.rows td[data-outcome],
+.rows th[data-outcome] {
+  padding-right: 16px;
+}
+
+/* ── the guide, on the card ───────────────────────────────────────────────── */
+.beats {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.beat {
+  display: grid;
+  gap: 2px;
+}
+.beatTitle {
+  font-weight: 600;
+}
+.beatLine {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+.asked {
+  display: grid;
+  gap: 10px;
+}
+.askedFrom {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+.askedQuestion {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.told {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 15px;
+}
