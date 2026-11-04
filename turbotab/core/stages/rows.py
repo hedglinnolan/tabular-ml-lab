@@ -26,6 +26,7 @@ import numpy as np
 
 from turbotab.core.graph import Bundle, StageContext, StageRefusal
 from turbotab.core.stages.data import LENSES, open_store
+from turbotab.core.exit_target import toward
 
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
 REASON_WORDS = 16
@@ -2145,7 +2146,7 @@ def split_stage(ctx: StageContext) -> Bundle:
                 raise StageRefusal(
                     "unknown_column", f"The table has no column `{spec.cluster}` to fold by.",
                     exits=[{"label": "Choose the column that names each site, study or period",
-                            "decision": None}])
+                            "decision": None, "target": toward("split")}])
             clusters = store.materialize([spec.cluster], universe)[spec.cluster].to_numpy(dtype=object)
     ctx.progress(0.4, "Drawing the held-out rows and the folds")
     frame, info = draw_split(

@@ -68,6 +68,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from turbotab.core import claims
 from turbotab.core.claims.data import OMICS_NHANES_NAMES, OMICS_ONE_WORD_IDS
+from turbotab.core.exit_target import toward
 
 OMICS_LENSES = ("genomics", "metabolomics")
 FINDING = "omics_scale"
@@ -1020,7 +1021,7 @@ def refusal_for(models: Sequence[str], state: Any, finding: Mapping[str, Any]) -
     if others:
         exits.append({"label": "Keep only the families that are not linear",
                       "decision": SelectModels(models=others)})
-    exits.append({"label": "Choose from the shelf", "decision": None})
+    exits.append({"label": "Choose from the shelf", "decision": None, "target": toward("models")})
     verb = "fits" if len(names) == 1 else "fit"
     return Refusal(
         "raw_assay_values",

@@ -99,6 +99,7 @@ from turbotab.core.decisions import (
     register_completion,
     register_validator,
 )
+from turbotab.core.exit_target import toward
 
 LABEL_WORDS = 4
 CONSEQUENCE_WORDS = 16
@@ -1721,7 +1722,8 @@ def _known_finding(decision: Any, ctx: Any) -> dict[str, Any] | None | object:
         raise Refusal(
             "unknown_finding",
             f"There is no finding {decision.finding_id!r} on this table now.",
-            exits=[{"label": "Choose one of the findings listed now", "decision": None}],
+            exits=[{"label": "Choose one of the findings listed now", "decision": None,
+                    "target": toward("apply_repair")}],
         )
     return found
 

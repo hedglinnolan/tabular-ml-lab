@@ -124,6 +124,7 @@ from turbotab.core.methods.imputation import (
     _norm_draw,
     _standardize,
 )
+from turbotab.core.exit_target import toward
 
 Mode = Literal["fcs", "smcfcs"]
 Kind = Literal["numeric", "binary", "categorical", "censored"]
@@ -1780,7 +1781,8 @@ def zero_exits(column: str, adjustment: Any) -> list[dict[str, Any]]:
                       "decision": {"kind": "set_energy_adjustment", **adjustment.model_dump(),
                                    "log_transform": False}})
     exits.append({"label": f"Say how the zeros of `{column}` are read: values below a detection "
-                           f"limit, or true zeros", "decision": None})
+                           f"limit, or true zeros", "decision": None,
+                  "target": toward(stage="data")})
     return exits
 
 

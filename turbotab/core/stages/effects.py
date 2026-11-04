@@ -68,6 +68,7 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core import contracts
 from turbotab.core.graph import Bundle, StageContext
 from turbotab.core.models.artifacts import AdjustmentTerm, Coefficient, Inference, InferenceExit
+from turbotab.core.exit_target import toward
 
 
 class _Model(BaseModel):
@@ -1393,7 +1394,9 @@ class _Run:
                    f"{'it' if one else 'them all'}: none of the {len(self.frame):,} analyzed rows "
                    f"does, so Model 3 cannot be fit.")
         exits: list[dict[str, Any]] = [
-            {"label": f"Leave {listing(never or added)} out of Model 3", "decision": None}]
+            {"label": f"Leave {listing(never or added)} out of Model 3", "decision": None,
+             # Model 3's columns are those the adjustment answers set beside the primary.
+             "target": toward("adjustment")}]
         if not never:
             answer = {k: v for k, v in dict(self.spec.missing or {}).items() if k != "kind"}
             exits.append({"label": MI_LABEL, "decision": {

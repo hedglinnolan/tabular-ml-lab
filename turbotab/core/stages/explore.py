@@ -52,6 +52,7 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core import claims
 from turbotab.core.graph import Bundle, StageContext
 from turbotab.core.stages.data import open_store
+from turbotab.core.exit_target import toward
 
 EXPLORE_READS: tuple[str, ...] = ("target", "purpose", "task", "event", "outcome_order", "lens",
                                   "outcome_views", "levers",
@@ -823,16 +824,19 @@ def _view_columns_exist(decision: Any, ctx: Any) -> None:
     state = _state(ctx)
     if state is not None and not getattr(state, "target", None):
         raise Refusal("no_outcome", "An outcome view needs the outcome chosen first.",
-                      exits=[{"label": "Choose the outcome", "decision": None}])
+                      exits=[{"label": "Choose the outcome", "decision": None,
+                              "target": toward("target")}])
     if decision.view == "relationship" and not decision.columns:
         raise Refusal("no_column", "A relationship view names the predictor it sets against the "
-                                   "outcome.", exits=[{"label": "Name a predictor", "decision": None}])
+                                   "outcome.", exits=[{"label": "Name a predictor", "decision": None,
+                                                       "target": toward("view_outcome")}])
     columns = _columns_of(ctx)
     if columns is not None:
         unknown = [c for c in decision.columns if c not in columns]
         if unknown:
             raise Refusal("unknown_column", f"This dataset has no column named `{unknown[0]}`.",
-                          exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                          exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                                  "target": toward("view_outcome")}])
 
 
 def _view_filled(decision: Any, ctx: Any) -> Any:

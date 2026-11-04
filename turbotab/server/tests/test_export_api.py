@@ -13,7 +13,11 @@ def test_a_fresh_project_is_refused_its_bundle_and_shown_what_the_checklist_wait
     error = r.json()["error"]
     assert error["code"] == "unanswered_questions"
     assert error["message"].startswith("The lens question")
-    assert error["exits"][0] == {"label": "Answer the lens question", "decision": None}
+    # Its way forward opens the lens question's card, where the quest log serves it (G12).
+    log = client.get(f"/api/projects/{pid}/quest").json()
+    lens = next(s["key"] for s in log["stages"] if any(l["key"] == "lens" for l in s["lines"]))
+    assert error["exits"][0] == {"label": "Answer the lens question", "decision": None,
+                                 "target": {"stage": lens, "key": "lens"}}
     c = client.get(f"/api/projects/{pid}/checklist")
     assert c.status_code == 200
     report = c.json()

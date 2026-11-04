@@ -11,6 +11,7 @@ from fastapi import APIRouter, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 from turbotab.core.codebook import check_suffix
+from turbotab.core.exit_target import toward
 from turbotab.core.workspace import PROVENANCE_MAX_CHARS, source_provenance
 from turbotab.server.errors import ApiError
 from turbotab.server.routes import get_service, get_settings, refusal, require_local
@@ -56,7 +57,8 @@ def list_files(request: Request, pid: str) -> list[dict]:
 def add_file(request: Request, pid: str, body: AddFile) -> dict:
     """Add a file on this machine (local mode only); it is read once, as the table was."""
     require_local(get_settings(request), "Adding a file by its path",
-                  [{"label": "Upload the file instead", "decision": None}])
+                  [{"label": "Upload the file instead", "decision": None,
+                    "target": toward("join_files")}])
     return get_service(request).add_file_from_path(pid, body.path)
 
 
@@ -108,7 +110,8 @@ def add_codebook(request: Request, pid: str, body: CodebookRequest) -> dict:
     what importing it would do (``import_codebook`` records it)."""
     if body.path:
         require_local(get_settings(request), "Reading a codebook by its path",
-                      [{"label": "Upload the codebook instead", "decision": None}])
+                      [{"label": "Upload the codebook instead", "decision": None,
+                        "target": toward("import_codebook")}])
     return get_service(request).stage_codebook(pid, path=body.path, labels=body.labels)
 
 

@@ -64,6 +64,7 @@ from turbotab.core.decisions import (
     log_outcome_name,
     register_validator,
 )
+from turbotab.core.exit_target import toward
 
 OTHER_LENS = "other"
 OTHER_LABEL = "Something else, or not sure"
@@ -380,13 +381,15 @@ def _outcome_scale_fits(decision: SetOutcomeScale, ctx: Any) -> None:
     if target is not _UNKNOWN:
         if target is None:
             raise Refusal("no_target", "Choose the outcome first; the scale describes it.",
-                          exits=[{"label": "Choose the outcome", "decision": None}])
+                          exits=[{"label": "Choose the outcome", "decision": None,
+                                  "target": toward("target")}])
         if target not in (decision.column, derived):
             raise Refusal(
                 "not_the_target",
                 f"The outcome is `{target}`, not `{decision.column}`; the scale answers for the "
                 f"outcome.",
-                exits=[{"label": f"Choose the scale of `{target}`", "decision": None}])
+                exits=[{"label": f"Choose the scale of `{target}`", "decision": None,
+                        "target": toward("set_outcome_scale")}])
     if state is not None and getattr(state, "split", None) is not None:
         current = (getattr(state, "outcome_scale", None) or None)
         if current is None or current.column != decision.column or current.scale != decision.scale:
@@ -469,7 +472,8 @@ def _no_rule_on_the_outcome_source(decision: SetExclusions, ctx: Any) -> None:
         f"`{source}` is the outcome, analyzed as `{log_outcome_name(source)}`. {OUTCOME_RULE} Say "
         f"who is studied by what was known before the outcome.",
         exits=[{"label": f"Drop the rule on `{source}`", "decision": kept},
-               {"label": "Restrict by a variable measured before the outcome", "decision": None}])
+               {"label": "Restrict by a variable measured before the outcome", "decision": None,
+                "target": toward("exclusions")}])
 
 
 # NHANES 1999–2006 DXA (CDC, "Multiple Imputation Details", wwwn.cdc.gov/nchs/nhanes/dxa/dxa.aspx):
@@ -493,7 +497,8 @@ def _imputed_copies_are_recorded(decision: SetRepeatKind, ctx: Any) -> None:
             and decision.implicate_column not in columns:
         raise Refusal("unknown_column",
                       f"This dataset has no column named `{decision.implicate_column}`.",
-                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None,
+                              "target": toward("repeat_kind")}])
 
 
 CDC_DXA = ("The extra variability due to imputation CANNOT be incorporated by simply analyzing a "

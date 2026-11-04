@@ -76,6 +76,8 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from turbotab.core.exit_target import toward
+
 Form = Literal["linear", "spline", "quintiles", "categories", "optimal", "zero_spline"]
 FORMS: tuple[str, ...] = ("linear", "spline", "quintiles", "categories", "optimal", "zero_spline")
 SPLINE_FORMS = ("spline", "zero_spline")
@@ -189,7 +191,7 @@ def _too_few(n: int, column: str | None, *, rows: int | None = None,
         else:
             message, last = f"{head}; there are {n}.", more_rows(column)
     exits = ([{"label": f"Enter {named} as a straight line, which places no knots",
-               "decision": None}] if n else [])
+               "decision": None, "target": toward("form")}] if n else [])
     exits.append({"label": last, "decision": None})
     return StageRefusal(SPLINE_TOO_FEW, message, exits=exits)
 
@@ -225,9 +227,9 @@ def _too_tied(values: np.ndarray, column: str | None, *, rows: int | None = None
                f"heavily tied to place them: {counted} {distinct:,} distinct values, {most:,} of "
                f"them the same value.")
     exits = [{"label": f"Enter {named} as a straight line, which places no knots",
-              "decision": None},
+              "decision": None, "target": toward("form")},
              {"label": f"Enter {named} in categories at cut points declared from outside these "
-                       f"data", "decision": None}]
+                       f"data", "decision": None, "target": toward("form")}]
     return StageRefusal(SPLINE_TOO_TIED, message, exits=exits)
 
 
@@ -2385,7 +2387,8 @@ def _form_kind_fits(decision: Any, ctx: Any) -> None:
     if decision.form == "categories" and not decision.cuts:
         raise Refusal("cuts_needed", f"Categories of `{column}` need their cut points declared, "
                                      f"from outside these data.",
-                      exits=[spline, {"label": "Declare the cut points", "decision": None}])
+                      exits=[spline, {"label": "Declare the cut points", "decision": None,
+                                      "target": toward("form")}])
     if decision.cuts and decision.form != "categories":
         raise Refusal("cuts_without_categories",
                       f"Cut points belong to categories; the {decision.form} form has none.",
@@ -2439,7 +2442,7 @@ def _form_kind_fits(decision: Any, ctx: Any) -> None:
                           "A data-derived cut point would be searched again in every imputed copy, "
                           "and the copies' estimates would not be of one variable.",
                           exits=[spline, {"label": "Declare the cut points from outside these data",
-                                          "decision": None}])
+                                          "decision": None, "target": toward("form")}])
 
 
 def _form_reads_a_settled_reading(decision: Any, ctx: Any) -> None:
@@ -2504,7 +2507,8 @@ def _cuts_are_declared_or_recorded(decision: Any, ctx: Any) -> None:
             f"\"the use of a data-derived 'optimal' cutpoint leads to serious bias\").",
             exits=[spline, {"label": "Quintiles", "decision": SetExposureForm(column=column,
                                                                               form="quintiles")},
-                   {"label": "Declare the cut points from outside these data", "decision": None},
+                   {"label": "Declare the cut points from outside these data", "decision": None,
+                    "target": toward("form")},
                    keep])
     if decision.form == "categories" and role == "confounder" and \
             len(decision.cuts or []) + 1 <= COARSE_GROUPS:
@@ -2738,7 +2742,8 @@ def _knots_place_on_the_analyzed_rows(column: str, spec: Mapping[str, Any], stat
         if refused.code != SPLINE_TOO_TIED:
             return  # the fit says why it cannot place them
         line = SetExposureForm(column=column, form="linear")
-        exits = [{"label": e["label"], "decision": line if i == 0 else e.get("decision")}
+        # Each keeps the card it opens (``target``), the first now the straight line it names.
+        exits = [{**e, "decision": line if i == 0 else e.get("decision")}
                  for i, e in enumerate(refused.exits)]
         raise Refusal(refused.code, refused.message, exits=exits) from None
 

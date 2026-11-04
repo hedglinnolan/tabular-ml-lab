@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from turbotab.core import decisions
 from turbotab.core.datastore import UnknownColumn
+from turbotab.core.exit_target import with_target
 from turbotab.core.workspace import ProjectNotFound
 
 
@@ -29,7 +30,9 @@ class ApiError(Exception):
         self.status = status
         self.code = code
         self.message = message
-        self.exits = [{"label": str(e["label"]), "decision": e.get("decision")} for e in exits]
+        # Each with the card it opens where it names one (``exit_target``), as a refusal's.
+        self.exits = [with_target(e, {"label": str(e["label"]), "decision": e.get("decision")})
+                      for e in exits]
 
     def body(self) -> dict[str, Any]:
         return {"error": {"code": self.code, "message": self.message, "exits": self.exits}}

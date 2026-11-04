@@ -61,6 +61,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.impute import SimpleImputer
 
 from turbotab.core.methods.exposure_form import ExposureForms
+from turbotab.core.exit_target import toward
 
 # ── the rule and the sentences every surface shares ─────────────────────────
 
@@ -700,8 +701,10 @@ def censored_fill_refusal(column: str, detected: np.ndarray) -> Any:
         f"`{column}`'s values below detection cannot be filled censoring-aware: its "
         f"censored-normal model could not be fit on these rows ({why}).",
         exits=[{"label": "In the missing-values answer, fill values below detection with half "
-                         "the smallest detected value", "decision": None},
-               {"label": f"In the missing-values answer, leave `{column}` out", "decision": None}])
+                         "the smallest detected value", "decision": None,
+                "target": toward("missing")},
+               {"label": f"In the missing-values answer, leave `{column}` out", "decision": None,
+                "target": toward("missing")}])
 
 
 def below_limit_mean(mu: float, sigma: float, limit: float, log: bool) -> float:

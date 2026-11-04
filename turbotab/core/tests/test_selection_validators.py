@@ -45,7 +45,9 @@ def test_robust_linear_is_refused_under_inference_with_a_plain_reason_and_an_exi
                                "goal is to estimate an effect.")
     assert refusal.exits[0] == {"label": "Keep the families that can",
                                 "decision": {"kind": "select_models", "models": ["linear"]}}
-    assert refusal.exits[-1] == {"label": "Choose from the shelf", "decision": None}
+    # It opens the models question's card (G12).
+    assert refusal.exits[-1] == {"label": "Choose from the shelf", "decision": None,
+                                 "target": {"stage": "models", "key": "models"}}
     validate(refusal.exits[0]["decision"], INFERENCE)  # the exit is accepted
     validate(SelectModels(models=["linear", "huber"]), PREDICTION)
 

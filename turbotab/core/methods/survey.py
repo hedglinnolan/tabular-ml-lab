@@ -28,6 +28,7 @@ from turbotab.core.survey import (
     reading_of,
     sample_concern,
 )
+from turbotab.core.exit_target import toward
 
 
 @dataclass
@@ -140,7 +141,7 @@ def refuse_weights(pooled: PooledWeight, state: Any, store: Any) -> None:
         whole = analysis_weights(frame, spec.weight, spec.cycle, spec.four_year_weight, outcome)
         words = whole.refusal or words
     raise StageRefusal("four_year_weight", words, exits=[
-        {"label": NAME_THE_FOUR_YEAR, "decision": None},
+        {"label": NAME_THE_FOUR_YEAR, "decision": None, "target": toward("survey")},
         {"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}}])
 
 

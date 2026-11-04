@@ -48,6 +48,7 @@ from turbotab.core.claims._registry import render_log
 from turbotab.core.workspace import STAGE_GRAPH, ProjectMeta, Workspace
 from turbotab.server.errors import ApiError
 from turbotab.core import atomic
+from turbotab.core.exit_target import toward
 
 log = logging.getLogger(__name__)
 
@@ -1648,7 +1649,7 @@ class ProjectService:
                 "with its SHA-256, the first estimates are shown, and every later change is marked "
                 "as made after the estimates were seen.",
                 exits=[{"label": "Answer the remaining questions, then press Fit",
-                        "decision": None}])
+                        "decision": None, "target": toward(stage="models")}])
         by = {"recorded_by": "turbotab" if system else "you", "early": ahead_of,
               "unless_set": unless_set, "note": note}
         ctx = self._settle_for_sentence(pid, ctx, parsed)
@@ -2205,7 +2206,8 @@ class ProjectService:
         state = decisions.fold(records)
         if state.purpose is None:
             raise Refusal("fit_not_yet", "There is nothing to fit yet: the goal is not chosen.",
-                          exits=[{"label": "Choose the goal", "decision": None}])
+                          exits=[{"label": "Choose the goal", "decision": None,
+                                  "target": toward("purpose")}])
         # Something is chosen to fit: an estimate stage that can compute. The usual-intake stage
         # computes its offer on the lens and goal alone, so it counts once a distribution is
         # declared.
@@ -2213,7 +2215,8 @@ class ProjectService:
                    and (name != "usual_intake" or state.usual_intake)
                    for name in estimand.ESTIMATE_STAGES if name in stages):
             raise Refusal("fit_not_yet", "There is nothing to fit yet: choose the models first.",
-                          exits=[{"label": "Choose the models", "decision": None}])
+                          exits=[{"label": "Choose the models", "decision": None,
+                                  "target": toward("models")}])
         gate = estimand.served_gate(state, self.interview(pid, state, stages, records))
         if gate is not None:
             raise Refusal("fit_not_yet", f"Fit waits: {gate['reason']}", exits=gate["exits"])

@@ -43,6 +43,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
 from turbotab.core.graph import Bundle, StageContext
+from turbotab.core.exit_target import toward
 
 
 class _Model(BaseModel):
@@ -375,7 +376,7 @@ def survey_plan(ctx: StageContext, store: Any, design_rows: np.ndarray, person_r
         if reading_of(state).present:
             raise Refused(ui.SURVEY_UNANSWERED, [
                 {"label": "Answer the survey question: the surveyed population, or these "
-                          "participants", "decision": None}, sample])
+                          "participants", "decision": None, "target": toward("survey")}, sample])
         return plain
     if survey.estimand == "sample":
         return {**plain, "attestation": ATTESTATION}
@@ -385,7 +386,7 @@ def survey_plan(ctx: StageContext, store: Any, design_rows: np.ndarray, person_r
     pooled = analysis_weights(frame, survey.weight, survey.cycle, survey.four_year_weight)
     if pooled.refusal:
         raise Refused(pooled.refusal, [{"label": "Name the four-year weight (the survey question)",
-                                        "decision": None}, sample])
+                                        "decision": None, "target": toward("survey")}, sample])
     position = {int(r): i for i, r in enumerate(design_rows)}
     idx = np.array([position[int(r)] for r in person_rows], dtype=np.int64)
     weights = pooled.weights[idx]
@@ -399,7 +400,8 @@ def survey_plan(ctx: StageContext, store: Any, design_rows: np.ndarray, person_r
         except UsualIntakeRefused as error:  # a stratum of one PSU: block and record (§4)
             raise Refused(f"{error} {ui.LONELY_PSU}", [
                 sample, {"label": "Name strata and PSUs with two or more PSUs in every stratum (the "
-                                  "survey question)", "decision": None}]) from None
+                                  "survey question)", "decision": None,
+                         "target": toward("survey")}]) from None
         replication = _restrict(rep, idx)
     else:
         replication = person_bootstrap(n, n_boot, seed)
@@ -423,10 +425,12 @@ def gate_exits(state: Any, reason: str | None) -> list[dict[str, Any]]:
         return [{"label": "Answer the repeats as repeated measurements of one usual intake",
                  "decision": {"kind": "set_repeat_kind", "repeat_kind": "repeats"}}]
     if reason == ui.LENS_UNANSWERED:
-        return [{"label": "Answer the lens question", "decision": None}]
+        return [{"label": "Answer the lens question", "decision": None, "target": toward("lens")}]
     if reason == ui.PURPOSE_UNANSWERED:
-        return [{"label": "Answer the purpose question", "decision": None}]
-    return [{"label": "Answer how the rows repeat", "decision": None}]
+        return [{"label": "Answer the purpose question", "decision": None,
+                 "target": toward("purpose")}]
+    return [{"label": "Answer how the rows repeat", "decision": None,
+             "target": toward("repeat_kind")}]
 
 
 def method_exits(code: str, nutrient: str, spec: Any) -> list[dict[str, Any]]:
@@ -438,7 +442,7 @@ def method_exits(code: str, nutrient: str, spec: Any) -> list[dict[str, Any]]:
                  "decision": ui.answer(nutrient, spec, model="amount_only")}]
     if code in ("no_recall", "no_amount"):
         out = [{"label": "Name the column (or recall days) that hold the component's amounts",
-                "decision": None}]
+                "decision": None, "target": toward("set_usual_intake")}]
         if spec.population == "consumers":
             out.append({"label": "Estimate for the whole population",
                         "decision": ui.answer(nutrient, spec, population="whole",
@@ -508,7 +512,8 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
             if spec.days:
                 raise Refused("This table's rows repeat per person, so its recalls are its rows: "
                               "name the component's column, not day columns.",
-                              [{"label": "Name the component's column", "decision": None}])
+                              [{"label": "Name the component's column", "decision": None,
+                                "target": toward("set_usual_intake")}])
             grain = effective_grain(state, structure)
             order = recall_order(state, structure, spec)
             weekend = spec.weekend[0] if spec.weekend else None
@@ -532,7 +537,8 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
             if not spec.days:
                 raise Refused("Each participant has one row: name the columns that hold each recall "
                               "day, first recall first.",
-                              [{"label": "Name the recall-day columns", "decision": None}])
+                              [{"label": "Name the recall-day columns", "decision": None,
+                                "target": toward("set_usual_intake")}])
             columns = [*spec.days, *spec.weekend]
             frame = store.materialize(list(dict.fromkeys(columns)), rows)
             k = len(spec.days)
@@ -548,13 +554,14 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
         if not np.isfinite(amounts).any():
             raise Refused(f"Every recall of `{nutrient}` is blank, so there is no intake to model.",
                           [{"label": "Name the column (or recall days) that hold the component's "
-                                     "amounts", "decision": None}])
+                                     "amounts", "decision": None,
+                            "target": toward("set_usual_intake")}])
         negative = np.isfinite(amounts) & (amounts < 0)
         if negative.any():
             raise Refused(f"{int(negative.sum()):,} recalls report a negative amount; an intake is "
                           f"never below zero.",
                           [{"label": "Repair the negative amounts (the repairs step)",
-                            "decision": None}])
+                            "decision": None, "target": toward(stage="data")}])
         domain = None
         whole_population = {"label": "Estimate for the whole population",
                             "decision": ui.answer(nutrient, spec, population="whole",

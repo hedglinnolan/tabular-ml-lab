@@ -61,6 +61,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from turbotab.core.contracts import ContractOption, MethodContract, Relation, register_contract
+from turbotab.core.exit_target import toward
 
 ROBINS_2000 = "Robins, Hernán & Brumback 2000, Epidemiology 11:550–560"
 HERNAN_2000 = "Hernán, Brumback & Robins 2000, Epidemiology 11:561–570"
@@ -575,7 +576,7 @@ def _lane_needs_time_points_as_rows(decision: Any, ctx: Any) -> None:
         raise _refusal("no_repeated_measures",
                        f"{why} The grain answer says each unit appears once.",
                        [{"label": "Each unit appears in several rows (the grain question)",
-                         "decision": None}])
+                         "decision": None, "target": toward("grain")}])
     kind = effective_repeat_kind(state, structure)
     if kind != "time_points":
         column = proposed_time_column(state, structure)
@@ -611,7 +612,7 @@ def _lane_needs_a_settled_time_column(decision: Any, ctx: Any) -> None:
         "orders the rows is settled"
         + (f": `{proposed}` is only proposed, by the repeats reading." if proposed else "."),
         [*exits, {"label": "Name the column that orders the rows (the repeats question)",
-                  "decision": None}])
+                  "decision": None, "target": toward("repeat_kind")}])
 
 
 def _lane_follows_the_estimand(decision: Any, ctx: Any) -> None:
@@ -626,12 +627,14 @@ def _lane_follows_the_estimand(decision: Any, ctx: Any) -> None:
         raise _refusal("no_estimand",
                        f"Declare what you study first ({question_name('estimand')}); its path through "
                        f"time is estimated for what you study as declared.",
-                       [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
+                       [{"label": f"Answer {question_name('estimand')} first", "decision": None,
+                         "target": toward("estimand")}])
     if _get(spec, "family"):
         raise _refusal("family_not_followed",
                        "A family of study factors is estimated one study factor at a time by the feature-wise "
                        "family; a time-varying lane follows one declared study factor.",
-                       [{"label": "Name one study factor (the question on what you study)", "decision": None}])
+                       [{"label": "Name one study factor (the question on what you study)", "decision": None,
+                         "target": toward("estimand")}])
     exposure = _get(spec, "exposure")
     if decision.exposure != exposure:
         raise _refusal("other_exposure",
@@ -691,7 +694,8 @@ def _lane_names_model_columns(decision: Any, ctx: Any) -> None:
         if unknown:
             raise _refusal("unknown_column",
                            f"This dataset has no column named {_listing(unknown)}.",
-                           [{"label": "Choose the dataset's columns", "decision": None}])
+                           [{"label": "Choose the dataset's columns", "decision": None,
+                             "target": toward("time_varying")}])
     info = _info(ctx, decision.censoring) if decision.censoring else None
     if info is not None and (str(info.get("dtype")) not in NUMERIC_DTYPES
                              or int(info.get("n_unique") or 0) > 2):
@@ -777,7 +781,7 @@ def _affected_confounders_need_g_methods(decision: Any, ctx: Any) -> None:
                 f"{message} The g-methods here need a study factor of 0 or 1 at each time point, and "
                 f"{_tick(decision.exposure)} takes {setting.get('exposure_levels')} values.",
                 [keep, {"label": "Declare a yes/no study factor (the question on what you study)",
-                        "decision": None}])
+                        "decision": None, "target": toward("estimand")}])
         raise _refusal(
             "affected_confounder", message,
             [{"label": f"{declare}stimate by a marginal structural model (weights){lost}",
@@ -822,7 +826,8 @@ def _lane_fits_the_outcome(decision: Any, ctx: Any) -> None:
             f"The marginal structural model here is a pooled logistic model of an event at each time "
             f"point or a linear model of a repeated measure; the outcome is read as "
             f"{str(task).replace('_', ' ')}.",
-            [{"label": "Change the outcome's task (the task question)", "decision": None}])
+            [{"label": "Change the outcome's task (the task question)", "decision": None,
+              "target": toward("task")}])
 
 
 def _each_declaration_is_its_method_s(decision: Any, ctx: Any) -> None:
@@ -861,7 +866,8 @@ def _lane_reads_settled_readings(decision: Any, ctx: Any) -> None:
                           store=_store_of(ctx))
     except Unsettled as waiting:
         raise _refusal("reading_unsettled", str(waiting), [
-            *waiting.exits, {"label": "Change the roles (the roles question)", "decision": None}]
+            *waiting.exits, {"label": "Change the roles (the roles question)", "decision": None,
+                             "target": toward("roles")}]
         ) from None
 
 
@@ -878,7 +884,8 @@ def _lane_fits_the_data(decision: Any, ctx: Any) -> None:
             f"The weights and the always-or-never strategies here are for a study factor of 0 or 1 at "
             f"each time point; {_tick(decision.exposure)} takes "
             f"{setting.get('exposure_levels')} values.",
-            [{"label": "Declare a yes/no study factor (the question on what you study)", "decision": None}])
+            [{"label": "Declare a yes/no study factor (the question on what you study)", "decision": None,
+              "target": toward("estimand")}])
     stops = int(setting.get("exposure_stops") or 0)
     if decision.pattern == "initiation" and stops:
         raise _refusal(

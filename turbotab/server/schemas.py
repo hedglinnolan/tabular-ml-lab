@@ -309,9 +309,26 @@ class Histogram(Model):
 # ── errors ───────────────────────────────────────────────────────────────────
 
 
+class ExitTarget(Model):
+    """The card a way forward opens (``turbotab.core.exit_target``): its quest stage and the quest
+    line whose card it is, by the key the quest log serves; a null key opens the stage on its open
+    line."""
+
+    stage: str
+    key: str | None
+
+
 class Exit(Model):
+    """A way forward: its label, and the decision a press records, or none. One that names no
+    decision names the card that opens it (``target``) where it can; ``target`` is absent from a
+    way forward that opens nothing, so it is the one field a response may leave out."""
+
+    # Only ``target`` has a default, so it alone is optional in the generated types.
+    model_config = ConfigDict(json_schema_serialization_defaults_required=False)
+
     label: str
     decision: Decision | None
+    target: ExitTarget | None = None
 
 
 class ReadFromData(Model):

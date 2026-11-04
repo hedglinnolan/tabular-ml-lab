@@ -56,6 +56,7 @@ from turbotab.core.decisions import (
     left_out,
     register_validator,
 )
+from turbotab.core.exit_target import toward
 
 PREDICTOR_ROLES = ("exposure", "covariate")  # the roles a scale's items may take (never energy)
 RETEST_SUFFIXES = ("_t2", "_2", "_retest", "_rt", "_r", ".2", "_time2", "_followup")
@@ -263,18 +264,19 @@ def _named(decision: SetScales, ctx: Any) -> None:
                 raise Refusal("unknown_column",
                               f"This dataset has no column named {_and(unknown)}.",
                               exits=[{"label": "Choose the scale's columns from the table",
-                                      "decision": None}])
+                                      "decision": None, "target": toward("set_scales")}])
         if target is not _UNKNOWN and target is not None and target in s.columns():
             raise Refusal("outcome_in_scale",
                           f"`{target}` is the outcome; a scale's score is a predictor of it.",
-                          exits=[{"label": "Leave the outcome out of the scale", "decision": None}])
+                          exits=[{"label": "Leave the outcome out of the scale", "decision": None,
+                                  "target": toward("set_scales")}])
         both = [c for c in [*s.retest, *([s.reference] if s.reference else [])] if c in s.items]
         if both:
             raise Refusal("retest_is_an_item",
                           f"{_and(both)} {'is' if len(both) == 1 else 'are'} an item of `{s.name}`; "
                           f"a repeat administration or a reference measure is a separate column.",
                           exits=[{"label": "Name the repeat administration's own columns",
-                                  "decision": None}])
+                                  "decision": None, "target": toward("set_scales")}])
 
 
 def _scale_items_are_settled_predictors(decision: SetScales, ctx: Any) -> None:
@@ -290,7 +292,8 @@ def _scale_items_are_settled_predictors(decision: SetScales, ctx: Any) -> None:
     if state.roles is None:
         raise Refusal("roles_first", "Answer the roles question first: a scale's score replaces its "
                       "items among the predictors.",
-                      exits=[{"label": "Answer the roles question", "decision": None}])
+                      exits=[{"label": "Answer the roles question", "decision": None,
+                              "target": toward("roles")}])
     waiting = set(unsettled(state))
     items = [c for s in decision.scales for c in s.items]
     pending = [c for c in items if c in waiting]
@@ -312,7 +315,7 @@ def _scale_items_are_settled_predictors(decision: SetScales, ctx: Any) -> None:
             f"(a study factor or a covariate), so {'it' if len(outside) == 1 else 'they'} cannot be "
             f"scored into the scale that replaces {'it' if len(outside) == 1 else 'them'} in the "
             f"models.", exits=exits + [{"label": "Choose the items among the predictors",
-                                        "decision": None}])
+                                        "decision": None, "target": toward("set_scales")}])
     extra = [c for s in decision.scales for c in [*s.retest, *([s.reference] if s.reference else [])]
              if state.roles.get(c) in ("exposure", "covariate", "energy")]
     if extra:
@@ -493,7 +496,8 @@ def _items_answer_the_scale(decision: SetScales, s: Any, ctx: Any, store: Any) -
         raise Refusal("items_blank",
                       f"{_and(blank)} {'has' if one else 'have'} no answer on any row, so "
                       f"{'it' if one else 'they'} cannot be scored into `{s.name}`.",
-                      exits=exits + [{"label": "Choose the scale's items", "decision": None}])
+                      exits=exits + [{"label": "Choose the scale's items", "decision": None,
+                                      "target": toward("set_scales")}])
     try:
         facts = store.whole_numbers(answers)
     except Exception:  # noqa: BLE001 - no values to read: the stage that reads them says so
@@ -504,7 +508,8 @@ def _items_answer_the_scale(decision: SetScales, s: Any, ctx: Any, store: Any) -
                       f"{_and(text)} {'holds' if len(text) == 1 else 'hold'} text, not answers "
                       f"on a numeric response scale; recode {'it' if len(text) == 1 else 'them'} "
                       f"to numbers first.",
-                      exits=[{"label": "Choose numeric items", "decision": None}])
+                      exits=[{"label": "Choose numeric items", "decision": None,
+                              "target": toward("set_scales")}])
     fractional = [c for c in answers if not facts[c]["whole"]]
     if fractional and s.kind == "reflective":
         formative = {"kind": "formative", "structure": "unidimensional", "factors": None}
@@ -518,7 +523,8 @@ def _items_answer_the_scale(decision: SetScales, s: Any, ctx: Any, store: Any) -
             f"HEI-2015's are prorated); if `{s.name}` is one, say so.",
             exits=[{"label": f"`{s.name}` is a formative index of continuous component scores",
                     "decision": _swap(decision, s.name, **formative)},
-                   {"label": "Choose the scale's items", "decision": None}])
+                   {"label": "Choose the scale's items", "decision": None,
+                    "target": toward("set_scales")}])
     outside = [c for c in answers if facts[c]["n_values"] and (
         facts[c]["min"] < s.low or facts[c]["max"] > s.high)]
     if outside:
@@ -546,7 +552,7 @@ def _repeat_score_fits_the_score(decision: SetScales, s: Any, ctx: Any, store: A
                       f"`{column}`, the repeat administration of `{s.name}`, has no value on any "
                       f"row.", exits=[*_without_the_repeat(decision, s),
                                       {"label": "Name the repeat administration's column",
-                                       "decision": None}])
+                                       "decision": None, "target": toward("set_scales")}])
     try:
         facts = store.whole_numbers([column])
     except Exception:  # noqa: BLE001 - no values to read: the stage that reads them says so
@@ -556,7 +562,7 @@ def _repeat_score_fits_the_score(decision: SetScales, s: Any, ctx: Any, store: A
                       f"`{column}`, the repeat administration of `{s.name}`, holds text, not "
                       f"scores.", exits=[*_without_the_repeat(decision, s),
                                          {"label": "Name the repeat administration's column",
-                                          "decision": None}])
+                                          "decision": None, "target": toward("set_scales")}])
     f = facts[column]
     lo, hi = score_range(s)
     if f["n_values"] and (f["min"] < lo or f["max"] > hi):
@@ -585,7 +591,8 @@ def _reference_reads_as_an_amount(decision: SetScales, s: Any, ctx: Any, store: 
 
     column = s.reference
     state = _state(ctx)
-    other = {"label": "Name another reference measure", "decision": None}
+    other = {"label": "Name another reference measure", "decision": None,
+             "target": toward("set_scales")}
     if _blank(store, [column]):
         raise Refusal("reference_blank",
                       f"`{column}`, the reference measure of `{s.name}`'s calibration substudy, "
@@ -656,7 +663,8 @@ def _correction_fits_purpose_and_construct(decision: SetScales, ctx: Any) -> Non
         raise Refusal("not_for_prediction", PREDICTION,
                       exits=[{"label": "Keep the scores uncorrected",
                               "decision": SetScales(scales=uncorrected)},
-                             {"label": "Change the purpose to inference", "decision": None}])
+                             {"label": "Change the purpose to inference", "decision": None,
+                              "target": toward("purpose")}])
     for s in corrected:
         if s.kind != "formative" or s.reliability != "internal_consistency":
             continue
@@ -671,14 +679,14 @@ def _correction_fits_purpose_and_construct(decision: SetScales, ctx: Any) -> Non
                             f"({_and(found[:2])} …)",
                    "decision": swap(reliability="test_retest", retest=found)} if found else
                   {"label": "Name the repeat administration's columns, for a test–retest ICC",
-                   "decision": None})
+                   "decision": None, "target": toward("set_scales")})
         raise Refusal(
             "formative_disattenuation",
             f"`{s.name}` is a formative index, and disattenuating it by α or ω is refused. "
             f"{FORMATIVE}",
             exits=[retest,
                    {"label": "Name the reference measure of a calibration substudy",
-                    "decision": None},
+                    "decision": None, "target": toward("set_scales")},
                    {"label": f"Report `{s.name}`'s uncorrected estimate only",
                     "decision": swap(correction="none")}])
 

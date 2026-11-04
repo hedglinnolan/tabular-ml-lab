@@ -63,6 +63,7 @@ from turbotab.core.graph import Bundle, StageContext
 from turbotab.core.methods.calibration import (BOOT_COPIES, CARROLL, FREEDMAN, LABEL, LONELY_RULE,
                                                NO_CALIBRATION, RAO_WU, ROSNER_1989, ROSNER_1990,
                                                SCHOMAKER)
+from turbotab.core.exit_target import toward
 
 # The energy step's outputs the recalls measure (``methods.energy``'s lineage operations).
 ERROR_PRONE_OPERATIONS = ("residual", "density", "kept", "partition", "partition-other")
@@ -848,7 +849,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
             f"declared spline or quintiles; regression calibration here corrects a linear term, so "
             f"E[X | W̄, Z] would be put through a curve it was not fit for."),
             exits=[{"label": "Calibrate the linear form of the intake (the form question)",
-                    "decision": None}, dict(NO_CALIBRATION)],
+                    "decision": None, "target": toward("form")}, dict(NO_CALIBRATION)],
             blocked=(f"{listing(shaped)} had a declared spline or quintiles, and it corrects a "
                      f"linear term"))
     raw = list(dict.fromkeys(c for i in items for c in i["inputs"]))
@@ -863,7 +864,8 @@ def calibration_stage(ctx: StageContext) -> Bundle:
                     f"of the recalls")
         return done(applies=False, family=key, recalls=recalls, n_persons=n_persons, reason=(
             f"{combined}, so the error is a single day's; combine by the mean to calibrate."),
-            exits=[{"label": "Combine the recalls by the mean", "decision": None},
+            exits=[{"label": "Combine the recalls by the mean", "decision": None,
+                    "target": toward("aggregation")},
                    dict(NO_CALIBRATION)], blocked=combined)
     features = [i["feature"] for i in items]
     J = [columns.index(f) for f in features]

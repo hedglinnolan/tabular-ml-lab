@@ -203,8 +203,9 @@ def test_a_cluster_column_the_table_lacks_is_refused_with_the_answers_code(tmp_p
                  {"columns": list(frame.columns), "target": "y"})
     refusal = refused_by_the_draw(t, state(split))
     assert refusal.code == answered.value.code == "unknown_column"
-    assert refusal.exits == [{"label": e["label"], "decision": e["decision"]}
-                             for e in answered.value.exits]
+    # The same way forward, the card it opens included (G12: the split question's).
+    assert refusal.exits == answered.value.exits
+    assert refusal.exits[0]["target"]["key"] == "split"
     present = SplitSpec(holdout=0.2, seed=3, folds=3, validation="internal_external",
                         cluster="cycle")
     drawn(t, state(present))  # silent: a column of the table with six levels

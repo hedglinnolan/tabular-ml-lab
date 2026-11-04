@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from turbotab.core.decisions import Refusal
+from turbotab.core.exit_target import toward
 
 # The Router's questions whose answer only adds a display the declared analysis never reads.
 OPTIONAL_QUESTIONS = ("substitution",)
@@ -99,6 +100,18 @@ def _question_name(key: str) -> str:
     return question_name(key)
 
 
+def _way_to(name: str) -> dict[str, Any] | None:
+    """The card that answers ``name`` (a Router question, or the state slot it writes) as a way
+    forward's target (``exit_target``); None where no quest line answers it."""
+    from turbotab.core.interview import QUESTION_KEYS, SLOT_OF
+
+    key = {SLOT_OF.get(k, k): k for k in QUESTION_KEYS}.get(name, name)
+    try:
+        return toward(key)
+    except ValueError:
+        return None
+
+
 def _listed(items: list[str]) -> str:
     if len(items) <= 1:
         return "".join(items)
@@ -154,12 +167,14 @@ def missing(source: Any) -> list[Missing]:
     open_steps = [s for s in source.interview if _get(s, "status") in OPEN
                   and _get(s, "key") not in (*OPTIONAL_QUESTIONS, *PLAN_QUESTIONS)]
     if open_steps:
-        names = [_question_name(str(_get(s, "key"))) for s in open_steps]
+        keys = [str(_get(s, "key")) for s in open_steps]
+        names = [_question_name(key) for key in keys]
         out.append(Missing("unanswered_questions", (
             f"{_listed(names)[:1].upper()}{_listed(names)[1:]} "
             f"{'is' if len(names) == 1 else 'are'} not answered yet; the methods would leave "
             f"{'it' if len(names) == 1 else 'them'} out."),
-            [{"label": f"Answer {name}", "decision": None} for name in names]))
+            [{"label": f"Answer {name}", "decision": None, "target": toward(key)}
+             for key, name in zip(keys, names)]))
     state = source.state
     purpose = getattr(state, "purpose", None)
     fit = source.artifact("fit")
@@ -177,7 +192,8 @@ def missing(source: Any) -> list[Missing]:
             "The analysis plan is still open: under inference it is locked when Fit is pressed, "
             "before any estimate is shown, and the export reports only estimates of a declared "
             "plan."),
-            [{"label": "Press Fit on the analysis flowchart; it locks the plan", "decision": None}]))
+            [{"label": "Press Fit on the analysis flowchart; it locks the plan", "decision": None,
+              "target": toward(stage="models")}]))
     elif purpose == "prediction" and isinstance(fit, dict):
         result = fit.get("result") or {}
         basis = result.get("basis")
@@ -193,7 +209,8 @@ def missing(source: Any) -> list[Missing]:
         elif basis == "not_declared":
             out.append(Missing("plan_open", (
                 f"No result is declared: {result.get('sentence') or 'the fit declared none.'}"),
-                [{"label": "Choose the model families again", "decision": None}]))
+                [{"label": "Choose the model families again", "decision": None,
+                  "target": toward("models")}]))
     said: set[tuple[str, str, str]] = set()  # each stage's refusal in words, said once
     for stage in result_stages(state):
         status = source.status(stage)
@@ -212,10 +229,12 @@ def missing(source: Any) -> list[Missing]:
                 f"{_get(status, 'error') or 'no reason was given.'}"),
                 [{"label": f"Compute {label[:1].lower()}{label[1:]} again", "decision": None}]))
         elif name == "blocked":
-            waits = [_question_name(str(m)) for m in _get(status, "missing") or []]
+            slots = [str(m) for m in _get(status, "missing") or []]
+            waits = [_question_name(m) for m in slots]
             out.append(Missing("result_not_ready", (
                 f"{label} waits for {_listed(waits) or 'an answer'} before it can run."),
-                [{"label": "Answer the question it waits for", "decision": None}]))
+                [{"label": "Answer the question it waits for", "decision": None,
+                  "target": _way_to(slots[0]) if slots else None}]))
         else:
             out.append(Missing("result_not_ready", (
                 f"{label} is still being computed for the current answers."),
@@ -227,7 +246,9 @@ def missing(source: Any) -> list[Missing]:
         # inference the open plan above already says so.
         out.append(Missing("estimates_withheld", f"The estimates are withheld: {withheld}",
                            [{"label": "Press Fit on the analysis flowchart" if for_fit else
-                             "Answer the question they rest on", "decision": None}]))
+                             "Answer the question they rest on", "decision": None,
+                             "target": toward(stage="models") if for_fit
+                             else _way_to(str(fit.get("withheld_for") or ""))}]))
     return out
 
 

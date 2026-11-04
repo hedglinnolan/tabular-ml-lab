@@ -77,6 +77,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 from turbotab.core.designs import EFFECTS
+from turbotab.core.exit_target import toward
 
 VANDERWEELE = "VanderWeele 2019, Eur J Epidemiol 34:211–219"
 VALERI = "Valeri & VanderWeele 2013, Psychol Methods 18:137–150"
@@ -1861,7 +1862,8 @@ def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
         }[str(key)]
         return {"question": key,
                 "reason": f"No estimate is shown until {name} is answered: {why}.",
-                "exits": [{"label": f"Answer {name}", "decision": None}],
+                "exits": [{"label": f"Answer {name}", "decision": None,
+                           "target": toward(str(key))}],
                 "purpose": purpose}
     return None
 
@@ -2122,13 +2124,14 @@ def _censoring_names_the_outcome(decision: Any, ctx: Any) -> None:
         return
     if target is None:
         raise _refusal("no_target", "Choose the outcome first; the follow-up belongs to it.",
-                       [{"label": "Choose the outcome", "decision": None}])
+                       [{"label": "Choose the outcome", "decision": None,
+                         "target": toward("target")}])
     if decision.column != target:
         raise _refusal("not_the_target",
                        f"The outcome is {_tick(target)}, not {_tick(decision.column)}; the follow-up "
                        f"question answers for the outcome.",
                        [{"label": f"Answer the follow-up question for {_tick(target)}",
-                         "decision": None}])
+                         "decision": None, "target": toward("follow_up")}])
     state = _state(ctx)
     task = _get(state, "task") or _ctx(ctx, "task")
     if task == "time_to_event":
@@ -2209,12 +2212,14 @@ def _clusters_name_a_grouping(decision: Any, ctx: Any) -> None:
         columns = _columns_of(ctx)
         if column == ROW_ID or (columns is not None and column not in columns):
             raise _refusal("unknown_column", f"This dataset has no column named {_tick(column)}.",
-                           [{"label": "Choose one of the dataset's columns", "decision": None}])
+                           [{"label": "Choose one of the dataset's columns", "decision": None,
+                             "target": toward("clusters")}])
         target = _target_of(ctx)
         if target is not _UNKNOWN and column == target:
             raise _refusal("cluster_is_outcome",
                            f"{_tick(column)} is the outcome, so it cannot group the participants.",
-                           [{"label": "Name another column", "decision": None}])
+                           [{"label": "Name another column", "decision": None,
+                             "target": toward("clusters")}])
         info = _info(ctx, column)
         if info is not None:
             n_unique = int(info.get("n_unique") or 0)
@@ -2230,7 +2235,8 @@ def _clusters_name_a_grouping(decision: Any, ctx: Any) -> None:
                     + ", so it groups no participants together.",
                     [{"label": "Nothing groups the participants",
                       "decision": SetClusters(column=None, acknowledged=True)},
-                     {"label": "Name another column", "decision": None}])
+                     {"label": "Name another column", "decision": None,
+                      "target": toward("clusters")}])
     if purpose == "prediction" and decision.adjust is not None:
         raise _refusal(
             "not_inference",
@@ -2495,7 +2501,8 @@ def _estimand_names_a_predictor(decision: Any, ctx: Any) -> None:
     exposure = decision.exposure
     if columns is not None and exposure not in columns:
         raise _refusal("unknown_column", f"This dataset has no column named {_tick(exposure)}.",
-                       [{"label": "Choose one of the dataset's columns", "decision": None}])
+                       [{"label": "Choose one of the dataset's columns", "decision": None,
+                         "target": toward("estimand")}])
     waiting = unsettled(state, [exposure])
     if waiting:
         raise _refusal(
@@ -2528,7 +2535,7 @@ def _estimand_measure_is_fitted(decision: Any, ctx: Any) -> None:
             "family_not_fitted",
             f"Several study factors are reported by the feature-wise family, which fits a numeric or "
             f"yes/no outcome, not a {str(task).replace('_', ' ')} one; name one study factor.",
-            [{"label": "Name one study factor", "decision": None}])
+            [{"label": "Name one study factor", "decision": None, "target": toward("estimand")}])
     from turbotab.core.designs import sampled_by_outcome
 
     sampled = sampled_by_outcome(state)
@@ -2629,7 +2636,8 @@ def _adjustment_follows_the_estimand(decision: Any, ctx: Any) -> None:
         raise _refusal("no_estimand",
                        f"Declare what you study first ({question_name('estimand')}); each covariate is "
                        f"asked about against it.",
-                       [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
+                       [{"label": f"Answer {question_name('estimand')} first", "decision": None,
+                         "target": toward("estimand")}])
     exposure = exposure_key(spec)
     if decision.exposure != exposure:
         said = "the family of study factors" if _get(spec, "family") else _tick(exposure)
@@ -2775,7 +2783,8 @@ def _a_direct_effect_asks_its_questions(decision: Any, ctx: Any) -> None:
         "is the total effect.",
         [{"label": "Report the total effect", "decision": SetEstimand(**{**spec.model_dump(),
                                                                           "effect": "total"})},
-         {"label": "Answer again: name the mediator among the covariates", "decision": None}])
+         {"label": "Answer again: name the mediator among the covariates", "decision": None,
+          "target": toward("adjustment")}])
 
 
 # set_energy_adjustment: the contrast the estimand declares (MODELING_SEQUENCE §2)
@@ -2867,7 +2876,8 @@ def _models_fit_the_family(decision: Any, ctx: Any) -> None:
         f"The comparison you want is each study factor in turn, adjusted for the covariates; "
         f"{_listing(others)} {'adjusts' if len(others) == 1 else 'adjust'} each study factor for the "
         f"others, which is a different comparison. The feature-wise family estimates this one.",
-        [*fit_in_turn, {"label": "Name one study factor instead", "decision": None}])
+        [*fit_in_turn, {"label": "Name one study factor instead", "decision": None,
+                        "target": toward("estimand")}])
 
 
 # set_model_sequence and respond_diagnostic (MODELING_SEQUENCE §1 row 11)
@@ -2892,7 +2902,8 @@ def _sequence_follows_the_plan(decision: Any, ctx: Any) -> None:
         raise _refusal("no_plan",
                        f"Declare what you study and answer {question_name('adjustment')} first: "
                        f"Model 1 is a part of the primary model's adjustment set.",
-                       [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
+                       [{"label": f"Answer {question_name('estimand')} first", "decision": None,
+                         "target": toward("estimand")}])
     exposure = exposure_key(spec)
     if decision.exposure != exposure:
         raise _refusal("other_exposure",
@@ -2932,7 +2943,8 @@ def _response_fits_the_check(decision: Any, ctx: Any) -> None:
     if spec is None:
         raise _refusal("no_estimand", "The checks are of the primary model, which waits for "
                                       "what you study and its effect to be declared.",
-                       [{"label": "Declare what you study and its effect first", "decision": None}])
+                       [{"label": "Declare what you study and its effect first", "decision": None,
+                         "target": toward("estimand")}])
     if decision.exposure != exposure_key(spec):
         raise _refusal("other_exposure",
                        f"The checks are of the primary model for {_tick(exposure_key(spec))}.",

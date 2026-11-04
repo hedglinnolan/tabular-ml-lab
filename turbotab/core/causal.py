@@ -64,6 +64,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from turbotab.core.custom_sound import Customary, LabeledOption, Sound
+from turbotab.core.exit_target import toward
 
 CHERNOZHUKOV = "Chernozhukov et al. 2018, Econom J 21:C1"
 DOUBLEML = "as R's DoubleML 1.0.2 computes it"
@@ -914,7 +915,7 @@ def _point_exposure_only(decision: Any, ctx: Any) -> None:
         "explain the link, if earlier values of what you study changed it, would bias these learners' "
         "estimate as it biases standard regression's.",
         [{"label": "Answer the time-varying question (a marginal structural model or the "
-                   "g-formula)", "decision": None},
+                   "g-formula)", "decision": None, "target": toward("time_varying")},
          {"label": "The primary model only",
           "decision": SetCausal(exposure=decision.exposure, method="none")}])
 
@@ -931,7 +932,8 @@ def _causal_follows_the_plan(decision: Any, ctx: Any) -> None:
         raise _refusal("no_estimand",
                        f"Declare what you study and its effect first ({question_name('estimand')}); "
                        f"the causal lane estimates that effect, over the adjustment set.",
-                       [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
+                       [{"label": f"Answer {question_name('estimand')} first", "decision": None,
+                         "target": toward("estimand")}])
     reason = plan_reason(state)
     if reason is not None:
         raise _refusal("outside_the_lane", reason, [{"label": "Keep the primary model only",
@@ -947,7 +949,8 @@ def _causal_follows_the_plan(decision: Any, ctx: Any) -> None:
         raise _refusal("no_adjustment",
                        f"Answer {question_name('adjustment')} first: the causal lane adjusts for the "
                        f"covariates the answers keep, and selects among them only (rung (d)).",
-                       [{"label": f"Answer {question_name('adjustment')} first", "decision": None}])
+                       [{"label": f"Answer {question_name('adjustment')} first", "decision": None,
+                         "target": toward("adjustment")}])
 
 
 def _causal_fits_the_estimand(decision: Any, ctx: Any) -> None:

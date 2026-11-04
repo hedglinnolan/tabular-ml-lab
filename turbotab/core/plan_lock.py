@@ -58,6 +58,7 @@ from turbotab.core.decisions import Refusal
 # withholds by, so the "further adjusted for" model (``stages/secondary.py``) is among them.
 from turbotab.core.estimand import ESTIMATE_STAGES
 from turbotab.core.fit_press import PRESS_FIT
+from turbotab.core.exit_target import toward
 
 
 @lru_cache(maxsize=1)
@@ -334,7 +335,8 @@ def _locked_once_under_inference(decision: Any, ctx: Any) -> None:
             "not_inference",
             "The analysis-plan lock is for inference, where the model is not chosen from the data "
             "it reports on; under prediction the held-out rows are the seal.",
-            exits=[{"label": "Declare the analysis for inference first", "decision": None}],
+            exits=[{"label": "Declare the analysis for inference first", "decision": None,
+                    "target": toward("purpose")}],
         )
 
 
@@ -416,7 +418,7 @@ def _lock_refusal(decision: Any, records: Sequence[Any], state: Any) -> Refusal 
         "lock is not brought back: the record keeps it, with its time and fingerprint. Under "
         "inference, a press of Fit that is accepted while the plan is unlocked locks the plan as "
         "it then stands.",
-        exits=([{"label": PRESS_FIT, "decision": None}]
+        exits=([{"label": PRESS_FIT, "decision": None, "target": toward(stage="models")}]
                if getattr(state, "purpose", None) == "inference"
                and not getattr(state, "plan_locked", None) else []),
     )

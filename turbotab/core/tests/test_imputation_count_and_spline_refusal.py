@@ -481,7 +481,9 @@ def test_model_three_whose_added_columns_no_row_records_together_offers_multiple
                                   "record them all: none of the 300 analyzed rows does, so Model 3 "
                                   "cannot be fit.")
     leave, impute = refused.value.exits
-    assert leave == {"label": "Leave `bmi` and `waist` out of Model 3", "decision": None}
+    # It opens the adjustment question's card, whose answers set Model 3's columns (G12).
+    assert leave == {"label": "Leave `bmi` and `waist` out of Model 3", "decision": None,
+                     "target": {"stage": "models", "key": "adjustment"}}
     assert impute["label"] == ("Multiple imputation (m at least 20, more when more rows are "
                                "incomplete)")
     assert parse_decision(impute["decision"]).strategy == "multiple_imputation"

@@ -232,7 +232,8 @@ class ProjectContext:
 class StageRefusal(ValueError):
     """A stage that refuses in words (a fit-time refusal, SWARM_PLAN §8): a ``code``, the
     ``message`` and its ways forward (``exits``, each ``{label, decision|None}``, the decision
-    stored as its JSON form once the decision model reads it), as an answer-time refusal
+    stored as its JSON form once the decision model reads it, and the card a way forward that
+    names no decision opens where it names one: ``target``), as an answer-time refusal
     (``decisions.Refusal``) carries them, so the stage's status serves them apart from an error
     the engine did not type as a refusal (:class:`StageStatus`' ``refusal``).
 
@@ -279,11 +280,12 @@ class StageRefusal(ValueError):
 
 def _way_forward(item: Mapping[str, Any]) -> dict[str, Any]:
     from turbotab.core.decisions import parse_decision
+    from turbotab.core.exit_target import with_target
 
     decision = item.get("decision")
     if decision is not None:
         decision = parse_decision(decision).model_dump(mode="json")
-    return {"label": str(item["label"]), "decision": decision}
+    return with_target(item, {"label": str(item["label"]), "decision": decision})
 
 
 def _on_recorded(item: Mapping[str, Any], state: Any) -> dict[str, Any]:
