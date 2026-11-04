@@ -820,6 +820,13 @@
    "replay_sha256": "74f4d48e124e251ce2da7f9828c319e3be9fc525a581f38fa9476a2714c5e342",
    "filled_at": "2026-10-30T01:20:35+00:00"
   },
-  "relative_price": null
+  "relative_price": {
+   "prices": {
+    "haiku": 0.1,
+    "sonnet": 2.0,
+    "opus": 4.0
+   },
+   "source": "Anthropic's published API list prices (platform.claude.com/docs/en/about-claude/pricing, read 2026-11-04): base input per million tokens, Claude Haiku 5.5 $0.10 (prompts up to 100,000 tokens; $0.50 over), Claude Sonnet 5.5 $2, Claude Opus 5.5 $4; output prices stand in the same ratio ($0.50, $10, $20). Set after the pilot's runs by the owner's ruling of 2026-11-04, a declared late fill of a fact."
+  }
  }
 }
