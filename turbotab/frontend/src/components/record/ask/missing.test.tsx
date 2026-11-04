@@ -236,6 +236,26 @@ describe("what multiple imputation is said to do", () => {
     expect(said).toContain("the coefficients are pooled");
     expect(said).not.toMatch(/each blank|results pooled/i);
   });
+
+  // The engine draws no copies where no input has a blank among the analyzed rows: the count of
+  // imputations is then 0 and the plan says the coefficients are not imputed (models/pipeline.py
+  // `imputation_count`, `impute_detail`). The causal journey's server serves that case under
+  // Estimate: no predictor with a blank, multiple imputation still offered.
+  it("claims copies are imputed only where a predictor has a blank to impute", () => {
+    const causal = missingOpen("causal");
+    expect(causal.state.purpose).toBe("inference");
+    expect(causal.proposals.missing!.columns).toEqual([]);
+    const served = causal.proposals.missing!.methods.find((o) => o.key === "multiple_imputation")!;
+    expect(served.rung).not.toBe("refused");
+    renderCard({ proposals: causal.proposals, purpose: "inference", current: causal.state.missing });
+    expect(document.body.textContent).toContain("No predictor has a blank cell.");
+    const said = screen.getByTestId("option-multiple_imputation").textContent ?? "";
+    const copies = said.search(/several copies of the data/i);
+    expect(copies).toBeGreaterThan(-1);
+    // what comes before the copies is the condition, so the card says nothing the plan contradicts
+    expect(said.slice(0, copies)).toMatch(/where a predictor has a blank to impute,\s*$/i);
+    expect(said).toContain("the coefficients are pooled");
+  });
 });
 
 // ── a click on a control's words, inside an option ───────────────────────────────────────────

@@ -576,7 +576,9 @@ export function MissingAsk({
         // What is pooled is the coefficients (the cross-validated scores are the single fill's;
         // models/pipeline.py `impute_detail`), and a column below detection filled by half its
         // minimum is not imputed (`imputation_count`), so the line claims no imputation of each blank.
-        line: "Several copies of the data imputed with the outcome; the coefficients are pooled across them by Rubin's rules.",
+        // Where no predictor has a blank among the analyzed rows the fit draws no copies
+        // (`imputation_count` 0), so the copies are said under that condition.
+        line: "Where a predictor has a blank to impute, several copies of the data are imputed with the outcome, and the coefficients are pooled across them by Rubin's rules.",
         decision:
           m === null
             ? null

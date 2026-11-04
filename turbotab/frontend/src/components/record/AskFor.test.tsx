@@ -22,7 +22,9 @@
  * but the tab stop, which moves to the first option: multiple imputation ("Multiple imputation",
  * in missing.html), with its m, its imputation model and its levels. Its repair round's V3 changed
  * that option's line alone: it says the coefficients are pooled, and claims no imputation of each
- * blank ("Several copies of the data imputed with the outcome", in missing.html).
+ * blank; its second repair round's V1 changed that line alone again: it says the copies only where
+ * a predictor has a blank to impute, since the fit draws none where none has ("Where a predictor
+ * has a blank to impute, several copies of the data are imputed", in missing.html).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
