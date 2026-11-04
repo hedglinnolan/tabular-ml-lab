@@ -1184,7 +1184,89 @@ def multiplicity_question(state: Any, n: int, *, family: Sequence[str] | None = 
 
 
 def multiplicity_statement(state: Any, spec: Any, n: int) -> str:
-    """The sentence a family's table and methods carry: its method and the number of tests."""
+    """The sentence a family's table and methods carry: its method and the number of tests, as the
+    chosen model families fit the members (the brief's FW1). One that tests each member in its own
+    model (feature-wise regression) tested each in turn; a joint model with a coefficient table
+    (the linear model) fit them together, so each estimate is adjusted for the others, and its
+    table carries no Benjamini–Hochberg q-value (only the feature-wise tests are given them,
+    ``methods.omics.apply_multiplicity``), so its sentence claims no adjustment whatever the
+    method. With both chosen, each is said under its family's name, the joint fit's last
+    (:func:`_beside_joint`); with no joint model, the sentence is as it was."""
+    each = _each_in_turn_statement(state, n)
+    in_turn, joint = _fits(state)
+    if not joint:
+        return each
+    if not in_turn:
+        return _together_statement(state, n)
+    return f"Under {_under(state, in_turn)}, {each}{_beside_joint(state, n)}"
+
+
+def _fits(state: Any) -> tuple[list[str], list[str]]:
+    """The chosen model families by how they fit an exposure family's members: those that test
+    each in its own model (feature-wise regression), and the joint models with a coefficient table
+    (the linear model) that fit them together. A family with neither (the random forest) is in
+    neither."""
+    from turbotab.core.models import get_family
+    from turbotab.core.stages.effects import has_coefficient_table
+
+    def fits_together(key: str) -> bool:
+        # A registered family with a coefficient table that tests no member in its own model.
+        try:
+            family = get_family(key)
+        except KeyError:
+            return False
+        return not _estimates_each_in_turn(key) and has_coefficient_table(family)
+
+    models = [str(m) for m in _get(state, "models") or []]
+    return ([m for m in models if _estimates_each_in_turn(m)],
+            [m for m in models if fits_together(m)])
+
+
+def _under(state: Any, keys: Sequence[str]) -> str:
+    """The families registered as ``keys``, by name: "the feature-wise regression"."""
+    from turbotab.core.models import get_family
+    from turbotab.core.stages.effects import _named
+    from turbotab.core.voice import listing
+
+    task = str(_get(state, "task") or "regression")
+    return listing([_named(get_family(k), task) for k in keys], ticked=False)
+
+
+def _beside_joint(state: Any, n: int) -> str:
+    """The joint fit's sentence under its name, said after feature-wise regression's wherever both
+    are chosen (" Under the linear model, 2 exposures were fit together …",
+    :func:`_together_statement`): its rows carry p-values with no q-value whatever feature-wise
+    regression tested. Empty with no joint model, or none that tests a member in its own model
+    beside it."""
+    in_turn, joint = _fits(state)
+    if not (joint and in_turn):
+        return ""
+    return f" Under {_under(state, joint)}, {_together_statement(state, n)}"
+
+
+def _together_statement(state: Any, n: int) -> str:
+    """:func:`multiplicity_statement` for members fit together in one model: no q-value is
+    computed for its rows, so none is claimed. It says nothing of every member being shown: a
+    Table 2 that draws one row per model draws no row of a category member served as its levels
+    (the shell's Estimate Results), and this sentence footnotes it there (the verifier's
+    FW-V2-3)."""
+    method, _ = family_multiplicity(state)
+    head = (f"{n:,} exposures were fit together in each model, so each estimate is adjusted for "
+            f"the other{'s' if n > 2 else ''}.")
+    if method == "none":
+        return f"{head} Their p-values have no multiplicity control, recorded as a limitation."
+    if method == "fdr_bh":
+        return (f"{head} Their p-values are not adjusted for multiplicity: Benjamini–Hochberg "
+                f"q-values are computed only where each member is tested in its own model.")
+    kept = (" It was kept for an omics family as recorded: the field expects false-discovery "
+            "control." if omics_family(state) else
+            " It was kept for this many tests as recorded." if unadjusted_blocked(state, n) else "")
+    return (f"{head} Their p-values are not adjusted for multiplicity and are stated as such "
+            f"(customary for a few declared nutrient hypotheses, {ROTHMAN}).{kept}")
+
+
+def _each_in_turn_statement(state: Any, n: int) -> str:
+    """:func:`multiplicity_statement` for members each tested in its own model."""
     method, _ = family_multiplicity(state)
     if method == "none":
         return (f"{n:,} exposures were tested, each in turn, with no multiplicity control, recorded "
@@ -1277,10 +1359,30 @@ def tested_multiplicity_statement(state: Any, spec: Any, tests: FamilyTests | No
     ruling (1)): with every member tested, or no feature-wise table to read (``tests`` None), the
     estimand's own (:func:`multiplicity_statement`), byte for byte; with some, the count is of the
     members tested and the others are named with why; with none, no test or multiplicity method
-    is claimed, and the table's refusal says why in its own words."""
+    is claimed, and the table's refusal says why in its own words. Beside a joint model (the
+    linear model), which fits every member together whatever feature-wise regression tested, the
+    joint fit's sentence follows under its name (:func:`_beside_joint`), as with every member
+    tested, where it went unsaid (the verifier's M1 on pp2-family-effect-words)."""
     if tests is None or tests.all_tested:
         n = len(tests.exposures) if tests is not None else len(exposures_of(state, spec))
         return multiplicity_statement(state, spec, n)
+    return f"{_tested_statement(state, tests)}{_beside_joint(state, len(tests.exposures))}"
+
+
+def _in_turn_part(state: Any, tests: FamilyTests) -> str:
+    """:func:`tested_multiplicity_statement` without the joint fit's sentence after it: feature-wise
+    regression's alone, under its name where a joint model is chosen beside it."""
+    if not tests.all_tested:
+        return _tested_statement(state, tests)
+    n = len(tests.exposures)
+    each = _each_in_turn_statement(state, n)
+    in_turn, joint = _fits(state)
+    return f"Under {_under(state, in_turn)}, {each}" if joint and in_turn else each
+
+
+def _tested_statement(state: Any, tests: FamilyTests) -> str:
+    """:func:`tested_multiplicity_statement` for a table that tested some members or none, of
+    feature-wise regression's tests alone (it names itself)."""
     from turbotab.core.voice import listing
 
     n, tested = len(tests.exposures), tests.tested
@@ -1320,16 +1422,19 @@ def sequence_multiplicity_statement(state: Any, spec: Any, primary: FamilyTests 
     others (a member with nothing left once the covariates are projected out is tested without
     them), the sentence is said of Model 2, and each such model's tests are named with the method
     its own table applies across them, so no sentence says a member was tested in none where the
-    unadjusted model tested it (the verifier's V4a-2)."""
+    unadjusted model tested it (the verifier's V4a-2). Beside a joint model, its sentence is said
+    last, after every feature-wise model's (:func:`_beside_joint`; the verifier's M1 on
+    pp2-family-effect-words)."""
     said = tested_multiplicity_statement(state, spec, primary)
     differ = [(label, t) for label, t in others
               if primary is not None and set(t.tested) != set(primary.tested)]
-    if not differ:
+    if not differ or primary is None:
         return said
     from turbotab.core.voice import listing
 
     method, _ = family_multiplicity(state)
-    parts = [f"In Model 2, the primary, {said[:1].lower()}{said[1:]}"]
+    own = _in_turn_part(state, primary)
+    parts = [f"In Model 2, the primary, {own[:1].lower()}{own[1:]}"]
     for label, tests in differ:
         n, k = len(tests.exposures), len(tests.tested)
         if not k:
@@ -1342,7 +1447,7 @@ def sequence_multiplicity_statement(state: Any, spec: Any, primary: FamilyTests 
                "with no multiplicity control" if method == "none" else
                "with p-values not adjusted for multiplicity")
         parts.append(f"{label} tested {which} ({listing(tests.tested)}), {how}.")
-    return " ".join(parts)
+    return f"{' '.join(parts)}{_beside_joint(state, len(primary.exposures))}"
 
 
 def _option_words(state: Any, exposure: Any,

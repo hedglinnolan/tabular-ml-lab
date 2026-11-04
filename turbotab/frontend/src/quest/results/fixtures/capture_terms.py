@@ -13,11 +13,26 @@ its category `grp` and its two-level `arm`) and run through the real design and 
   one indicator `arm_y` (x the reference, as the one-hot step drops the first level);
 * ``family_category``: the family {`fiber`, `grp`} under the linear model, so every model serves
   `fiber` as its own column and `grp` as two rows, b and c against a;
-* ``family_level``: the family {`fiber`, `arm`}, so every model serves `fiber` and `arm_y`.
+* ``family_level``: the family {`fiber`, `arm`}, so every model serves `fiber` and `arm_y`;
+* ``family_three``: the family {`fiber`, `sugar`, `supplement`} under the linear model, so every
+  model serves the three, each adjusted for the 2 others;
+* ``family_mixed``: the family {`fiber`, `sugar`, `grp`} under the linear model, so every model
+  serves `grp` as two rows and `fiber` and `sugar` as their own columns, each adjusted for the
+  other and for `grp`;
+* ``family_apart``: the family {`fiber`, `sugar`} under feature-wise regression, which fits each
+  member in its own model, so every model serves `fiber` and `sugar`, neither adjusted for the
+  other;
+* ``family_q``: the family {`sugar`, `supplement`} under feature-wise regression, whose p-values
+  (about 0.36 and 0.47 unadjusted) are far enough from 0 that each row's Benjamini–Hochberg q-value
+  prints apart from its p-value where it is not the larger one (`sugar`'s).
 
 Each row the unadjusted model reports is checked against statsmodels' glucose ~ its columns
 written out here from the construction (``capture_sequences._crude``: the covariance its table
-names, the estimate, p-value and 95% interval kept beside it as ``truth``).
+names, the estimate, p-value and 95% interval kept beside it as ``truth``): the members together
+under the linear model, where each model names the members it holds among the columns it is
+adjusted for (pp2-family-effect-words), and each member alone under feature-wise regression, whose
+unadjusted rows' q-values are checked against statsmodels' Benjamini–Hochberg adjustment of their
+p-values (``multipletests``) and kept beside them.
 
     OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 scripts/py turbotab/frontend/src/quest/results/fixtures/capture_terms.py
 
@@ -36,6 +51,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+from statsmodels.stats.multitest import multipletests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[6]))  # the repository's root: `turbotab`
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # capture_sequences, beside this file
@@ -53,6 +70,41 @@ def _served(effects: dict[str, Any], features: list[str]) -> None:
     """Every declared model serves exactly ``features``, in that order."""
     for fit in effects["families"][0]["sequence"]:
         assert [r["feature"] for r in fit["effects"]] == features, (fit["key"], fit["effects"])
+
+
+def _holds(effects: dict[str, Any], members: list[str]) -> None:
+    """Every declared model names ``members`` among the columns it is adjusted for, after the
+    covariates: the linear model holds them together, each adjusted for the others."""
+    for fit in effects["families"][0]["sequence"]:
+        assert fit["adjusted_for"][-len(members):] == members or (
+            fit["key"] == "model_3" and fit["adjusted_for"][-len(members) - 1:-1] == members), fit
+    assert ef.sequence(effects)["crude"]["adjusted_for"] == members
+
+
+def _alone(frame: pd.DataFrame, effects: dict[str, Any], members: list[str]) -> dict[str, Any]:
+    """``capture_sequences._crude`` for one fit per member: each unadjusted row checked against
+    statsmodels' glucose ~ its member alone, under the covariance its table names, and its q-value
+    against statsmodels' Benjamini–Hochberg adjustment of the members' p-values (``multipletests``),
+    kept beside them."""
+    crude = ef.sequence(effects)["crude"]
+    covariance = crude["inference"]["covariance"]
+    truth: dict[str, Any] = {}
+    for m in members:
+        fit = sm.OLS(frame["glucose"].to_numpy(float), sm.add_constant(frame[[m]].astype(float))
+                     ).fit(**CS.COVARIANCE[covariance])
+        limits = fit.conf_int(0.05)
+        want = {"estimate": float(fit.params[m]), "p": float(fit.pvalues[m]),
+                "ci_low": float(limits.loc[m, 0]), "ci_high": float(limits.loc[m, 1])}
+        row = next(r for r in crude["effects"] if r["feature"] == m)
+        for k in ("estimate", "ci_low", "ci_high"):
+            assert abs(row[k] - want[k]) <= 1e-9 * abs(want[k]), (m, k, row[k], want[k])
+        assert abs(row["p"] - want["p"]) <= 1e-6 * want["p"], (m, row["p"], want["p"])
+        truth[m] = want
+    for m, q in zip(members, multipletests([truth[m]["p"] for m in members], method="fdr_bh")[1]):
+        row = next(r for r in crude["effects"] if r["feature"] == m)
+        assert abs(row["q"] - q) <= 1e-6 * q, (m, row["q"], q)
+        truth[m]["q"] = float(q)
+    return {"covariance": covariance, "rows": truth}
 
 
 def density(folder: Path) -> dict[str, Any]:
@@ -94,6 +146,7 @@ def family_category(folder: Path) -> dict[str, Any]:
     effects = ef.run(frame, folder, st, fit=False)["effects"]
     assert effects["exposure"] == d.EXPOSURE_FAMILY and effects["exposures"] == ["fiber", "grp"]
     _served(effects, ["grp_b", "grp_c", "fiber"])
+    _holds(effects, ["fiber", "grp"])
     X = pd.DataFrame({**{f"grp_{v}": (frame["grp"] == v).astype(float) for v in ("b", "c")},
                       "fiber": frame["fiber"]})
     return {"artifact": effects, "truth": {"crude": CS._crude(frame, effects, X)}}
@@ -105,8 +158,59 @@ def family_level(folder: Path) -> dict[str, Any]:
     effects = ef.run(frame, folder, st, fit=False)["effects"]
     assert effects["exposure"] == d.EXPOSURE_FAMILY and effects["exposures"] == ["fiber", "arm"]
     _served(effects, ["arm_y", "fiber"])
+    _holds(effects, ["fiber", "arm"])
     X = pd.DataFrame({"arm_y": (frame["arm"] == "y").astype(float), "fiber": frame["fiber"]})
     return {"artifact": effects, "truth": {"crude": CS._crude(frame, effects, X)}}
+
+
+def family_three(folder: Path) -> dict[str, Any]:
+    frame = FW._frame()
+    members = ["fiber", "sugar", "supplement"]
+    st = FW._family(dict.fromkeys(members, "exposure"), ["linear"])
+    effects = ef.run(frame, folder, st, fit=False)["effects"]
+    assert effects["exposure"] == d.EXPOSURE_FAMILY and sorted(effects["exposures"]) == members
+    for fit in effects["families"][0]["sequence"]:
+        assert sorted(r["feature"] for r in fit["effects"]) == members, fit["key"]
+    _holds(effects, effects["exposures"])
+    served = [r["feature"] for r in ef.sequence(effects)["crude"]["effects"]]
+    return {"artifact": effects, "truth": {"crude": CS._crude(frame, effects, frame[served])}}
+
+
+def family_mixed(folder: Path) -> dict[str, Any]:
+    frame = FW._frame()
+    members = ["fiber", "sugar", "grp"]
+    st = FW._family(dict.fromkeys(members, "exposure"), ["linear"])
+    effects = ef.run(frame, folder, st, fit=False)["effects"]
+    assert effects["exposure"] == d.EXPOSURE_FAMILY and effects["exposures"] == members
+    _served(effects, ["grp_b", "grp_c", "fiber", "sugar"])
+    _holds(effects, members)
+    X = pd.DataFrame({**{f"grp_{v}": (frame["grp"] == v).astype(float) for v in ("b", "c")},
+                      "fiber": frame["fiber"], "sugar": frame["sugar"]})
+    return {"artifact": effects, "truth": {"crude": CS._crude(frame, effects, X)}}
+
+
+def family_apart(folder: Path) -> dict[str, Any]:
+    frame = FW._frame()
+    st = FW._family({"fiber": "exposure", "sugar": "exposure"}, ["featurewise"])
+    effects = ef.run(frame, folder, st, fit=False)["effects"]
+    assert effects["exposure"] == d.EXPOSURE_FAMILY and effects["exposures"] == ["fiber", "sugar"]
+    _served(effects, ["fiber", "sugar"])
+    for fit in effects["families"][0]["sequence"]:
+        assert not {"fiber", "sugar"} & set(fit["adjusted_for"]), fit  # neither held by the other
+    return {"artifact": effects, "truth": {"crude": _alone(frame, effects, ["fiber", "sugar"])}}
+
+
+def family_q(folder: Path) -> dict[str, Any]:
+    frame = FW._frame()
+    members = ["sugar", "supplement"]
+    st = FW._family(dict.fromkeys(members, "exposure"), ["featurewise"])
+    effects = ef.run(frame, folder, st, fit=False)["effects"]
+    assert effects["exposure"] == d.EXPOSURE_FAMILY and effects["exposures"] == members
+    _served(effects, members)
+    truth = _alone(frame, effects, members)
+    # The construction's point: `sugar`'s q-value is not its p-value to the two digits printed.
+    assert f"{truth['rows']['sugar']['q']:.2g}" != f"{truth['rows']['sugar']['p']:.2g}", truth
+    return {"artifact": effects, "truth": {"crude": truth}}
 
 
 def main() -> int:
@@ -114,7 +218,9 @@ def main() -> int:
     out: dict[str, Any] = {}
     with tempfile.TemporaryDirectory(prefix="estimate-terms-") as folder:
         for name, build in (("density", density), ("cut", cut), ("two_level", two_level),
-                            ("family_category", family_category), ("family_level", family_level)):
+                            ("family_category", family_category), ("family_level", family_level),
+                            ("family_three", family_three), ("family_mixed", family_mixed),
+                            ("family_apart", family_apart), ("family_q", family_q)):
             out[name] = build(Path(folder) / name)
     head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
                           text=True, cwd=Path(__file__).parent).stdout.strip()

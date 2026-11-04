@@ -62,6 +62,8 @@ METHODS_FUNCTIONS = {
     "core/methods/interaction.py": {"family_count"},
     "core/stages/rows.py": {"cohort_flow"},
     "core/models/featurewise.py": {"methods_label"},
+    # What a model's estimate is adjusted for, in the effects stage's methods text alone.
+    "core/stages/effects.py": {"_adjusted_words"},
 }
 # A function that refuses or offers exits writes a card, whatever its name says.
 CARD_CALLS = {"Refusal", "_refusal", "refusal", "InferenceExit"}

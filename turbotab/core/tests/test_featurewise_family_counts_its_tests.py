@@ -79,6 +79,15 @@ BH_ONE = (f"Feature-wise regression tested 1 of the 2 exposures (`fiber`); Benja
 ALL_TWO = (f"2 exposures were tested, each in turn; Benjamini–Hochberg q-values control the "
            f"false-discovery rate across all 2 ({BH}), and every member is shown, significant or "
            f"not.")
+# Beside the linear model, which fits the members together and gives its rows no q-value, each
+# family's sentence under its name (pp2-family-effect-words, ``test_family_effect_words``), the
+# linear model's last, whatever feature-wise regression tested (``BESIDE_LINEAR``; the verifier's
+# M1).
+BESIDE_LINEAR = (" Under the linear model, 2 exposures were fit together in each model, so each "
+                 "estimate is adjusted for the other. Their p-values are not adjusted for "
+                 "multiplicity: Benjamini–Hochberg q-values are computed only where each member is "
+                 "tested in its own model.")
+BOTH_TWO = f"Under the feature-wise regression, {ALL_TWO}{BESIDE_LINEAR}"
 # The claims a sentence makes only of tests that ran.
 CLAIMS = ("were tested", "q-values control", "every member is shown", "tests are stated")
 
@@ -146,10 +155,25 @@ def test_a_family_of_categories_claims_no_test_at_the_fit_or_the_effects_stage(t
     """{`grp`, `arm`}: the table holds no column of either's name, so it is refused, and each
     sentence says feature-wise regression tested none, quoting the refusal, where each said both
     were tested with Benjamini–Hochberg q-values and every member shown; no model of the refused
-    table is said to adjust for them."""
-    out = ef.run(_frame(), tmp_path, _family({"grp": "exposure", "arm": "exposure"}, models))
+    table is said to adjust for them. Beside it the linear model fits both together, its rows
+    with p-values and no q-value, so the sentence says so after, under its name, where it said
+    nothing of them (pp2-family-effect-words, the verifier's M1)."""
+    frame = _frame()
+    out = ef.run(frame, tmp_path, _family({"grp": "exposure", "arm": "exposure"}, models))
     assert _model(out["fit_raw"])["inference"]["refused"] == GRP_AND_ARM  # the premise
     said = f"{NONE_OF_TWO}{GRP_AND_ARM}"
+    if "linear" in models:
+        # statsmodels' one fit of glucose on both members' indicators: the unadjusted rows.
+        X = _design(frame, GRP).assign(arm_y=(frame["arm"] == "y").astype(float))
+        truth = sm.OLS(frame["glucose"].to_numpy(float), X).fit().params
+        for key, model in _sequence(out, "linear").items():
+            rows = model["effects"]
+            assert [r["feature"] for r in rows] == [*GRP, "arm_y"], key
+            assert all(r["p"] is not None and r["q"] is None for r in rows), key
+            if key == "crude":
+                for r in rows:
+                    assert r["estimate"] == pytest.approx(truth[r["feature"]], rel=1e-9)
+        said += BESIDE_LINEAR
     assert out["fit"]["estimand"]["multiplicity"] == said
     assert out["effects"]["multiplicity"] == said
     caption = out["fit"]["estimand"]["caption"]
@@ -222,20 +246,24 @@ def test_each_model_that_holds_the_categorys_indicators_names_it_as_adjusted_for
 
 
 def test_a_family_of_numeric_members_keeps_every_sentence(tmp_path):
-    """Silent: {`fiber`, `sugar`}, each tested; the family's sentence at the fit and the effects
-    stage, the caption's count, the unadjusted model's label and the methods text are as they were,
-    byte for byte."""
+    """Silent: {`fiber`, `sugar`}, each tested; feature-wise regression's sentence at the fit and
+    the effects stage, the caption's count and its unadjusted model's label are as they were, byte
+    for byte. Beside it the linear model fits both members together, so the served sentence says
+    each family's under its name, and so does the methods text, the linear model's with the
+    members fit together in its unadjusted model (pp2-family-effect-words: they said "each in
+    turn" with q-values, and "unadjusted", of the linear model's table too; the verifier's FW-V1
+    and FW-V3)."""
     out = ef.run(_frame(), tmp_path, _family({"fiber": "exposure", "sugar": "exposure"},
                                               ["linear", "featurewise"]))
-    assert out["fit"]["estimand"]["multiplicity"] == ALL_TWO
-    assert out["effects"]["multiplicity"] == ALL_TWO
-    assert out["effects"]["methods"].endswith(f" {ALL_TWO}")
+    assert out["fit"]["estimand"]["multiplicity"] == BOTH_TWO
+    assert out["effects"]["multiplicity"] == BOTH_TWO
+    assert out["effects"]["methods"].endswith(f" {BOTH_TWO}")
     assert ("every member shown, with Benjamini–Hochberg q-values across the family (2 tests)"
             in out["fit"]["estimand"]["caption"])
     crude = _sequence(out)["crude"]
     assert (crude["label"], crude["adjusted_for"]) == ("Unadjusted", [])
     assert crude["note"] == "STROBE 16a's unadjusted estimate: no other column in the model."
-    assert ": unadjusted; Model 2, the primary, adjusted for" in out["effects"]["methods"]
+    assert out["effects"]["methods"].startswith(f"Under the linear model, {LINEAR_NUMERIC} ")
 
 
 def test_the_tests_record_reads_each_member_by_why_it_was_not_tested():
@@ -1006,6 +1034,30 @@ FIB_FAMILY = (f"In Model 2, the primary, feature-wise regression tested 1 of the
 FIB_FEATUREWISE = f"{SEQUENCE}{MODEL_3}{APART}{BENCHMARKED} {FIB_FAMILY}"
 
 
+def joint_sequence(a: str, b: str) -> str:
+    """:data:`SEQUENCE` for the linear model, which holds the members `a` and `b` together in each
+    model (pp2-family-effect-words): its unadjusted model holds them, each adjusted for the other,
+    and Model 2 the covariates beside them, so each estimate is adjusted for the covariates and the
+    other exposure, never for itself (the verifier's FW-V3)."""
+    return (f"the estimate of each exposure is reported across a declared sequence of models fit "
+            f"on all 400 analyzed rows: without the covariates, with `{a}` and `{b}` fit together, "
+            f"each adjusted for the other; Model 2, the primary, adjusted for `age`, `sex`, "
+            f"`smoking`, `activity` and the other exposure")
+
+
+# The linear model's text for the numeric family {`fiber`, `sugar`}, said under its name beside
+# feature-wise regression's, whichever is chosen first (the verifier's FW-V1): its sequence, then
+# its own influence check and sensitivity analyses, its intervals HC3.
+LINEAR_NUMERIC = (f"{joint_sequence('fiber', 'sugar')}{MODEL_3}{APART} Influence was checked by "
+                  f"Cook's distance against the median of F(7, 393) (Cook 1977, Technometrics "
+                  f"19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by "
+                  f"the Cinelli–Hazlett robustness value (each adjusted covariate a named "
+                  f"benchmark; its form for the 95% interval, and the benchmarks' intervals, are "
+                  f"not reported, as they assume classical standard errors and the intervals "
+                  f"reported are HC3) and by the E-value for the estimate and for the confidence "
+                  f"limit nearer the null, never as a pass or a fail.")
+
+
 def _rank_deficient(frame: pd.DataFrame, columns: list[str]) -> bool:
     """Whether numpy finds the least-squares design on ``columns`` (and the intercept) singular."""
     X = _design(frame, columns).to_numpy(float)
@@ -1018,7 +1070,10 @@ def test_where_one_familys_model_2_reports_and_anothers_is_refused_each_is_said_
     numpy finds singular, so they are refused; feature-wise regression tests `fiber` in each
     (statsmodels' estimates). The methods text described the linear model alone ("reported from
     the unadjusted model alone ... Model 2 ... reports none") and then said Model 2 tested
-    `fiber`; now each family's sentences are said under its name."""
+    `fiber`; now each family's sentences are said under its name. The linear model holds both
+    members in each model, each adjusted for the other, so its unadjusted model is said with them
+    fit together and Model 2 with the other exposure (pp2-family-effect-words; the verifier's
+    FW-V3)."""
     frame = _fib_frame()
     out = ef.run(frame, tmp_path, _family({"fiber": "exposure", "fib": "exposure"},
                                            ["linear", "featurewise"], amounts=FIB_AMOUNTS))
@@ -1032,12 +1087,16 @@ def test_where_one_familys_model_2_reports_and_anothers_is_refused_each_is_said_
         rows = {r["feature"]: r for r in featurewise[key]["effects"]}
         assert rows["fiber"]["estimate"] == pytest.approx(_ols(frame, "fiber", adjust)[0],
                                                           rel=1e-9)
-    assert out["effects"]["multiplicity"] == FIB_FAMILY
+    # Feature-wise regression's sentence of its models, then the linear model's under its name,
+    # which said nothing of the linear model's unadjusted rows (the verifier's M1).
+    assert out["effects"]["multiplicity"] == f"{FIB_FAMILY}{BESIDE_LINEAR}"
     assert out["effects"]["methods"] == (
-        f"Under the linear model, the estimate of each exposure is reported from the unadjusted "
-        f"model alone, fit on all 400 analyzed rows. Model 2, the primary, adjusted for `age`, "
-        f"`sex`, `smoking` and `activity`, reports none: {SINGULAR} Model 3, further adjusted for "
-        f"`bmi`, reports none: {SINGULAR} Under the feature-wise regression, {FIB_FEATUREWISE}")
+        f"Under the linear model, the estimate of each exposure is reported only from the model "
+        f"without the covariates, with `fiber` and `fib` fit together, each adjusted for the "
+        f"other, fit on all 400 analyzed rows. Model 2, the primary, adjusted for `age`, `sex`, "
+        f"`smoking`, `activity` and the other exposure, reports none: {SINGULAR} Model 3, further "
+        f"adjusted for `bmi`, reports none: {SINGULAR} Under the feature-wise regression, "
+        f"{FIB_FEATUREWISE}{BESIDE_LINEAR}")
 
 
 def test_where_one_familys_model_3_reports_and_anothers_is_refused_each_is_said_by_name(tmp_path):
@@ -1065,17 +1124,21 @@ def test_where_one_familys_model_3_reports_and_anothers_is_refused_each_is_said_
         _ols(frame, "fiber", [*MODEL_2, "bmi"])[0], rel=1e-9)
     methods = out["effects"]["methods"]
     linear, featurewise = methods.split(" Under the feature-wise regression, ")
-    assert linear.startswith(f"Under the linear model, {SEQUENCE}. Model 3, further adjusted for "
-                             f"`bmi`, reports none: {three}{APART}")
+    assert linear.startswith(f"Under the linear model, {joint_sequence('fiber', 'fib3')}. Model 3, "
+                             f"further adjusted for `bmi`, reports none: {three}{APART}")
     assert featurewise.startswith(f"{SEQUENCE}{MODEL_3}{APART}{BENCHMARKED} In Model 2, ")
     assert "could not be fit" not in featurewise
 
 
-def test_where_every_family_reports_the_same_models_the_methods_text_is_as_it_was(tmp_path):
-    """Silent, byte for byte: {`fiber`, `fib`} under feature-wise regression alone, and the
-    numeric family {`fiber`, `sugar`} under [linear, feature-wise]. (With the linear model after
-    feature-wise regression, {`fiber`, `fib`} reports from fewer models under the linear model,
-    so each family is said by name: the verifier's V4a3-2,
+def test_where_every_family_reports_the_same_models_each_is_said_by_name_where_their_words_differ(
+        tmp_path):
+    """Silent, byte for byte: {`fiber`, `fib`} under feature-wise regression alone. The numeric
+    family {`fiber`, `sugar`} under [linear, feature-wise] reports from the same models under
+    both, and the methods text was the linear model's alone, unscoped, which said each
+    feature-wise estimate was adjusted for both members (the verifier's FW-V1); now each family's
+    text is said under its name, as where they report from different models. (With the linear
+    model after feature-wise regression, {`fiber`, `fib`} reports from fewer models under the
+    linear model, so each family is said by name: the verifier's V4a3-2,
     ``test_effects_methods_names_each_family``.)"""
     out = ef.run(_fib_frame(), tmp_path / "featurewise",
                  _family({"fiber": "exposure", "fib": "exposure"}, ["featurewise"],
@@ -1084,13 +1147,8 @@ def test_where_every_family_reports_the_same_models_the_methods_text_is_as_it_wa
     out = ef.run(_frame(), tmp_path / "numeric", _family({"fiber": "exposure", "sugar": "exposure"},
                                                          ["linear", "featurewise"]))
     assert out["effects"]["methods"] == (
-        f"T{SEQUENCE[1:]}{MODEL_3}{APART} Influence was checked by Cook's distance against the "
-        f"median of F(7, 393) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to "
-        f"unmeasured confounding is reported by the Cinelli–Hazlett robustness value (each "
-        f"adjusted covariate a named benchmark; its form for the 95% interval, and the "
-        f"benchmarks' intervals, are not reported, as they assume classical standard errors and "
-        f"the intervals reported are HC3) and by the E-value for the estimate and for the "
-        f"confidence limit nearer the null, never as a pass or a fail. {ALL_TWO}")
+        f"Under the linear model, {LINEAR_NUMERIC} Under the feature-wise regression, "
+        f"{SEQUENCE}{MODEL_3}{APART}{BENCHMARKED} {BOTH_TWO}")
 
 
 def _card(members, columns=None, **kw) -> dict:

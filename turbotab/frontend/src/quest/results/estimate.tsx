@@ -4,7 +4,8 @@
  * wraps): the shell's Results tapestry under any goal but prediction. Nothing is recorded here
  * (FOUNDATION §1, the tapestry's rule) and nothing is computed: every number is the effects
  * stage's served field, formatted by the view, and every sentence is the engine's, save the lines
- * that name what this Table 2 does not draw.
+ * that name what this Table 2 does not draw and the words a joint model's footnote says for the
+ * members beside a row's own ("the other study factor", `footnoted`).
  *
  *   1. the plan-lock line, "Plan fixed at …" with the locked plan's SHA-256 as its quiet label
  *      (FOUNDATION §7), from the quest log's lock (core/fit_press.py `FitLock`);
@@ -17,9 +18,14 @@
  *      cut's `<exposure>_C2`, a level's indicator), whose unit is not the exposure's, under its
  *      served name; a model that reports no estimate is said in its refusal's words beside it,
  *      and an exposure served as several rows (a category's levels) is named, not drawn, nor
- *      headed (`asTable2`, `unreportedOf`); where an exposure family's models serve more than one
- *      member, neither Table 2 nor its forest is drawn, and one line says why and that the
- *      estimates are in the export (`membersOf`, `FAMILY_NOT_DRAWN`);
+ *      headed (`asTable2`, `unreportedOf`); an exposure family's members are drawn under a heading
+ *      each, and each row says how many columns its own estimate is adjusted for (`subsOf`): a
+ *      model that holds the members together names them all among its columns, each row adjusted
+ *      for the others (core/stages/effects.py `SequenceFit.adjusted_for`), so its footnote names
+ *      what every row it marks is adjusted for, the members beside a row's own as the other study
+ *      factor, said last (`asTable2`, `footnoted`); where the rows carry Benjamini–Hochberg
+ *      q-values beside the family's multiplicity sentence (each member tested in its own model),
+ *      a q column follows P (`qsOf`, `withQ`);
  *   3. beside it the primary model's diagnostics in the engine's words: a failed check's ways
  *      forward are named, never pressed, and a recorded response is said as its record words it,
  *      with the estimates the engine serves for it;
@@ -44,6 +50,7 @@ import { OneLine } from "../../components/views/common/parts";
 import type { EffectsLock } from "../../components/views/contracts";
 import { TableWithForest } from "../../components/views/Forest";
 import { fmtEstimate } from "../../components/views/format";
+import type { TableData } from "../../components/views/types";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
 import { Mattered } from "./mattered";
 import s from "./results.module.css";
@@ -238,16 +245,28 @@ function unreportedOf(fam: Family, exposures: readonly string[]): { key: string;
  *  scale (the coefficient table's: "Estimates are log hazard ratios; …") would describe a column
  *  it does not print, and a reader who trusted it would exponentiate a ratio again: that sentence
  *  is left out, and the caption's others (its intervals, its rows) stay in the engine's words. A
- *  difference scale prints the estimate itself, and its caption whole. */
+ *  difference scale prints the estimate itself, and its caption whole.
+ *
+ *  A model that holds an exposure family's members together names them all among the columns it
+ *  is adjusted for (core/stages/effects.py `SequenceFit.adjusted_for`), each row adjusted for the
+ *  others; the adapter's one footnote per model, marked on each member's row, would then say a row
+ *  is adjusted for its own member. So each drawn model's columns are handed to it as what every
+ *  row it marks is adjusted for (`footnoted`): the members this table draws are said as "the
+ *  other study factor", last, in their place, so the footnote names what each row's line counts
+ *  (`subsOf`), and a model that holds nothing but the members (the unadjusted one) has a footnote,
+ *  with the engine's note that they are in it together. A member the table does not draw (a
+ *  category served as several rows) stays among them by its name. */
 function asTable2(art: ServedEffects, index: number): ServedEffects {
   const caption = (text: string) => (art.scale === "ratio" ? sentencesOf(text).filter((x) => !ON_COEFFICIENTS.test(x)).join(" ") : text);
-  const sequence = art.families[index]!.sequence.flatMap((fit) => {
+  const kept = art.families[index]!.sequence.flatMap((fit) => {
     const rows = reports(fit) ? drawnOf(fit, art.exposures).rows : [];
     if (!rows.length) return [];
     return [{ ...fit, effects: rows, inference: fit.inference ? { ...fit.inference, caption: caption(fit.inference.caption) } : fit.inference }];
   });
-  const drawn = sequence.flatMap((fit) => fit.effects);
+  const drawn = kept.flatMap((fit) => fit.effects);
   const columns = [...new Set(art.exposures.flatMap((e) => drawn.filter((r) => whose(r.feature, art.exposures) === e).map((r) => r.feature)))];
+  const members = new Set(columns.map((c) => whose(c, art.exposures)));
+  const sequence = kept.map((fit) => ({ ...fit, adjusted_for: footnoted(fit.adjusted_for, members) }));
   return {
     ...art,
     exposure: columns.length === 1 ? columns[0]! : art.exposure,
@@ -256,42 +275,98 @@ function asTable2(art: ServedEffects, index: number): ServedEffects {
   };
 }
 
-/** The members of what is studied a model family's declared models serve rows for, any model's
- *  (`whose`; a row no member owns counts as its own): a single exposure's rows are all its own. */
-function membersOf(fam: Family, exposures: readonly string[]): Set<string> {
-  return new Set(fam.sequence.flatMap((fit) => (fit.effects ?? []).map((r) => whose(r.feature, exposures) ?? r.feature)));
+/** A model's served columns as its footnote says them for every row it marks (`asTable2`): the
+ *  members this table draws (`drawn`) left out, and where the model holds two or more of them
+ *  together, each row adjusted for the others, "the other study factor" (or "the other N study
+ *  factors") said last, joined by "and" to the column before it: what every marked row's estimate
+ *  is adjusted for beside the rest, its own member never among them. Said last and joined so, no
+ *  column beside it reads as its name: in the served order it read "the other study factor, grp"
+ *  beside a member not drawn, and "the other study factor, bmi" in Model 3 (the verifier's
+ *  FW-V2-5). One drawn member (a single exposure; feature-wise regression's, each in its own
+ *  model) is only left out: no row is adjusted for another. */
+function footnoted(columns: readonly string[], drawn: ReadonlySet<string | null>): string[] {
+  const others = columns.filter((c) => drawn.has(c)).length - 1;
+  const rest = columns.filter((c) => !drawn.has(c));
+  if (others < 1) return rest;
+  const said = others === 1 ? "the other study factor" : `the other ${others} study factors`;
+  return rest.length ? [...rest.slice(0, -1), `${rest[rest.length - 1]!} and ${said}`] : [said];
 }
 
-/** Said in place of Table 2 and its forest where an exposure family's models serve more than one
- *  member (`membersOf`). The engine serves a model's adjustment as its covariates alone
- *  (`adjusted_for`, the unadjusted model's "no other column in the model"), which is wrong where
- *  the members share one fit (the linear model: each is adjusted for the others there) and right
- *  where each is fitted on its own (feature-wise regression), and both serve each member's rows
- *  per model alike; until it says which, no row of such a family is drawn with a label beside it,
- *  and the line speaks of this table, blaming neither the family's kind nor its fit. A
- *  family whose models serve one member (feature-wise regression's, beside a category it adjusts
- *  for and names) is drawn as a single exposure's. Every served row is written to the export's
- *  Table 2 (core/export/tables.py `table2`). */
-const FAMILY_NOT_DRAWN =
-  "This first version of Results does not draw this Table 2: what the engine says each of its estimates is adjusted for is not yet known to be right where several members are served; its estimates are in the export.";
+/** Each drawn row's q-value by the row's key as the adapter keys it (`<column>:<model>` with
+ *  several columns drawn, else the model's key), where a drawn row is served one beside the
+ *  family's multiplicity sentence (`art.multiplicity`, which the table footnotes): the Benjamini–
+ *  Hochberg q-values feature-wise regression gives each member's test, which that sentence says
+ *  control the false-discovery rate (core/estimand.py `multiplicity_statement`). Empty where no
+ *  drawn row carries one (a joint fit), or where no such sentence is served (a single exposure,
+ *  whose feature-wise test carries a q-value over its 1 test, the effects stage serving the
+ *  sentence only for a family; the verifier's FW-V2-2), so no column is drawn for them. */
+function qsOf(art: ServedEffects, shown: ServedEffects, index: number): Map<string, number | null> {
+  if (!art.multiplicity) return new Map();
+  const many = shown.exposures.length > 1;
+  const out = new Map<string, number | null>();
+  for (const column of shown.exposures) {
+    for (const fit of shown.families[index]!.sequence) {
+      const row = (fit.effects ?? []).find((r) => r.feature === column);
+      if (row) out.set(many ? `${column}:${fit.key}` : fit.key, row.q);
+    }
+  }
+  return [...out.values()].some((q) => q !== null) ? out : new Map();
+}
+
+/** `table` with a q column after P where its rows carry q-values (`qsOf`), each printed as a
+ *  p-value is, as the export's Table 2 prints it (core/export/tables.py, its `q` column). */
+function withQ(table: TableData, qs: ReadonlyMap<string, number | null>): TableData {
+  if (!qs.size) return table;
+  const at = table.columns.findIndex((c) => c.key === "p") + 1;
+  return {
+    ...table,
+    columns: [...table.columns.slice(0, at), { key: "q", label: "q" }, ...table.columns.slice(at)],
+    rows: table.rows.map((r) => (r.kind === "row" ? { ...r, cells: { ...r.cells, q: { kind: "p", p: qs.get(r.key) ?? null } } } : r)),
+  };
+}
+
+/** Each drawn row's line under its model's label, by the row's key as the adapter keys it
+ *  (`<column>:<model>` with several columns drawn, else the model's key): how many columns the
+ *  row's own estimate is adjusted for, from the model's served `adjusted_for` without the row's
+ *  own member. That is the adapter's count (views/adapters.ts `subOf`) where the model's columns
+ *  name no member it draws (a single exposure; feature-wise regression, each member in its own
+ *  model, naming only a category it adjusts for), and with members fit together, the covariates
+ *  and the members other than the row's own. `shown` is `asTable2`'s, its exposures the drawn
+ *  columns; `art` is the served artifact, whose exposures are what is studied. */
+function subsOf(art: ServedEffects, shown: ServedEffects, index: number): Map<string, string> {
+  const many = shown.exposures.length > 1;
+  const served = new Map(art.families[index]!.sequence.map((fit) => [fit.key, fit]));
+  const out = new Map<string, string>();
+  for (const column of shown.exposures) {
+    const own = whose(column, art.exposures);
+    for (const fit of shown.families[index]!.sequence) {
+      if (!(fit.effects ?? []).some((r) => r.feature === column)) continue;
+      const n = served.get(fit.key)!.adjusted_for.filter((c) => c !== own).length;
+      out.set(many ? `${column}:${fit.key}` : fit.key, n ? `Adjusted for ${n} column${n === 1 ? "" : "s"}` : "No other column in the model");
+    }
+  }
+  return out;
+}
+
+/** `rows` with each drawn row's line its own (`subsOf`). */
+function withSubs<R extends { key: string }>(rows: R[], subs: ReadonlyMap<string, string>): R[] {
+  return rows.map((r) => {
+    const sub = subs.get(r.key);
+    return sub === undefined ? r : ({ ...r, sub } as R);
+  });
+}
 
 function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; index: number; many: boolean; decisions: readonly DecisionRecord[] }) {
   const [lit, setLit] = useState<string | null>(null);
   const fam = art.families[index]!;
   const number = many ? `Table 2 (${fam.label})` : "Table 2";
   const diagnostics = <Diagnostics fam={fam} exposure={art.exposure} scale={art.scale} decisions={decisions} />;
-  if (membersOf(fam, art.exposures).size > 1) {
-    return (
-      <div className={s.tapestry}>
-        <section className={s.exhibit} data-purpose="table2" data-testid="results-table2" data-family={fam.family}>
-          <OneLine view="table" title={number} text={<span data-testid="results-family-not-drawn">{FAMILY_NOT_DRAWN}</span>} />
-        </section>
-        {diagnostics}
-      </div>
-    );
-  }
   const shown = asTable2(art, index);
-  const table = table2FromEffects(shown, index, number);
+  const subs = subsOf(art, shown, index);
+  const adapted = table2FromEffects(shown, index, number);
+  const table = withQ({ ...adapted, rows: withSubs(adapted.rows, subs) }, qsOf(art, shown, index));
+  const plotted = forestFromEffects(shown, index);
+  const forest = { ...plotted, rows: withSubs(plotted.rows, subs) };
   const unreported = unreportedOf(fam, art.exposures);
   const said = unreported.map((x, i) => (
     <span key={`${x.key}:${i}`} className={s.itemReason} data-testid="results-unreported" data-fit={x.key}>
@@ -303,7 +378,7 @@ function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; 
       <section className={s.exhibit} data-purpose="table2" data-testid="results-table2" data-family={fam.family}>
         {shown.families[index]!.sequence.length ? (
           <>
-            <TableWithForest table={table} forest={forestFromEffects(shown, index)} gate={null} lit={lit} onLit={setLit} />
+            <TableWithForest table={table} forest={forest} gate={null} lit={lit} onLit={setLit} />
             {said.length ? <div className={s.items}>{said}</div> : null}
           </>
         ) : (
