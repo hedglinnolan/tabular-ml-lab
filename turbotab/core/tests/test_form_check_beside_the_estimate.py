@@ -13,8 +13,10 @@ Results reports it beside your estimate").
   Wald test that the nonlinear terms are zero, and its curve. Truth: statsmodels on a constructed
   table with a known bend and on one with none (least squares with HC3 and its F test; logistic
   regression and its χ² test), the knots at Harrell's percentiles written out with NumPy, the
-  basis written out from Harrell's formula; under multiple imputation Li, Raghunathan & Rubin's
-  D1 written out over statsmodels' fit of each completed copy.
+  basis written out from Harrell's formula. Under multiple imputation it is refused (the
+  verifier's B1-V1): the plan's copies were imputed for the line, never with the spline in the
+  model, and the primary stays statsmodels' Rubin estimate over the copies; with nothing imputed
+  it is made as on complete rows.
 * **The check of a curve**: the straight line's one coefficient beside the spline, statsmodels'
   straight-line fit.
 * **Never in its place**: the estimate stays the kept shape's whatever the check shows; no check
@@ -22,7 +24,6 @@ Results reports it beside your estimate").
 """
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import statsmodels.api as sm
-from scipy import stats
 
 from turbotab.core import decisions as d
 from turbotab.core.methods import exposure_form as ef
@@ -347,14 +347,49 @@ def test_no_check_without_a_declared_line_or_spline(tmp_path):
 # ── under multiple imputation ────────────────────────────────────────────────
 
 
-@pytest.mark.slow
-def test_under_multiple_imputation_the_check_is_pooled_by_d1_on_knots_fixed_on_the_observed_values(
+def test_with_multiple_imputation_answered_and_no_value_missing_the_check_is_made(tmp_path):
+    """The MI guard stays silent where nothing is imputed: multiple imputation answered on a table
+    with no blank (nothing drawn, every analyzed row the one copy) makes the check as complete
+    rows do, statsmodels' (the verifier's B1-V1, the silent way)."""
+    frame = bent(n=400, seed=5)
+    st = numeric_state(exposure_forms={"fiber": LINE},
+                       missing=d.MissingSpec(strategy="multiple_imputation"))
+    out = run(frame, tmp_path / "e", st)
+    check = check_of(out["effects"])
+    assert check is not None
+    _assert_check_is_statsmodels(check, _statsmodels_check(frame))
+    assert check["test"]["p"] < 1e-6  # the bend, reported
+
+
+def test_the_refusal_under_multiple_imputation_is_one_sentence_that_names_how_the_copies_were_drawn():
+    """The words of the refusal (B1-V1): how the plan's copies were drawn, chained equations or
+    SMC-FCS with the line in its model, and the methods text quotes it whole (one sentence: no
+    period inside it splits it)."""
+    for method, how in (("chained_equations", "(by chained equations)"),
+                        ("smcfcs", "(by SMC-FCS, with the straight line in its model)")):
+        reason = ef.check_imputed_refusal(method)
+        assert reason == (
+            f"under multiple imputation the plan's copies were imputed for the straight line it "
+            f"fits {how}, so the values they fill follow that line and a spline fit on them would "
+            f"have its test of a bend biased toward none (Bartlett, Seaman, White & Carpenter "
+            f"2015); copies imputed with the spline in the model (SMC-FCS) are not drawn for the "
+            f"check.")
+        assert ef.check_methods("fiber", "spline", refused=reason) == (
+            f"The plan's check of the straight line was not made: {reason}")
+        assert ef.check_refused("spline", reason) == (
+            f"The plan's check of the straight line could not be made: {reason}")
+
+
+def test_under_multiple_imputation_the_check_of_a_line_is_refused_and_the_primary_stays_the_lines(
         tmp_path):
-    """Truth: statsmodels' least squares with HC3 in each completed copy (the copies the fit draws,
-    the data each model is fit on), the knots at Harrell's percentiles of the observed `fiber`
-    values written out with NumPy, fixed across copies, and D1 written out (Li, Raghunathan &
-    Rubin 1991: r₁ = (1 + 1/m) tr(B Ū⁻¹)/k, D₁ = q̄ᵀ Ū⁻¹ q̄ / (k (1 + r₁)), ν = 4 + (t − 4)(1 +
-    (1 − 2/t)/r₁)², t = k (m − 1))."""
+    """The verifier's B1-V1: the plan's copies of a straight line are imputed for the line
+    (chained equations, the fit's own record), so a spline fit on them would read imputed values
+    that follow the line, its test of a bend biased toward none. On a table with a known bend and
+    an imputed `fiber` the check is refused, never fit on them, its reason in its caption and the
+    methods text; nothing else moves: the primary is the straight line's Rubin estimate,
+    statsmodels' least squares in each completed copy the fit draws, averaged. On the branch before
+    this repair the check was made on those copies (D1 F = 1.50, p = 0.21 in the verifier's
+    probe, where the fit with the spline declared and imputed by SMC-FCS read F = 2.10)."""
     from turbotab.core.stages.modeling import design_stage, fit_stage
     from turbotab.core.tests import modeling_fixtures as mf
 
@@ -372,40 +407,24 @@ def test_under_multiple_imputation_the_check_is_pooled_by_d1_on_knots_fixed_on_t
     design = design_stage(mf.context(st, {"split": split, "target_info": info}, paths))
     fitted = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": info},
                                   paths))
-    copies = fitted.objects["imputations"]["frames"]
-    m = len(copies)
-    assert m >= 20
-    observed = frame["fiber"].dropna().to_numpy(dtype=float)
-    knots = np.quantile(observed, FIVE, method="linear")
-    Q, U, slopes = [], [], []
-    y = frame["glucose"].astype(float).to_numpy()
-    for copy in copies:
-        part = copy.assign(glucose=y)
-        fit = sm.OLS(part["glucose"], with_spline(part, knots)).fit(cov_type="HC3")
-        names = spline_names(5)
-        Q.append(fit.params[names].to_numpy())
-        U.append(fit.cov_params().loc[names, names].to_numpy())
-        slopes.append(float(sm.OLS(part["glucose"], est_f.design_matrix(
-            part, ["fiber", *COVARIATES])).fit().params["fiber"]))
-    Q, U = np.asarray(Q), np.asarray(U)
-    k = Q.shape[1]
-    qbar, ubar = Q.mean(axis=0), U.mean(axis=0)
-    B = np.cov(Q, rowvar=False, ddof=1)
-    r1 = (1 + 1 / m) * float(np.trace(B @ np.linalg.inv(ubar))) / k
-    D1 = float(qbar @ np.linalg.inv(ubar) @ qbar) / (k * (1 + r1))
-    t = k * (m - 1)
-    nu = 4 + (t - 4) * (1 + (1 - 2 / t) / r1) ** 2
+    imputations = fitted.objects["imputations"]
+    assert imputations["plan"]["mode"] == "fcs"  # chained equations: imputed for the line
+    copies = imputations["frames"]
+    assert len(copies) >= 20
     check = check_of(out["effects"])
-    assert check is not None and check["refused"] is None, check
-    np.testing.assert_allclose(check["knots"], knots, rtol=1e-12)
-    test = check["test"]
-    assert (test["distribution"], test["df_num"]) == ("F", 3)
-    assert test["statistic"] == pytest.approx(D1, rel=1e-6)
-    assert test["df_den"] == pytest.approx(nu, rel=1e-6)
-    assert test["p"] == pytest.approx(float(stats.f.sf(D1, k, nu)), rel=1e-6, abs=1e-300)
-    assert f"(pooled over {m} imputations by Li, Raghunathan & Rubin's D1)" in check["caption"]
-    assert "The knots are placed once on the observed values" in check["caption"]
-    # The primary is the straight line's Rubin estimate (the copies are the effects stage's own).
+    assert check is not None
+    assert (check["kept"], check["shape"], check["column"]) == ("linear", "spline", "fiber")
+    assert check["refused"] is not None and check["refused"].startswith(
+        "under multiple imputation the plan's copies were imputed for the straight line it fits "
+        "(by chained equations), so the values they fill follow that line")
+    assert check["test"] is None and check["knots"] is None and check["points"] == []
+    assert check["caption"] == ("The plan's check of the straight line could not be made: "
+                                + check["refused"])
+    assert check["methods"] == "The plan's check of the straight line was not made: " + \
+        check["refused"]
+    assert check["methods"] in out["effects"]["methods"]
+    y = frame["glucose"].astype(float).to_numpy()
+    slopes = [float(sm.OLS(y, est_f.design_matrix(copy.assign(glucose=y), ["fiber", *COVARIATES])
+                           ).fit().params["fiber"]) for copy in copies]
     primary = next(r for r in model_two(out["effects"])["effects"] if r["feature"] == "fiber")
     assert primary["estimate"] == pytest.approx(float(np.mean(slopes)), rel=1e-8)
-    assert math.isfinite(check["points"][-1]["curve"])

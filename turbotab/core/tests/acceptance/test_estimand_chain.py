@@ -279,8 +279,17 @@ def test_a_sensitivity_is_offered_with_no_threshold(diet):
 
 def test_a_the_methods_sentence_is_written_from_what_was_fitted(diet):
     """Asserted verbatim; its numbers come from outside the stage: the rows, the bootstrap's size,
-    and Cook's reference and the count above it from statsmodels' GLM influence."""
+    Cook's reference and the count above it from statsmodels' GLM influence, and the plan's check
+    of the straight line `protein_g` is declared as (batch 1, the owner's rulings of 2026-11-04):
+    its k by Harrell's rule on the smaller of the events and the non-events counted here, its
+    knots NumPy's percentiles of `protein_g` at Harrell's 5, 27.5, 50, 72.5 and 95."""
     frame = diet["frame"]
+    events = int((frame["dm"] == "yes").sum())
+    n_eff = min(events, len(frame) - events)
+    k = 3 if n_eff < 30 else 5 if n_eff >= 100 else 4  # Harrell's rule, RMS §2.4.6
+    assert k == 5  # so the knots are at the 5-knot percentiles below
+    knots = np.percentile(frame["protein_g"].to_numpy(dtype=float), [5, 27.5, 50, 72.5, 95])
+    at = ", ".join(f"{v:.4g}" for v in knots[:-1]) + f" and {knots[-1]:.4g}"
     X = pd.DataFrame({"const": 1.0, "age": frame["age"],
                       "sex_male": (frame["sex"] == "male").astype(float),
                       "smoking": frame["smoking"], "activity": frame["activity"],
@@ -296,7 +305,13 @@ def test_a_the_methods_sentence_is_written_from_what_was_fitted(diet):
         f"the primary, adjusted for `age`, `sex`, `smoking`, `activity` and `kcal`; Model 3, further "
         f"adjusted for `bmi`, a possible mediator, so not a total effect. Only the exposure's "
         f"estimates are shown as effects; every other coefficient is listed apart as an adjustment "
-        f"term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). The "
+        f"term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). "
+        f"As the plan's check of the straight line, the primary model was also fit with a "
+        f"restricted cubic spline of `protein_g` in its place (k = {k} by Harrell's rule (3 knots "
+        f"below an effective sample size of 30, 5 from 100, else 4; here {n_eff:,}, the smaller "
+        f"of the events and the non-events), knots of protein_g at {at} (the 5th, 27.5th, 50th, "
+        f"72.5th and 95th percentiles)), and its Wald test that the nonlinear terms are zero is "
+        f"reported beside the estimate, never replacing it. The "
         f"marginal risk difference and risk ratio (one unit higher than observed) were estimated by "
         f"standardization over the analyzed rows (g-computation) from the logistic model, with 95% "
         f"percentile intervals from {BOOT:,} bootstrap resamples refitting the whole chain. "

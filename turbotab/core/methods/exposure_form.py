@@ -62,8 +62,9 @@ curve (its label says so, and spline(N) + E is offered as that route).
 declared exposure is proposed as a straight line, the spline offered beside it, and whichever of
 the two is kept, the other is set in the plan as its check, fit beside the estimate by the effects
 stage and never replacing it (:func:`check_shape`: a straight line is checked by the same model
-with its restricted cubic spline in its place and that spline's nonlinearity test; a spline by its
-straight line's one coefficient).
+with its restricted cubic spline in its place and that spline's nonlinearity test, except under
+multiple imputation, whose copies were imputed for the line; a spline by its straight line's one
+coefficient).
 
 **The leash** (MODELING_SEQUENCE §4): under inference, quintiles rank lower and sit beside an
 exposure's spline; data-derived "optimal" cut points (Altman & Royston 2006: "seriously biased")
@@ -1190,13 +1191,15 @@ def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool 
         "linear", "Straight line", "Customary: one coefficient per unit of intake.",
         ("Sound when the relation is close to a line; a curve it misses biases the slope, so the "
          "plan checks it: the same model with a restricted cubic spline in its place, and its "
-         "test of whether the relation bends." if lined else
+         "test of whether the relation bends (not made under multiple imputation, whose copies "
+         "follow the line)." if lined else
          "Sound when the relation is close to a line; a curve it misses biases the slope."
          if role == "exposure" else
          "Often controls a covariate that could explain the link well (Brenner & Blettner 1997); a curve it misses leaves "
          "residual confounding."),
-        ("One coefficient per unit; the spline's fit beside it is the plan's check, never its "
-         "replacement." if lined else "One coefficient per unit; no curvature."),
+        ("One coefficient per unit; the spline's fit beside it is the plan's check (not under "
+         "multiple imputation), never its replacement." if lined else
+         "One coefficient per unit; no curvature."),
         "recommended" if lined else "available")
     quintiles = _option(
         "quintiles", "Quintiles with a trend test",
@@ -1546,8 +1549,10 @@ class FormsArtifact(_Card):
 # (:func:`check_shape`; the quintiles beside an exposure's spline, :func:`design_forms`).
 BESIDE = ("Whichever shape you keep for what you study, the other is set in your plan as its check "
           "and reported beside the estimate: with a straight line, the same model with a "
-          "restricted cubic spline in its place and its test of whether the relation bends; with "
-          "a restricted cubic spline, the straight line's one coefficient. Quintiles are produced "
+          "restricted cubic spline in its place and its test of whether the relation bends, "
+          "unless the missing values are multiply imputed (their copies follow the line, so that "
+          "check is not made); with a restricted cubic spline, the straight line's one "
+          "coefficient. Quintiles are produced "
           "beside a restricted cubic spline of what you study, their boundaries and reference "
           "stated, with the p for linear trend (customary).")
 FORMS_READS = ("purpose", "target", "task", "event", "estimand", "adjustment", "clusters",
@@ -2250,12 +2255,14 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
 # Results reports it beside your estimate." Under inference a straight line declared for what you
 # study is checked by the primary model refitted with its restricted cubic spline in its place (k by
 # Harrell's rule on the analyzed rows' effective sample size, knots at Harrell's percentiles of the
-# values the line is fit on, placed once on the observed values under multiple imputation): the
-# Wald test that its nonlinear terms are zero (``rms::anova``'s "Nonlinear" row) and its curve. A
-# restricted cubic spline declared is checked by the same model with the line in its place, its
-# one coefficient. The check is the plan's, fixed with the form at the lock, and it never replaces
-# the shape kept, whatever it shows (Grambsch & O'Brien 1991). The effects stage fits it
-# (``stages.effects``).
+# values the line is fit on): the Wald test that its nonlinear terms are zero (``rms::anova``'s
+# "Nonlinear" row) and its curve. Under multiple imputation that check is refused
+# (:func:`check_imputed_refusal`): the plan's copies were imputed for the line, and a spline is
+# imputed with it in the model (SMC-FCS, ``missing.imputation_plan``). A restricted cubic spline
+# declared is checked by the same model with the line in its place, its one coefficient (under
+# multiple imputation on the spline's own copies, imputed under a model that holds the line).
+# The check is the plan's, fixed with the form at the lock, and it never replaces the shape kept,
+# whatever it shows (Grambsch & O'Brien 1991). The effects stage fits it (``stages.effects``).
 
 # The check's curve: this many values, evenly spaced from its lowest knot to its highest.
 CHECK_POINTS = 50
@@ -2302,65 +2309,51 @@ def with_check_spline(matrix: pd.DataFrame, column: str,
     return out, names
 
 
-def check_test(tables: Sequence[Any], names: Sequence[str], *,
-               df_com: float | None = None) -> dict[str, Any] | None:
-    """The Wald test that the check's nonlinear terms (``names`` after the first) are zero, on each
-    table's own covariance: one table's :func:`wald_test`; over m completed copies, Li, Raghunathan
-    & Rubin's D1 (``imputation.pooled_wald``, Reiter's df on ``df_com``) as the fit pools a declared
-    spline's (``stages.modeling._pool_form_tests``). None where a table has no covariance to test
-    on (a Firth table, say) or lacks a term."""
-    from turbotab.core.methods.imputation import pooled_wald
+def check_imputed_refusal(method: str | None) -> str:
+    """Why a straight line's check is not made under multiple imputation (the verifier's B1-V1):
+    the plan's copies (``Imputations.method``, chained equations, or SMC-FCS for a yes/no or
+    time-to-event outcome) were imputed for the straight line it fits, never with the spline in
+    the model, which is how the fit imputes a declared spline (``missing.imputation_plan``); a
+    spline fit on them reads values that follow the line, its test of a bend biased toward none,
+    as passive imputation's is (``missing.PASSIVE_CAUTION``). One sentence, the methods text's."""
+    how = {"chained_equations": " (by chained equations)",
+           "smcfcs": " (by SMC-FCS, with the straight line in its model)"}.get(str(method), "")
+    return (f"under multiple imputation the plan's copies were imputed for the straight line it "
+            f"fits{how}, so the values they fill follow that line and a spline fit on them would "
+            f"have its test of a bend biased toward none (Bartlett, Seaman, White & Carpenter "
+            f"2015); copies imputed with the spline in the model (SMC-FCS) are not drawn for the "
+            f"check.")
 
+
+def check_test(table: Any, names: Sequence[str]) -> dict[str, Any] | None:
+    """The Wald test that the check's nonlinear terms (``names`` after the first) are zero, on the
+    table's own covariance (:func:`wald_test`). None where the table has no covariance to test on
+    (a Firth table, say) or lacks a term."""
+    if table is None or getattr(table, "cov", None) is None:
+        return None
     nonlinear = list(names[1:])
-    picked: list[tuple[np.ndarray, np.ndarray, Any]] = []
-    for table in tables:
-        if table is None or getattr(table, "cov", None) is None:
-            return None
-        where = {str(r["feature"]): j for j, r in enumerate(table.rows)}
-        if any(n not in where for n in nonlinear):
-            return None
-        idx = [where[n] for n in nonlinear]
-        estimates = np.array([np.nan if r["estimate"] is None else r["estimate"]
-                              for r in table.rows], dtype=float)
-        picked.append((estimates, np.asarray(table.cov, dtype=float), idx))
-    if not picked:
+    where = {str(r["feature"]): j for j, r in enumerate(table.rows)}
+    if any(n not in where for n in nonlinear):
         return None
-    if len(picked) == 1:
-        estimates, cov, idx = picked[0]
-        return wald_test(estimates, cov, idx, dict(tables[0].info or {}), list(tables[0].rows))
-    Q = np.array([e[idx] for e, _, idx in picked])
-    U = np.array([c[np.ix_(idx, idx)] for _, c, idx in picked])
-    if not (np.all(np.isfinite(Q)) and np.all(np.isfinite(U))):
-        return None
-    found = pooled_wald(Q, U, df_com)
-    if found is None:
-        return None
-    f_ref = found["df_den"] is not None
-    return {"statistic": found["statistic"] if f_ref else found["statistic"] * found["df_num"],
-            "df_num": int(found["df_num"]), "df_den": found["df_den"],
-            "distribution": "F" if f_ref else "chi2", "p": found["p"],
-            "basis": f"pooled over {len(picked)} imputations by Li, Raghunathan & Rubin's D1"
-                     + (f", on Reiter's denominator df from the design's {df_com:g}"
-                        if df_com is not None and f_ref else "")}
+    estimates = np.array([np.nan if r["estimate"] is None else r["estimate"]
+                          for r in table.rows], dtype=float)
+    return wald_test(estimates, np.asarray(table.cov, dtype=float), [where[n] for n in nonlinear],
+                     dict(table.info or {}), list(table.rows))
 
 
-def check_curve(tables: Sequence[Any], names: Sequence[str], knots: Sequence[float],
+def check_curve(table: Any, names: Sequence[str], knots: Sequence[float],
                 slope: float | None) -> tuple[float, list[dict[str, Any]]] | None:
     """The check's curve: (its reference, the lowest knot; :data:`CHECK_POINTS` values from the
     lowest knot to the highest, each with the spline's difference from the reference on the scale
-    of the model's coefficients, its terms' estimates averaged over the copies under multiple
-    imputation as Rubin's rules average them, and the straight line's, ``slope`` times the
-    distance). None where a term has no estimate. Points only: no interval is drawn around them."""
+    of the model's coefficients, and the straight line's, ``slope`` times the distance). None
+    where a term has no estimate. Points only: no interval is drawn around them."""
     t = np.asarray(knots, dtype=float)
     b = []
     for name in names:
-        values = []
-        for table in tables:
-            row = next((r for r in table.rows if str(r["feature"]) == name), None)
-            if row is None or row.get("estimate") is None:
-                return None
-            values.append(float(row["estimate"]))
-        b.append(float(np.mean(values)))
+        row = next((r for r in table.rows if str(r["feature"]) == name), None)
+        if row is None or row.get("estimate") is None:
+            return None
+        b.append(float(row["estimate"]))
     reference = float(t[0])
     grid = np.linspace(t[0], t[-1], CHECK_POINTS)
     design = (np.column_stack([grid, rcs_basis(grid, t)])
@@ -2372,8 +2365,7 @@ def check_curve(tables: Sequence[Any], names: Sequence[str], knots: Sequence[flo
 
 
 def spline_check_caption(column: str, knots: Sequence[float], notes: Sequence[str], rule: str,
-                         test: Mapping[str, Any], *, imputed: bool = False,
-                         survey: bool = False) -> str:
+                         test: Mapping[str, Any], *, survey: bool = False) -> str:
     """What the check of a straight line reports, in words: the refit, its k and knots, its test."""
     q = int(test["df_num"])
     what = (f"its {q} nonlinear terms are" if q > 1 else "its nonlinear term is")
@@ -2381,8 +2373,6 @@ def spline_check_caption(column: str, knots: Sequence[float], notes: Sequence[st
             f"cubic spline of `{column}` in its place, {rule}, "
             f"{knot_sentence(column, knots, notes)}. "
             f"Wald test that {what} zero ({test['basis']}): {_statistic_words(test)}.")
-    if imputed:
-        text += " The knots are placed once on the observed values, the same in every imputation."
     if survey:
         text += (" The knots are the analyzed rows' own percentiles, unweighted; the test is "
                  "design-based, over the survey design.")
@@ -2403,7 +2393,7 @@ def line_check_caption(column: str, row: Mapping[str, Any]) -> str:
 
 def check_methods(column: str, shape: str, *, rule: str | None = None,
                   knots: Sequence[float] | None = None, notes: Sequence[str] = (),
-                  refused: str | None = None, imputed: bool = False) -> str:
+                  refused: str | None = None) -> str:
     """The methods text's one sentence on the plan's check (the effects stage's
     ``methods_sentence``): what was fit beside the estimate, or why it was not."""
     kept = CHECK_KEPT["linear" if shape == "spline" else "spline"]
@@ -2411,12 +2401,10 @@ def check_methods(column: str, shape: str, *, rule: str | None = None,
         head = re.split(r"(?<=[.!?])\s+", str(refused).strip(), maxsplit=1)[0].rstrip(".")
         return f"The plan's check of the {kept} was not made: {head}."
     if shape == "spline":
-        pooled = ", pooled over the imputations by D1," if imputed else ""
         return (f"As the plan's check of the straight line, the primary model was also fit with a "
                 f"restricted cubic spline of `{column}` in its place ({rule}, "
                 f"{knot_sentence(column, knots or [], notes)}), and its Wald test that the "
-                f"nonlinear terms are zero{pooled} is reported beside the estimate, never "
-                f"replacing it.")
+                f"nonlinear terms are zero is reported beside the estimate, never replacing it.")
     return (f"As the plan's check of the curve, the primary model was also fit with `{column}` as "
             f"a straight line, its one coefficient reported beside the curve, never replacing it.")
 
@@ -3142,8 +3130,8 @@ def _register_contracts() -> None:
                              "Sound for a mass at zero", "Sound for a mass at zero",
                              "recommended", "recommended"),
             _contract_option("linear", "Straight line", "customary",
-                             "Sound when the relation is close to a line; proposed for the "
-                             "declared exposure, a restricted cubic spline its check",
+                             "Sound when the relation is close to a line; proposed for what you "
+                             "study, a restricted cubic spline its check",
                              "Sound when close to a line", "available", "available"),
             _contract_option("quintiles", "Quintiles, beside the spline",
                              "customary: the field's primary-analysis convention (Turner 2010)",
@@ -3204,7 +3192,9 @@ def _register_contracts() -> None:
                       "the declared exposure as a straight line under inference",
                       "the primary model refitted with a restricted cubic spline (k by Harrell's "
                       "rule) in its place, its Wald test that the nonlinear terms are zero and "
-                      "its curve reported beside the estimate, never replacing the line",
+                      "its curve reported beside the estimate, never replacing the line; refused, "
+                      "with its reason, under multiple imputation, whose copies are imputed for "
+                      "the line, not the spline",
                       purposes=("inference",), enforced_by=f"{me}:check_shape"),
             _relation("spline-checked-by-line", "implies", "the plan's check of the shape",
                       "the declared exposure as a restricted cubic spline under inference",
@@ -3306,7 +3296,8 @@ __all__ = [
     "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "SPLINE_MIN_KNOTS",
     "SPLINE_MIN_VALUES",
     "TREND_LABEL",
-    "BESIDE", "CHECK_KEPT", "CHECK_POINTS", "check_curve", "check_knots_rule", "check_methods",
+    "BESIDE", "CHECK_KEPT", "CHECK_POINTS", "check_curve", "check_imputed_refusal",
+    "check_knots_rule", "check_methods",
     "check_refused", "check_shape", "check_test", "line_check_caption", "spline_check_caption",
     "with_check_spline",
     "adjusted_forms", "boundaries_words", "category_names", "complete_spec", "current_forms",

@@ -456,6 +456,56 @@ def test_pressing_the_straight_line_records_the_form_and_the_curve_then_draws(tm
         (est, low, high), rel=1e-8)
 
 
+def test_the_straight_line_keeps_a_consumers_only_domain_and_whom_the_curve_is_about(tmp_path):
+    """The verifier's B1-V2, both ways. A spline of `fiber` among consumers only (a 25% mass at
+    zero, the domain an estimand change, STROBE-nut nut-14) refuses the curve with the straight
+    line among consumers as its way forward: pressed, `fiber` is a straight line with the domain
+    kept (on the branch before this repair the decision reset it to everyone, and the curve's
+    primary held non-consumers), its record sentence says the analysis is restricted to consumers,
+    and the curve's primary is statsmodels' straight-line fit (least squares with HC3) on the
+    consumers among the rows its rules keep, counted here from the table. On a plan about everyone
+    the exit carries no domain (:data:`STRAIGHT_FIBER`, the test above)."""
+    from turbotab.core.decisions import ExposureFormSpec
+    from turbotab.core.methods import exposure_form as forms
+
+    frame = cohort()
+    rng = np.random.default_rng(9)
+    frame.loc[rng.choice(len(frame), 200, replace=False), "fiber"] = 0.0
+    among = state(exposure_forms={"fiber": ExposureFormSpec(form="spline", knots=4, scale="raw",
+                                                            domain="consumers")},
+                  form_domains={"fiber": "consumers"})
+    refused = Run(frame, tmp_path / "spline", among).mattered()["refused"]
+    assert refused is not None and refused["exits"] == [{
+        "label": "Fit `fiber` as a straight line among consumers, as the plan restricts it, with "
+                 "a curve set in the plan as its check",
+        "decision": {"kind": "set_exposure_form", "column": "fiber", "form": "linear",
+                     "domain": "consumers"}}]
+    pressed = d.validate(refused["exits"][0]["decision"], {"state": among})
+    after = d.fold_onto(among, pressed)
+    assert (after.exposure_forms["fiber"].form, after.exposure_forms["fiber"].domain) == (
+        "linear", "consumers")
+    assert after.form_domains == {"fiber": "consumers"}
+    assert forms.domain_columns(after) == ["fiber"]
+    assert "; the analysis was restricted to consumers of `fiber` (`fiber` above 0)" in \
+        forms._sentence(pressed, among, {"state": among})
+    run = Run(frame, tmp_path / "line", after)
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    primary = next(s for s in art["curve"]["specs"]
+                   if s["key"] == "|".join(f"{c}={M.RECORDED}" for c in ORDER))
+    table = run.table
+    keep = rows_of(table, rules=(0, 1), columns=["glucose", "fiber", *ADJUSTED]) & (
+        table["fiber"] > 0).to_numpy()
+    part = table[keep]
+    fit = sm.OLS(part["glucose"].astype(float), ef.design_matrix(part, ["fiber", *ADJUSTED])).fit(
+        cov_type="HC3", use_t=True)
+    low, high = fit.conf_int(alpha=0.05).loc["fiber"]
+    assert primary["n"] == int(keep.sum()) < int(rows_of(
+        table, rules=(0, 1), columns=["glucose", "fiber", *ADJUSTED]).sum())
+    assert (primary["estimate"], primary["low"], primary["high"]) == pytest.approx(
+        (float(fit.params["fiber"]), float(low), float(high)), rel=1e-8)
+
+
 def test_a_one_column_form_on_the_exposure_is_refused_and_one_on_a_covariate_is_fitted_through(
         tmp_path):
     """V3 (PP2 C1 repair), both ways. One cut point declared on `fiber`, what the curve follows,

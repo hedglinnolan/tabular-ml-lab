@@ -218,8 +218,8 @@ class Sensitivity(_Model):
 
 class CheckTest(_Model):
     """The check's Wald test that the spline's nonlinear terms are zero (``rms::anova``'s
-    "Nonlinear" row): F on the table's df (HC3, cluster-robust, design-based), χ² on the model's
-    information, or D1 pooled over the imputations."""
+    "Nonlinear" row): F on the table's df (HC3, cluster-robust, design-based) or χ² on the model's
+    information."""
 
     statistic: float
     df_num: int
@@ -245,9 +245,10 @@ class FormCheck(_Model):
     the one kept, fixed with the form at the lock and never replacing it. With a straight line
     kept (``shape`` "spline"): the restricted cubic spline's ``knots`` and k by the ``rule``, its
     ``test`` that the nonlinear terms are zero, its ``terms`` and its curve (``points``, the
-    difference from ``reference``, the lowest knot). With a restricted cubic spline kept
-    (``shape`` "linear"): the straight line's one coefficient (``line``). ``refused``: why the
-    check could not be made."""
+    difference from ``reference``, the lowest knot); refused under multiple imputation, whose
+    copies were imputed for the line. With a restricted cubic spline kept (``shape`` "linear"):
+    the straight line's one coefficient (``line``). ``refused``: why the check could not be
+    made."""
 
     exposure: str
     column: str  # the model-matrix column the shape is of (`sugar`, `sugar_adj`)
@@ -1141,8 +1142,8 @@ class _Run:
         per_feature = bool(getattr(self.missing, "per_feature", False)) and supported
         drawn = None
         # The plan's check of the exposure's shape (``exposure_form.check_shape``): with a
-        # straight line kept, the primary's matrix with the spline's terms beside the line, in
-        # each copy, on knots placed once (:meth:`_check_setup`).
+        # straight line kept, the primary's matrix with the spline's terms beside the line, on
+        # every analyzed row; refused under multiple imputation (:meth:`_check_setup`).
         from turbotab.core.methods.exposure_form import check_shape
 
         shape = check_shape(self.state) if supported and not tests_only(family) else None
@@ -1220,8 +1221,7 @@ class _Run:
                         family, fitted, M[_c], self.y, matrix_table(family, M[_c], self.y, **kw),
                         kw), name, failures, pooled=imputed is not None))
             if shape == "spline":
-                self._check_copy(family, check, M, feats, kw, failures,
-                                 pooled=imputed is not None)
+                self._check_copy(family, check, M, feats, kw, failures)
             if k == 0:
                 from turbotab.core.methods.featurewise_mi import first_copy
 
@@ -1355,8 +1355,7 @@ class _Run:
                                                not_computed=f"Not computed: {exc}")]
             if shape is not None:
                 try:
-                    out.check = self._check(shape, check, primary, curve, straight, failures,
-                                            lineage.get("model_2"))
+                    out.check = self._check(shape, check, primary, curve, straight, failures)
                 except Exception as exc:  # noqa: BLE001
                     self._unless_cancelled()
                     out.check = self._check_refusal(shape, check, f"Not computed: {exc}")
@@ -1368,10 +1367,13 @@ class _Run:
         """What the check reads before any copy is fit: the exposure, the matrix column its line is
         (the column the form step would receive, ``exposure_form.formed_name``), and, with a
         straight line kept, k by Harrell's rule on the analyzed rows' outcome (its effective sample
-        size, as the form card reads it) and, under multiple imputation, the knots placed once on
-        the observed values as
-        the fit places a declared spline's (``missing.fixed_forms``). A model with no one curve
-        (a multinomial outcome; an ordinal one its family does not order) is refused here."""
+        size, as the form card reads it). Refused here: a model with no one curve (a multinomial
+        outcome; an ordinal one its family does not order), and a straight line's check under
+        multiple imputation (``imputed``, the plan's copies), whose copies were imputed for the
+        line: a spline under multiple imputation is imputed with it in the model
+        (``missing.imputation_plan``: SMC-FCS with the spline in the substantive model), and a
+        spline fitted on copies imputed for the line has its test of a bend biased toward none
+        (``exposure_form.check_imputed_refusal``)."""
         from turbotab.core.methods import exposure_form as ef
 
         exposure = str(ef.exposure_of(self.state))
@@ -1393,29 +1395,15 @@ class _Run:
                               "the line's bend is made.")
             return out
         if imputed is not None:
-            from turbotab.core.methods.missing import fixed_forms
-
-            spec = replace(self.spec, exposure_forms={exposure: {"form": "spline", "knots": k}})
-            try:
-                placed = fixed_forms(spec, self.frame[list(self.spec.inputs)])
-            except Exception as exc:  # noqa: BLE001 - said in the check, never silent
-                out["refused"] = str(exc)
-                return out
-            found = placed.get(out["column"])
-            if found is None or not found.get("knots"):
-                out["refused"] = (f"`{out['column']}` has no knots placed on its observed values.")
-                return out
-            out["knots"] = [float(v) for v in found["knots"]]
-            out["notes"] = list(found.get("notes") or [])
+            out["refused"] = ef.check_imputed_refusal(getattr(imputed, "method", None))
         return out
 
     def _check_copy(self, family: Any, check: dict[str, Any], M: pd.DataFrame,
-                    feats: Sequence[str], kw: Mapping[str, Any], failures: dict[str, str], *,
-                    pooled: bool) -> None:
-        """One copy's check of a straight line: the primary's matrix ``M`` with the spline's
-        terms beside the line (``exposure_form.with_check_spline``), its table told they are
-        studied; the knots placed on this copy's values where they were not placed once (outside
-        multiple imputation, the one copy is every analyzed row)."""
+                    feats: Sequence[str], kw: Mapping[str, Any], failures: dict[str, str]) -> None:
+        """The check of a straight line on the one copy, every analyzed row (multiple imputation
+        refuses it, :meth:`_check_setup`): the primary's matrix ``M`` with the spline's terms
+        beside the line (``exposure_form.with_check_spline``) at knots placed on its values, its
+        table told they are studied."""
         from turbotab.core.methods import exposure_form as ef
 
         if check.get("refused") is not None:
@@ -1425,21 +1413,19 @@ class _Run:
             check["refused"] = (f"`{check['exposure']}` does not enter the primary model as one "
                                 f"straight-line column here, so no spline can take its place.")
             return
-        if check["knots"] is None:
-            try:
-                knots, notes = ef.rcs_knots(M[column].to_numpy(dtype=float, na_value=np.nan),
-                                            int(check["k"]), column=column, rows=len(M))
-            except Exception as exc:  # noqa: BLE001 - the spline's own refusal, said in the check
-                check["refused"] = str(exc)
-                return
-            check["knots"], check["notes"] = [float(v) for v in knots], list(notes)
+        try:
+            knots, notes = ef.rcs_knots(M[column].to_numpy(dtype=float, na_value=np.nan),
+                                        int(check["k"]), column=column, rows=len(M))
+        except Exception as exc:  # noqa: BLE001 - the spline's own refusal, said in the check
+            check["refused"] = str(exc)
+            return
+        check["knots"], check["notes"] = [float(v) for v in knots], list(notes)
         matrix, names = ef.with_check_spline(M, column, check["knots"])
         check["names"] = names
         moved = {**kw, "features": names,
                  "study": list(dict.fromkeys([*(kw.get("study") or []), *names]))}
         check["tables"].append(self._table(
-            lambda: matrix_table(family, matrix, self.y, **moved), "check", failures,
-            pooled=pooled))
+            lambda: matrix_table(family, matrix, self.y, **moved), "check", failures))
 
     def _check_refusal(self, shape: str, check: Mapping[str, Any], reason: str) -> FormCheck:
         from turbotab.core.methods import exposure_form as ef
@@ -1454,15 +1440,14 @@ class _Run:
                          rule=check.get("rule"))
 
     def _check(self, shape: str, check: Mapping[str, Any], primary: SequenceFit | None,
-               curve: tuple[str, list[str]] | None, straight: Any, failures: Mapping[str, str],
-               sources: Mapping[str, Any] | None) -> FormCheck:
+               curve: tuple[str, list[str]] | None, straight: Any,
+               failures: Mapping[str, str]) -> FormCheck:
         """The plan's check, reported beside Model 2: with a restricted cubic spline kept, the
         straight line's one coefficient (``straight``, the same model with the spline's nonlinear
-        terms left out, as the sensitivity analysis reads it); with a straight line kept, the
-        spline's test, terms and curve from each copy's check table (pooled by Rubin's rules and
-        D1 under multiple imputation), or why it could not be made."""
+        terms left out, as the sensitivity analysis reads it, pooled like it under multiple
+        imputation); with a straight line kept, the spline's test, terms and curve from its one
+        check table, or why it could not be made."""
         from turbotab.core.methods import exposure_form as ef
-        from turbotab.core.stages.modeling import _design_df
 
         exposure, column = str(check["exposure"]), str(check["column"])
         if shape == "linear":
@@ -1484,36 +1469,32 @@ class _Run:
         if check.get("refused") is not None:
             return self._check_refusal(shape, check, str(check["refused"]))
         tables = list(check.get("tables") or [])
-        if not tables or any(t is None for t in tables):
+        if len(tables) != 1 or tables[0] is None:
             return self._check_refusal(shape, check, failures.get("check")
                                        or "its refit could not be fit.")
-        refused = next((t.info.get("refused") for t in tables if t.info.get("refused")), None)
-        if refused:
-            return self._check_refusal(shape, check, str(refused))
+        table = tables[0]
+        if table.info.get("refused"):
+            return self._check_refusal(shape, check, str(table.info["refused"]))
         names = list(check["names"])
-        test = ef.check_test(tables, names, df_com=_design_df(tables[0]))
+        test = ef.check_test(table, names)
         if test is None:
             return self._check_refusal(
                 shape, check, f"its Wald test of the nonlinear terms needs the refit's covariance, "
-                              f"which this table ({tables[0].info.get('covariance')}) does not "
+                              f"which this table ({table.info.get('covariance')}) does not "
                               f"give.")
-        imputed = len(tables) > 1
-        table = self._pool(tables, self.missing, self.spec, sources)
         terms = [Coefficient(**{k: v for k, v in r.items() if k in Coefficient.model_fields})
-                 for n in names for r in (table.rows if table is not None else [])
-                 if r["feature"] == n]
+                 for n in names for r in table.rows if r["feature"] == n]
         slope = next((r.estimate for r in (primary.effects or [] if primary else [])
                       if r.feature == column and r.estimate is not None), None)
-        drawn = ef.check_curve(tables, names, check["knots"], slope)
+        drawn = ef.check_curve(table, names, check["knots"], slope)
         reference, points = drawn if drawn is not None else (None, [])
         return FormCheck(
             exposure=exposure, column=column, kept="linear", shape="spline",
             caption=ef.spline_check_caption(column, check["knots"], check["notes"],
-                                            str(check["rule"]), test, imputed=imputed,
+                                            str(check["rule"]), test,
                                             survey=self._design() is not None),
             methods=ef.check_methods(column, "spline", rule=str(check["rule"]),
-                                     knots=check["knots"], notes=check["notes"],
-                                     imputed=imputed),
+                                     knots=check["knots"], notes=check["notes"]),
             rule=str(check["rule"]), knots=list(check["knots"]),
             test=CheckTest(**{k: test[k] for k in CheckTest.model_fields}), terms=terms,
             reference=reference, points=[CheckPoint(**p) for p in points])
