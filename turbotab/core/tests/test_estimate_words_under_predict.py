@@ -346,15 +346,18 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     served reasons came to hold under either goal and the lens contradiction to keep from the
     left-censoring finding, the effects when a joint model's family words came to say what each
     model holds, and the proposals when multiple imputation's label and sound and the survey
-    card's four-year weight came to read the plan."""
+    card's four-year weight came to read the plan; and, with batch 1's straight-line package, the
+    proposals when the exposure-form options came to lead with the straight line, the effects when
+    each family came to serve the plan's check of the exposure's shape, and the mattered stage
+    when a curve exposure's refusal came to offer the straight line."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     assert (versions["design"], versions["fit"], versions["findings"]) == (36, 44, 26)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (18, 28, 24, 18, 15)
-    assert (versions["modification"], versions["mattered"]) == (10, 5)
-    assert versions["proposals"] == 25
+            versions["secondary"], versions["scales"]) == (19, 28, 24, 18, 15)
+    assert (versions["modification"], versions["mattered"]) == (10, 6)
+    assert versions["proposals"] == 26
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:

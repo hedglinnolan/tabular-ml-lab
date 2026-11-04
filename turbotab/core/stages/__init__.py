@@ -512,7 +512,11 @@ def build_graph() -> Graph:
             # only where the primary model holds a column declared it (``missing.mi_sound``); the
             # survey card offers the four-year weight only where 1999–2000 is pooled
             # (``survey.offered``).
-            Stage("proposals", 25, ("working", "roles"),
+            # proposals 26 (batch 1's straight-line package, 2026-11-04): under inference the
+            # exposure-form options lead with the straight line, recommended, the spline offered
+            # beside it and each saying the other shape is set in the plan as its check
+            # (``exposure_form.options``).
+            Stage("proposals", 26, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", "modifications", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does",
@@ -1163,7 +1167,12 @@ def build_graph() -> Graph:
             # the members it fits together after the covariates, its unadjusted model is "Without
             # covariates" with a note, and its methods and multiplicity sentences say the members
             # are fit together, each adjusted for the others (``effects._family_block``).
-            Stage("effects", 18, ("working", "design", "split", "target_info"),
+            # effects 19 (batch 1's straight-line package, 2026-11-04): beside Model 2 each family
+            # serves the plan's check of the exposure's shape (``EffectsFamily.check``: a straight
+            # line's restricted cubic spline refit and its test of the nonlinear terms, refused
+            # under multiple imputation, or a spline's straight line), and its methods sentence
+            # says so (``exposure_form.check_shape``).
+            Stage("effects", 19, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",
@@ -1215,7 +1224,11 @@ def build_graph() -> Graph:
             # exposure and each adjusted continuous confounder on its final scale, k by Harrell's
             # rule on the effective sample size, a mass at zero, the options for each role. Of the
             # form answers it reads only the consumers-only domain (the rows it is read on).
-            Stage("forms", 1, ("working", "cohort", "target_info"), FORMS_READS, forms_stage,
+            # forms 2 (batch 1's straight-line package, 2026-11-04): under inference the declared
+            # exposure's proposal and one-tap answer are a straight line, its options lead with
+            # it, and the beside sentence says the other shape is set in the plan as its check
+            # (``exposure_form.proposal``, ``options``, ``beside_words``).
+            Stage("forms", 2, ("working", "cohort", "target_info"), FORMS_READS, forms_stage,
                   heavy=True, requires=("purpose",),
                   label="Reading which continuous terms take a declared form"),
             # modification: each declared effect modifier or second exposure, against a single
@@ -1272,7 +1285,10 @@ def build_graph() -> Graph:
             # as that plan, through ``sensitivity.fit_on_rows``, not refused.
             # mattered 5 (PP2's fifth pass): as sensitivity 28 above, a specification's plan that
             # holds multiple imputation drawing its copies by the same chained equations.
-            Stage("mattered", 5, ("working", "cohort", "split", "target_info", "design", "fit"),
+            # mattered 6 (batch 1's straight-line package, 2026-11-04): the refusal of an exposure
+            # the plan fits by a declared curve or cut offers the straight line as its way forward,
+            # among consumers where the plan restricts it (``mattered.straight_line_exit``).
+            Stage("mattered", 6, ("working", "cohort", "split", "target_info", "design", "fit"),
                   MATTERED_READS, mattered_stage, heavy=True, requires=MATTERED_REQUIRES,
                   label="Refitting the estimate with each recorded choice changed"),
         ]

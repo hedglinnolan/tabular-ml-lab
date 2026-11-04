@@ -343,9 +343,11 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     copies changed; and one more each at PP2's second pass, when every censored draw came from a
     censored-normal fit returned only at a certified maximum; and one more each at PP2's fifth
     pass, when a one-level 0/1 column came to be drawn as its level and a number's draw with no
-    Cholesky factor from its eigendecomposition, or refused in words naming its column."""
+    Cholesky factor from its eigendecomposition, or refused in words naming its column; and the
+    effects' one more with batch 1's straight-line package, when it came to serve the plan's check
+    of the exposure's shape."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (44, 28, 24, 18, 15, 18, 10)
+    assert tuple(versions[s] for s in stages) == (44, 28, 24, 18, 15, 19, 10)
