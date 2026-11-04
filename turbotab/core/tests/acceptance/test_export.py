@@ -8,7 +8,8 @@ fixture's declared truth (``truths.FIXTURE_TRUTHS``), never a constant:
 * **inference** — fasting glucose on sugar, a substitution at fixed total energy (the standard
   model), the adjustment set by the disjunctive cause criterion, a linear model, complete cases, an
   energy screen (500–5,000 kcal) that replaced a first answer keeping every row; the plan locked
-  when Table 2 is first shown; Model 1 declared after that, so the methods keep it, marked;
+  when Table 2 is first shown, the open noticings' triage confirmed first as the press's way
+  forward offers it; Model 1 declared after that, so the methods keep it, marked;
 * **prediction** — the same outcome, a linear model and an elastic net compared with nothing held
   out, so the result is the selection-corrected estimate (BBC-CV); the role readings confirmed when
   the models question asks, after the missing-values answer, which leaves that answer's sentence
@@ -368,10 +369,12 @@ def _said_for(entry: dict[str, Any], sentences: dict[str, str]) -> str:
 @needs_nhanes
 def test_1_the_methods_are_the_records_sentences_by_strobe_section(inference):
     """The record's sentences in force, by STROBE section; the first exclusions answer folded out;
-    Model 1, declared after the estimates were seen, kept in a section of its own after the lock;
-    every sentence verbatim from the methods route, or single confirmations alike but for their
-    column folded into one sentence that names each of their records; never "prespecified" or
-    "preregistered"."""
+    the triage of the open noticings, confirmed before the lock (Fit's way forward "Keep the
+    recommended dispositions", as a person pressing Confirm all takes it), a recorded decision said
+    under "Other decisions" in the words its lines give, as under Predict; Model 1, declared after
+    the estimates were seen, kept in a section of its own after the lock; every sentence verbatim
+    from the methods route, or single confirmations alike but for their column folded into one
+    sentence that names each of their records; never "prespecified" or "preregistered"."""
     doc = json.loads(inference["files"]["methods.json"])
     route = {line["record_id"]: line for line in inference["methods_route"]["lines"]}
     records = inference["view"]["decisions"]
@@ -387,7 +390,7 @@ def test_1_the_methods_are_the_records_sentences_by_strobe_section(inference):
     keys = [s["key"] for s in doc["sections"]]
     # (wave 2b, FORM) the form question's answer says how each continuous term enters (STROBE 11)
     assert keys == ["design", "participants", "variables", "measurement", "quantitative",
-                    "statistical", "after", "reproducibility"]
+                    "statistical", "other", "after", "reproducibility"]
     by = {s["key"]: s for s in doc["sections"]}
     kinds = {k: [e["kind"] for e in by[k]["entries"]] for k in keys}
     assert kinds["quantitative"] == ["set_forms"]
@@ -402,11 +405,26 @@ def test_1_the_methods_are_the_records_sentences_by_strobe_section(inference):
     assert after["kind"] == "set_model_sequence" and after["after_estimates"] is True
     assert after["text"].startswith("After the estimates were seen, ")
     assert by["after"]["title"] == "Decisions made after the estimates were seen"
+    lock = next(r for r in records if r["decision"]["kind"] == "lock_plan")
+    # The triage confirmed before the lock: its sentence counts the record's own lines by
+    # disposition, written out here (``sweep.confirm_sentence``'s words).
+    [triaged] = by["other"]["entries"]
+    assert by["other"]["title"] == "Other decisions"
+    confirm = next(r for r in records if r["id"] == triaged["record_id"])
+    assert triaged["kind"] == confirm["decision"]["kind"] == "confirm_sweep"
+    assert confirm["decision"]["sweep"] == "noticings" and confirm["decision"]["lines"]
+    assert triaged["after_estimates"] is False and confirm["seq"] < lock["seq"]
+    counts = {v: sum(line["value"] == v for line in confirm["decision"]["lines"])
+              for v in ("could_bias", "no_change", "act_on_it")}
+    words = [(counts["could_bias"], "left as a limitation"),
+             (counts["no_change"], "noted in the supplement as changing no number here"),
+             (counts["act_on_it"], "to act on")]
+    assert triaged["text"] == ("The open noticings were triaged in Models: "
+                               + "; ".join(f"{n} {w}" for n, w in words if n) + ".")
     text = inference["files"]["methods.md"].decode()
     assert text.index("## Study design (STROBE 4)") < text.index("## Variables (STROBE 7)") \
-        < text.index("## Statistical methods (STROBE 12)") \
+        < text.index("## Statistical methods (STROBE 12)") < text.index("## Other decisions") \
         < text.index("## Decisions made after the estimates were seen")
-    lock = next(r for r in records if r["decision"]["kind"] == "lock_plan")
     assert text.index(lock["sentence"]) < text.index(after["text"])
     for name in ("methods.md", "methods.txt", "methods.json", "analysis_plan.json", "README.md"):
         lowered = inference["files"][name].decode().lower()

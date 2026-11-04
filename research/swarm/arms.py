@@ -34,6 +34,10 @@ forward the refusal offers (the first, or one drawn); where an answer is refused
 another option (the next offered, or another drawn), never another of the card's answers. Where
 none is left, an answer fails, or a question waits on stages that failed, the walk stops with what
 the engine said, classed refused or failed (:class:`Met`), which the sweep classes its refit by.
+Under Estimate, where the open noticings' triage before the lock holds a press of Fit, either path,
+and the sweep's every press (:meth:`Local.fit`), takes the refusal's way forward "Keep the
+recommended dispositions" (the triage's Confirm all, :func:`kept_dispositions`), as a person
+pressing it does, and presses Fit again; a blocking noticing's refusal is the answer, as it came.
 Under Predict, what the fit raises is answered and Fit pressed again before the held-out rows open,
 so they open on a current fit. A press of Fit that comes back with the fit still computing, its
 wait run out, is not pressed again: the arm waits that fit out with reads alone, as the press
@@ -194,6 +198,22 @@ def ran_out(fit: Said) -> bool:
     status = fit.payload.get("fit") if "pressed" in fit.payload else None
     return (fit.by == "driver" and fit.code == "fit_not_reached" and isinstance(status, Mapping)
             and computing(status))
+
+
+TRIAGE_OPEN = "triage_open"  # the server's refusal of a press the open noticings' triage holds
+
+
+def kept_dispositions(fit: Said) -> dict[str, Any] | None:
+    """Where a press of Fit (:class:`Said`) was refused because the open noticings' triage before
+    the lock is not confirmed (under Estimate and Describe, the server's :data:`TRIAGE_OPEN`), the
+    way forward it offers that records each noticing at its recommended disposition (its "Keep the
+    recommended dispositions": the triage's Confirm all, a ``confirm_sweep``), with the id the
+    driver gave it; else None, as where a blocking noticing holds the press, whose refusal offers
+    no such way: each blocking noticing is decided on its own, and the refusal is the answer."""
+    if fit.kind != "refused" or fit.by != "server" or fit.code != TRIAGE_OPEN:
+        return None
+    return next((w for w in fit.exits if w.get("id")
+                 and (w.get("decision") or {}).get("kind") == "confirm_sweep"), None)
 
 
 class Stuck(RuntimeError):
@@ -730,11 +750,16 @@ class Local:
         """Fit pressed and waited for, as the driver's ``fit`` presses it (no budget: the sweep's
         compute is its own), its status classed: fresh, refused by the engine in words, or failed
         with an error it did not type (``said.payload["fit"]``, the stage status; ``seconds``, the
-        wall time from the press)."""
+        wall time from the first press). Under Estimate and Describe a press the open noticings'
+        triage holds takes the refusal's way forward that records each noticing at its recommended
+        disposition (:func:`kept_dispositions`), as a person pressing the triage's Confirm all
+        does, and Fit is pressed again, once; where a blocking noticing holds it, the refusal is
+        the answer, as it came."""
         from research.swarm import driver
 
+        started = time.monotonic()
+
         def call() -> tuple[int, dict[str, Any]]:
-            started = time.monotonic()
             r = self.client.post(f"/projects/{self.pid}/fit")
             if r.status != 200:
                 return 1, driver.refused(r, self.run, "fit")
@@ -751,6 +776,13 @@ class Local:
 
         from research.swarm import options as opts
 
+        said = self._said(call)
+        way = kept_dispositions(said)
+        if way is None:
+            return said
+        took = self.answer([str(way["id"])], [], f"The fit's way forward, {way.get('label')}.")
+        if took.kind == "failed":
+            return took
         return self._said(call)
 
 
@@ -1211,12 +1243,32 @@ def _markers() -> dict[str, str]:
 MARKER_OF = _markers()
 
 
+def triage_through(session: Any, policy: Default, steps: list[Step]) -> Said:
+    """Fit pressed (the session's ``fit``); under Estimate and Describe, where the open noticings'
+    triage holds the press, the refusal's way forward that records each noticing at its
+    recommended disposition (:func:`kept_dispositions`) taken, as a person pressing the triage's
+    Confirm all does, whichever way the policy picks others, and Fit pressed again, once. A
+    blocking noticing's refusal, and any other, is the answer, as it came."""
+    said = session.fit()
+    way = kept_dispositions(said)
+    if way is None:
+        return said
+    steps.append(Step("fit", "fit", list(said.exits), [str(way["id"])], [],
+                      "the open noticings' triage the fit waits for", said.kind, said.code))
+    took = session.answer([str(way["id"])], [],
+                          f"{policy.name}: the fit's way forward, {way.get('label')}.")
+    if took.kind == "failed":
+        return took
+    return session.fit()
+
+
 def fit_through(session: Any, policy: Default, steps: list[Step], *, tries: int = 3) -> Said:
     """Fit pressed (the session's ``fit``: a run of the driver's own waits out a fit still
-    computing, to its time budget, :meth:`Driven.fit`); a fit the engine refused in words takes the
-    way forward the policy picks and the walk goes on, up to ``tries`` presses; the last press's
+    computing, to its time budget, :meth:`Driven.fit`), through the open noticings' triage where
+    it holds the press (:func:`triage_through`); a fit the engine refused in words takes the way
+    forward the policy picks and the walk goes on, up to ``tries`` presses; the last press's
     answer."""
-    said = session.fit()
+    said = triage_through(session, policy, steps)
     for _ in range(tries - 1):
         if said.kind != "refused" or said.by != "engine":
             return said
@@ -1229,7 +1281,7 @@ def fit_through(session: Any, policy: Default, steps: list[Step], *, tries: int 
         if took.kind == "failed":
             return took
         walk(session, policy, steps=steps)
-        said = session.fit()
+        said = triage_through(session, policy, steps)
     return said
 
 

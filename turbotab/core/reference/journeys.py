@@ -671,8 +671,9 @@ def refusals_in(artifact: Any) -> list[tuple[str, list[dict[str, Any]]]]:
 
 def export(run: Run) -> Any:
     """The bundle, taking the export's own ways forward: under inference Fit pressed, which locks
-    the plan (SIZING P0.8); under prediction Fit pressed, and the final model declared and the
-    held-out rows opened (its first exit)."""
+    the plan (SIZING P0.8), the open noticings' triage first kept as recommended where it holds
+    the press; under prediction Fit pressed, and the final model declared and the held-out rows
+    opened (its first exit)."""
     d = run.drive
     url = f"/api/projects/{run.pid}/export"
     r = d.c.get(url)
@@ -686,9 +687,18 @@ def export(run: Run) -> Any:
                             and any("Press Fit" in str(e.get("label")) for e in
                                     error.get("exits") or [])):
             # Pressed again after a way forward a refused result offered: that change to the plan
-            # withdrew the lock no estimate had been shown under (calm/FOUNDATION §7).
+            # withdrew the lock no estimate had been shown under (calm/FOUNDATION §7). Where the
+            # open noticings' triage holds the press, its way forward "Keep the recommended
+            # dispositions" is taken first, as a person pressing Confirm all does
+            # (``server_drive.fit_response``); a blocking noticing's refusal stands.
+            from turbotab.core.tests.acceptance.server_drive import fit_response
+
+            def taking(way: dict[str, Any]) -> None:
+                run.source = f"the way forward of Fit's refusal, “{way['label']}”"
+                run.note(f"Fit waited for the open noticings' triage: took “{way['label']}”")
+
             presses += 1
-            taken = d.c.post(f"/api/projects/{run.pid}/fit")
+            taken = fit_response(d.c, run.pid, taking=taking)
             run.note(f"the export waited for Fit: pressed ({taken.status_code})")
             if taken.status_code == 200 and d.view()["state"].get("purpose") == "inference":
                 from turbotab.core.estimand import ESTIMATE_STAGES

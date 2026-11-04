@@ -32,19 +32,23 @@ def press_fit(client: Any, pid: str) -> bool:
     return True
 
 
-def fit_response(client: Any, pid: str) -> Any:
+def fit_response(client: Any, pid: str,
+                 taking: Callable[[dict[str, Any]], None] | None = None) -> Any:
     """The response to a press of Fit. Under Estimate and Describe the press waits for the open
     noticings' triage (``triage_open``): the refusal's way forward "Keep the recommended
     dispositions" (the triage's "Confirm all", each noticing as recommended) is taken, as the user
-    pressing it does, and Fit is pressed again. A blocking noticing has no such way forward: it is
-    decided on its own, and the refusal is returned."""
+    pressing it does, and Fit is pressed again; ``taking`` is told that way forward (its label and
+    decision) before it is taken. A blocking noticing has no such way forward: it is decided on its
+    own, and the refusal is returned."""
     r = client.post(f"/api/projects/{pid}/fit")
     if r.status_code != 409 or r.json()["error"]["code"] != "triage_open":
         return r
-    keep = next((e["decision"] for e in r.json()["error"]["exits"] if e.get("decision")), None)
-    if keep is None:
+    way = next((e for e in r.json()["error"]["exits"] if e.get("decision")), None)
+    if way is None:
         return r
-    confirmed = client.post(f"/api/projects/{pid}/decisions", json=keep)
+    if taking is not None:
+        taking(way)
+    confirmed = client.post(f"/api/projects/{pid}/decisions", json=way["decision"])
     assert confirmed.status_code == 200, confirmed.text[:600]
     return client.post(f"/api/projects/{pid}/fit")
 

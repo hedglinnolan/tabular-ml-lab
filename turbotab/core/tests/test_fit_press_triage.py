@@ -15,6 +15,10 @@ recommended).
 * It names each noticing where no summary can be misread: one after a colon, several each in a
   numbered sentence of its own, with its recommended disposition in a sentence after it, so a
   summary's own semicolon and a label's own parentheses stay inside their noticing.
+* The reference journeys' export, pressing Fit again where it waits for the lock, takes its way
+  forward "Keep the recommended dispositions" as a person pressing Confirm all does, recorded as
+  that way forward's, and presses again; a blocking noticing's refusal stands, nothing posted. The
+  server there is one written here that serves the refusal built from a triage written here.
 """
 from __future__ import annotations
 
@@ -128,3 +132,83 @@ def test_once_the_gate_has_passed_the_triage_holds_nothing():
     """The plan fixed (a press after the lock): the triage is read, no longer confirmed."""
     assert fit_press.triage_refusal(triage(item("a", "A"), item("b", "B", blocker=True),
                                            passed=True)) is None
+
+
+# ── the reference journeys' export, pressing Fit again ───────────────────────
+
+PLAN_OPEN = {"error": {"code": "plan_open", "message": "The analysis plan is still open.",
+                       "exits": [{"label": "Press Fit on the analysis flowchart; it locks the plan",
+                                  "decision": None}]}}
+
+
+class Answer:
+    def __init__(self, status: int, body: dict):
+        self.status_code, self.body = status, body
+        self.text = str(body)
+
+    def json(self) -> dict:
+        return self.body
+
+
+class Served:
+    """The server as the export's re-press meets it (``journeys.export``): the export refused while
+    the plan is open; Fit refused with ``held`` (the server's refusal while the triage is
+    unconfirmed) until the triage is recorded, then taken, which locks the plan; each post kept."""
+
+    def __init__(self, held: Refusal):
+        self.held, self.posts, self.locked, self.triaged = held, [], False, False
+
+    def get(self, url: str, **kw):
+        assert url.endswith("/export"), url
+        return Answer(200, {}) if self.locked else Answer(409, PLAN_OPEN)
+
+    def post(self, url: str, json: dict | None = None, **kw):
+        self.posts.append((url.rsplit("/", 1)[1], json))
+        if url.endswith("/decisions"):
+            self.triaged = True
+            return Answer(200, {"decisions": [{"seq": 30, "sentence": "Triaged.",
+                                               "decision": json}]})
+        if not self.triaged:
+            return Answer(409, self.held.to_dict())
+        self.locked = True
+        return Answer(200, {"locked": True, "pressed": True})
+
+
+def exported(held: Refusal):
+    """``journeys.export`` on :class:`Served` with ``held``: what it returned, the server, and the
+    run (its log of the decisions posted, each with where its answer came from, and its notes)."""
+    from types import SimpleNamespace
+
+    from turbotab.core.reference import journeys as J
+
+    server = Served(held)
+    run = J.Run(SimpleNamespace(name="stub"))
+    run.pid, run.source = "p1", "the export"
+    run.client = J.Recording(server, run)
+    run.drive = SimpleNamespace(c=run.client,
+                                view=lambda: {"state": {"purpose": "inference"}, "stages": {}})
+    return J.export(run), server, run
+
+
+def test_the_journeys_export_presses_fit_again_through_the_triage_s_keep_the_recommended():
+    """V2 (journeys.py's export re-press): Fit pressed again where the export waits for the lock is
+    refused while the triage is unconfirmed; the refusal's way forward "Keep the recommended
+    dispositions" is taken, as a person pressing Confirm all does, recorded as that way forward's,
+    and Fit pressed again: the plan locks and the bundle is made."""
+    held = fit_press.triage_refusal(triage(item("binary_text__gender", "`gender` is two-level text")))
+    r, server, run = exported(held)
+    assert r.status_code == 200
+    assert server.posts == [("fit", None), ("decisions", CONFIRM), ("fit", None)]
+    assert [(e["kind"], e["status"], e["source"]) for e in run.log] == [
+        ("confirm_sweep", 200, "the way forward of Fit's refusal, “Keep the recommended "
+                               "dispositions”")]
+
+
+def test_the_journeys_export_leaves_a_blocking_noticing_s_refusal_as_it_is():
+    """Both ways: a blocking noticing's refusal offers no way that records the triage, so nothing
+    is posted; Fit is pressed again as before (twice at most) and the export's refusal stands."""
+    held = fit_press.triage_refusal(triage(item("outcome_constant", "`glucose` takes one value",
+                                                blocker=True)))
+    r, server, run = exported(held)
+    assert r.status_code == 409 and r.json() == PLAN_OPEN
+    assert server.posts == [("fit", None), ("fit", None)] and run.log == []
