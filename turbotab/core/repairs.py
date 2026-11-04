@@ -308,8 +308,16 @@ def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferConte
     # Both repairs act on every row, the pooled-QC rows (:attr:`OfferContext.reference_rows`)
     # too, so where those hold any impossible value each consequence says the non-QC and the QC
     # rows' counts apart, as the card's detail does (``detectors._superseding``) and in the
-    # shorter wording that keeps both counts within CONSEQUENCE_WORDS: the columns are named where
-    # that fits and counted where their names would run past it (a name of several words).
+    # shorter wording that keeps both counts within CONSEQUENCE_WORDS. With or without those rows,
+    # each consequence (marking the columns unusable too) names its columns where that fits and
+    # counts them where their names would run past it (names of several words: `Glucose (mg/dL)`
+    # and `Systolic BP` ran to 17).
+    from turbotab.core.voice import words
+
+    def within(say: Callable[[str], str], where: str, otherwise: str) -> str:
+        said = say(where)
+        return said if words(said) <= CONSEQUENCE_WORDS else say(otherwise)
+
     qc = np.zeros(len(oc.frame), dtype=bool)
     qc[sorted(oc.reference_rows)] = True
     qc_values = int(sum(int((m.to_numpy() & qc).sum()) for m in outside.values()))
@@ -317,26 +325,23 @@ def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferConte
     n_abnormal = int(sum(int(e.get("n_abnormal_but_possible") or 0) for e in entries))
     params = {"bands": bands, **({"units": units} if units else {})}
     named = _names(cols)
+    counted = f"{_count(len(cols))} {_plural(len(cols), 'column')}"
     real = (f"{_count(n_abnormal)} abnormal but real ones stay" if n_abnormal
             else "every possible value stays")
-    holding = (f"an impossible {named.replace(' and ', ' or ')} value" if len(cols) <= 2
-               else f"an impossible value in {_count(len(cols))} columns")
-    blanked = (f"{_count(n_values)} impossible {_plural(n_values, 'value')} in {named} become "
-               f"blank; {real}.")
-    leaving = (f"{_count(n_rows)} {_plural(n_rows, 'row')} holding {holding} leave the analysis "
-               f"before the seal.")
+    holding = f"an impossible value in {counted}"
+    blanked = within(lambda where: (f"{_count(n_values)} impossible {_plural(n_values, 'value')} "
+                                    f"in {where} become blank; {real}."), named, counted)
+    leaving = within(lambda holds: (f"{_count(n_rows)} {_plural(n_rows, 'row')} holding {holds} "
+                                    f"leave the analysis before the seal."),
+                     f"an impossible {named.replace(' and ', ' or ')} value" if len(cols) <= 2
+                     else holding, holding)
     if qc_values:
-        from turbotab.core.voice import words
-
         def blank_in(where: str) -> str:
             return (f"{_apart(n_values - qc_values, qc_values)} impossible "
                     f"{_plural(n_values, 'value')} in {where} "
                     f"{_plural(n_values, 'becomes', 'become')} blank; the rest stay.")
 
-        counted = f"{_count(len(cols))} {_plural(len(cols), 'column')}"
-        blanked = blank_in(named if len(cols) <= 2 else counted)
-        if words(blanked) > CONSEQUENCE_WORDS:
-            blanked = blank_in(counted)
+        blanked = within(blank_in, named if len(cols) <= 2 else counted, counted)
         leaving = (f"{_apart(n_rows - qc_rows, qc_rows)} {_plural(n_rows, 'row')} holding an "
                    f"impossible value {_plural(n_rows, 'leaves', 'leave')} the analysis before the "
                    f"seal.")
@@ -357,8 +362,9 @@ def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferConte
         one = len(usable) == 1
         options.append(_option(
             finding, "unusable", f"Mark {_plural(len(usable), 'column')} unusable",
-            f"{_names(usable)} {'leaves' if one else 'leave'} the predictors; "
-            f"{'its' if one else 'their'} values stay in the table, unused.",
+            within(lambda which: (f"{which} {'leaves' if one else 'leave'} the predictors; "
+                                  f"{'its' if one else 'their'} values stay in the table, unused."),
+                   _names(usable), f"{_count(len(usable))} {_plural(len(usable), 'column')}"),
             f"{_names(usable)} {'was' if one else 'were'} set aside as unusable for holding "
             f"physiologically impossible values.",
             "columns", kept))

@@ -1755,6 +1755,83 @@ def test_beside_the_qc_rows_set_to_missing_counts_its_columns_where_their_names_
     assert all(len(s.split()) <= repairs.CONSEQUENCE_WORDS for s in said.values()), said
 
 
+#: name -> the :data:`LABS` columns, each renamed as written, and whether the named set-to-missing,
+#: exclude-rows and mark-unusable consequences fit CONSEQUENCE_WORDS (16), by counting their words.
+#: With the abnormal-but-real tail, set to missing and exclude rows run to 12 + k on one name of k
+#: words and to 13 + k1 + k2 on two of k1 and k2; on three names, the first of k words, set to
+#: missing runs to 15 + k and exclude rows counts three columns already, in 15. Mark unusable runs
+#: to 10 + k on one name, 11 + k1 + k2 on two and 13 + k on three.
+NAMED_NO_QC = {
+    "one_name_of_four_words": ({"glucose": "Glucose (mg / dL)"}, (True, True, True)),
+    "one_name_of_five_words": ({"glucose": "Glucose ( mg / dL)"}, (False, False, True)),
+    "two_names_one_of_two_words": ({"glucose": "Glucose (mg/dL)", "triglyceride": "triglyceride"},
+                                   (True, True, True)),
+    "two_names_of_two_words": ({"glucose": "Glucose (mg/dL)", "sbp": "Systolic BP"},
+                               (False, False, True)),
+    "two_names_one_of_four_words": ({"glucose": "Glucose (mg / dL)", "sbp": "sbp"},
+                                    (False, False, True)),
+    "two_names_one_of_five_words": ({"glucose": "Glucose ( mg / dL)", "sbp": "sbp"},
+                                    (False, False, False)),
+    "three_names_of_one_word": ({"glucose": "glucose", "triglyceride": "triglyceride",
+                                 "sbp": "sbp"}, (True, True, True)),
+    "three_names_first_of_two_words": ({"glucose": "fasting glucose",
+                                        "triglyceride": "triglyceride", "sbp": "sbp"},
+                                       (False, True, True)),
+}
+
+
+@pytest.mark.parametrize("name", list(NAMED_NO_QC))
+def test_without_the_qc_rows_each_consequence_counts_its_columns_where_their_names_overrun(
+        tmp_path, name):
+    """Without the served QC rows (the clinical lens alone) the set-to-missing, exclude-rows and
+    mark-unusable consequences name their columns where that fits CONSEQUENCE_WORDS and count them
+    where the names would run past it, as set to missing does beside the QC rows: one name of four
+    words, two names of which one has two words, or three names of one word fit; one name of five
+    words, two names of two words (`Glucose (mg/dL)` and `Systolic BP`), or three names the first
+    of two words would run to 17 or more, so the sentence says `1` column, `2` columns or `3`
+    columns; mark unusable overruns only on two names of which one has five words. Every row is
+    read, the QC rows' 0s among them; the values outside each column's band, the rows holding any
+    and the abnormal-but-real values are pandas' on the :data:`LABS` by construction, and words are
+    counted as the budget counts them. Before this each named its columns and ran past the budget,
+    to 17 words on two names of two."""
+    names, (blank_fits, leave_fits, unusable_fits) = NAMED_NO_QC[name]
+    frame = labs_with_qc(list(names)).rename(columns=names)
+    df = read_back(tmp_path, frame)
+    out = {names[c]: ((df[names[c]] < LABS[c][0][0]) | (df[names[c]] > LABS[c][0][1])).to_numpy()
+           for c in names}
+    n_values = sum(int(m.sum()) for m in out.values())
+    n_rows = int(np.any(np.column_stack(list(out.values())), axis=1).sum())
+    unusual = sum(len(LABS[c][3]) for c in names)
+    ticked = [f"`{c}`" for c in out]
+    k = len(out)
+    columns = f"`{k}` {'column' if k == 1 else 'columns'}"
+    shown = " and ".join(ticked) if k <= 2 else f"{ticked[0]} and {k - 1} more"
+    blank = (f"`{n_values}` impossible values in {{}} become blank; `{unusual}` abnormal but real "
+             f"ones stay.")
+    leave = f"`{n_rows}` rows holding {{}} leave the analysis before the seal."
+    unusable = ("{} leaves the predictors; its values stay in the table, unused." if k == 1
+                else "{} leave the predictors; their values stay in the table, unused.")
+    named = {"set_missing": blank.format(shown),
+             "exclude_rows": leave.format(f"an impossible {' or '.join(ticked)} value" if k <= 2
+                                          else f"an impossible value in {columns}"),
+             "unusable": unusable.format(shown)}
+    counted = {"set_missing": blank.format(columns),
+               "exclude_rows": leave.format(f"an impossible value in {columns}"),
+               "unusable": unusable.format(columns)}
+    fits = {key: len(said.split()) <= repairs.CONSEQUENCE_WORDS for key, said in named.items()}
+    assert fits == {"set_missing": blank_fits, "exclude_rows": leave_fits,
+                    "unusable": unusable_fits}
+    found = findings_of(tmp_path, frame, ["clinical"])
+    assert "pack::metabolomics::pooled_qc" not in found
+    f = found["pack::clinical::impossible_vs_extreme"]
+    assert f["affected_columns"] == list(out)
+    said = {o["key"]: o["consequence"] for o in f["repairs"]}
+    assert set(said) == set(named)
+    for key in named:
+        assert said[key] == (named[key] if fits[key] else counted[key]), said[key]
+    assert all(len(s.split()) <= repairs.CONSEQUENCE_WORDS for s in said.values()), said
+
+
 @pytest.mark.parametrize("form", ["kcal_a_day_qc", "kcal_two_days", "kj_qc", "kj"])
 def test_where_no_intake_read_is_out_of_range_and_some_are_blank_the_closing_counts_those_read(
         tmp_path, form):
