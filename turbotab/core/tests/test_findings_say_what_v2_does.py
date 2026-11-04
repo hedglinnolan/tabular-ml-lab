@@ -179,14 +179,18 @@ def no_order(tmp_path_factory) -> tuple[pd.DataFrame, dict]:
 
 
 def test_no_run_order_names_what_reads_an_order(no_order):
+    """The table has no pooled QC (its companion), so a run order lets the drift reading read it
+    and not QC-RLSC, which also needs at least five pooled QCs (pp2-why-audit round 2;
+    ``test_findings_hold_under_every_goal`` keeps the promise where five are found)."""
     frame, artifact = no_order
     why = _one(artifact, "pack::metabolomics::no_run_order")["why_it_matters"]
     assert why == (
         "Instrument drift is often the largest single variance component in a run, and every way "
         "of seeing it is ordered by injection: drift diagnostics and QC-RLSC correction both "
         "become impossible without one. The order is in the instrument's sequence file — if you "
-        f"still have it, adding it as a run-order column that runs 1 to {len(frame):,} lets both "
-        "read it.")
+        f"still have it, adding it as a run-order column that runs 1 to {len(frame):,} lets the "
+        "drift diagnostics read it; QC-RLSC also needs at least 5 pooled QC injections, and none "
+        "is found in this table.")
 
 
 def test_the_two_readings_need_an_order_and_read_one_that_runs_1_to_n(no_order):

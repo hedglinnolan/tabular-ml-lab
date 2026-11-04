@@ -16,8 +16,9 @@ The legacy detectors keep their ids, details and badges; this module only speaks
 legacy sentence is untrue of the table (``pack::dietary::energy_adjustment`` counts every numeric
 column as a candidate nutrient), the detail is restated from the data; where a legacy reason names a
 stage, a view or a diagnostic v2 does not have, or says what v2 does not do or does only under one
-goal, that clause is restated or dropped (:data:`UNTRUE_CLAUSES`), and a reason none of whose
-sentences holds in v2 is not served (:data:`UNTRUE_REASONS`).
+goal, that clause is restated or dropped (:data:`UNTRUE_CLAUSES`; :data:`READ_CLAUSES` where its
+truth depends on the table), and a reason none of whose sentences holds in v2 is not served
+(:data:`UNTRUE_REASONS`).
 
 The app's own findings (``voice::*``) cover what the drive rubric says NHANES users were never told
 (DRIVE_RUBRIC §4): the respondent identifier, the ``imputed_*`` flags and the columns they mark,
@@ -1088,6 +1089,10 @@ def _intake_floor(m: re.Match[str]) -> str:
 NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a category, each "
                        "distinct value a level of its own, rather than as a number.")
 
+#: What the genomics data-type reasons ask, said as what it is: the card offers no repair and
+#: routes to no question, so what the matrix cannot settle is the researcher's to state.
+_STATE_IT = "is yours to state in the methods; the matrix cannot settle it."
+
 #: The clauses of legacy reasons that say what v2 does not do, by family, each with what is served
 #: in its place. The findings stage reads no purpose, so its reasons are served whichever goal the
 #: researcher holds or will choose: a clause whose truth depends on the goal says the condition.
@@ -1098,16 +1103,15 @@ NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a c
 #:   (``turbotab/packs.py``), where v2 asks it in a later stage than the finding's; the temporal
 #:   reason said the app "has never done" the temporal check it is making (``turbotab/clinical.py``).
 #: * What v2 does not do, or does only under one goal (pp2-why-audit): a column of numbers stored as
-#:   text "cannot be modeled" (``ml/import_doctor.py``) or "silently" becomes "hundreds of one-hot
-#:   levels" (``turbotab/clinical.py``), where v2's design reads a text predictor as a category, one
-#:   level per distinct value (88 and 165 on the shipped tables), until it is read as numbers, and
-#:   the fit asks first whether it holds codes or amounts (``readings.code_question``), but not of
-#:   an assay's exposures (``readings.unsettled_codes``); the grain answer decides "how the held-out
-#:   set is drawn", and the pooled QCs could be in "a held-out set" and leave "before the held-out
-#:   rows are drawn" (``core/reference_rows.py``), where under Estimate no holdout is offered first
-#:   (``seal.split_offer``) and the folds keep a unit whole under either goal; at p/n ≥ 2 "an
-#:   unregularized fit" ranks below the regularized ones, where under Estimate the feature-wise
-#:   tests, one feature at a time and unpenalized, rank first (``models.base.rank``); the app
+#:   text "cannot be modeled" (``ml/import_doctor.py``), where v2's design reads a text predictor
+#:   as a category, one level per distinct value (``models.pipeline.category_inputs``), and the
+#:   number-format reason's "hundreds of one-hot levels" (:data:`READ_CLAUSES`); the grain answer
+#:   decides "how the held-out set is drawn", and the pooled QCs could be in "a held-out set" and
+#:   leave "before the held-out rows are drawn" (``core/reference_rows.py``), where under Estimate
+#:   no holdout is offered first (``seal.split_offer``) and the folds keep a unit whole under
+#:   either goal; at p/n ≥ 2 "an unregularized fit" ranks below the regularized ones, where under
+#:   Estimate the feature-wise tests, one feature at a time and unpenalized, rank first
+#:   (``models.base.rank``); the app
 #:   "needs to be told which export wrote this file" or "what was already done to this table and by
 #:   which tool", which it never asks; a constant feature survives "every filter that is written in
 #:   terms of variance ratios", where v2's D-ratio filter drops it (``methods.qc_drift``); a unit
@@ -1122,6 +1126,15 @@ NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a c
 #:   clauses, the unusual values as "the case mix the model exists to learn"
 #:   (``core/detectors/plausibility.py``) and the event as "which one you are predicting"
 #:   (``ml/binary_text.py``).
+#: * And in its second round: a decimal comma that "no error anywhere would report", where v2 reads
+#:   a comma as a thousands separator only on the researcher's answer
+#:   (``repairs.parse_text_numbers`` reads one that can only mark decimals as decimals and leaves
+#:   one that reads both ways to the answer); "models that keep total energy predict alike", where only the standard, residual and
+#:   partition models are one linear model (``methods.energy``: the multivariate density model is
+#:   another); a duplicated feature that makes the correction "anticonservative", where under
+#:   Benjamini–Hochberg (``models.featurewise``) the direction depends on the copy's own p-value;
+#:   and the genomics data-type reasons' questions (``turbotab/packs.py``,
+#:   ``core/detectors/genomics.py``), where the card offers no repair and routes to no question.
 UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...]] = {
     "binary_text": ((re.compile(r"(?<=are a separate question, )asked at Preprocess(?=: )"),
                      _blanks_asked),),
@@ -1144,15 +1157,14 @@ UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]],
         (re.compile(r"^As text this column cannot be modeled, correlated,? or plotted — it will "
                     r"silently sit out of your analysis(?: while appearing perfectly fine)?\.$"),
          lambda m: NUMERIC_AS_TEXT_WHY),),
+    # Its first sentence names the routes to numbers by the columns it flags (:data:`READ_CLAUSES`).
     "pack::clinical::number_format": (
-        (re.compile(r"^A column that does not parse as numeric is treated as a category by "
-                    r"everything downstream, so a continuous measurement silently becomes "
-                    r"hundreds of one-hot levels\."),
-         lambda m: ("A predictor that does not parse as numeric can enter the models only as a "
-                    "category until it is read as numbers, by a repair or through the fit's "
-                    "question whether it holds codes or amounts (not asked of an assay's "
-                    "exposures), so a continuous measurement left as text becomes a one-hot level "
-                    "for each distinct value.")),),
+        (re.compile(r"The decimal-comma case is worse than that: it can parse successfully and be "
+                    r"wrong by a factor of a hundred, which no error anywhere would report\."),
+         lambda m: ("The decimal-comma case is worse in a reader that takes the comma for a "
+                    "thousands separator: there it can parse and be wrong by a factor of a hundred "
+                    "with no error. This app reads no comma as a thousands separator unless you "
+                    "answer that it is one.")),),
     "pack::metabolomics::pooled_qc": (
         (re.compile(r"(?<=analyzed as rows like any other, and )a held-out set could contain "
                     r"them\."),
@@ -1199,6 +1211,122 @@ UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]],
     "positive_class": (
         (re.compile(r"Nothing in the file says which one you are predicting\."),
          lambda m: "Nothing in the file says which one is the event."),),
+    "pack::dietary::energy_adjustment": (
+        (re.compile(r"For prediction, models that keep total energy predict alike\."),
+         lambda m: ("For prediction, the standard model, the residual model with total energy kept "
+                    "and the partition model are one linear model in different terms, so a linear "
+                    "fit without a penalty predicts the same under each; the multivariate density "
+                    "model is a different model and can predict differently.")),),
+    "pack::metabolomics::duplicate_ids": (
+        (re.compile(r", which makes the correction slightly wrong in the anticonservative "
+                    r"direction(?=\.)"),
+         lambda m: (", which moves the other features' adjusted p-values: down when the copy's own "
+                    "p-value is among the smallest, up when it is among the largest")),),
+    "pack::genomics::data_type": (
+        (re.compile(r"Which did your pipeline produce, CPM or TPM\? Both rescale every sample to "
+                    r"exactly one million and TPM divides by effective length before that "
+                    r"rescale, so the trace is gone from the matrix — no test on these numbers "
+                    r"separates them\. You know; they do not\."),
+         lambda m: ("CPM and TPM both rescale every sample to exactly one million, and TPM divides "
+                    "by effective length before that rescale, so the trace is gone from the matrix "
+                    "— no test on these numbers separates them. Which one your pipeline produced "
+                    f"{_STATE_IT}")),
+        (re.compile(r"Which tool produced this matrix\? (?P<said>.+?that is evidence rather than "
+                    r"a determination\.)"),
+         lambda m: f"{m['said']} Which tool produced this matrix {_STATE_IT}"),
+        (re.compile(r"Which pipeline produced these values, and with what offset\? CPM and TPM are "
+                    r"indistinguishable once logged; you know, the matrix does not\."),
+         lambda m: ("Which pipeline produced these values is yours to state in the methods: CPM "
+                    "and TPM are indistinguishable once logged, and the matrix cannot settle "
+                    "which.")),),
+}
+
+#: The number-format reason's routes to numbers, named for the columns that have them
+#: (:func:`_number_routes`).
+NUMBER_ROUTES = ("by a repair or through the fit's question whether it holds codes or amounts "
+                 "(not asked of an assay's exposures)")
+
+
+def _read_as_numbers(fc: FindingContext, column: str) -> bool:
+    """Whether the app's own text-number finding reads ``column`` (``repairs.text_number_findings``,
+    as the findings stage serves it): then its repair reads the column as numbers, and the fit asks
+    whether it holds codes or amounts (``readings.code_question``), both from the one reading
+    (``repairs.parse_text_numbers``)."""
+    from turbotab.core.repairs import text_number_findings
+
+    if column not in fc.frame.columns:
+        return False
+    return any(family(f["id"]) == "text_numbers"
+               for _, f in text_number_findings(fc.frame[[column]]))
+
+
+def _number_routes(m: re.Match[str], finding: dict[str, Any], fc: FindingContext) -> str:
+    """The number-format reason's first sentence. The legacy one said a column that does not
+    parse "silently becomes hundreds of one-hot levels", beside the app's own finding about the
+    same column; v2's design reads a text predictor as a category, one level per distinct value
+    (``models.pipeline.category_inputs``), until it is read as numbers, by the text-number
+    finding's repair or through the fit's codes-or-amounts question, which is not asked of an
+    assay's exposures (``readings.unsettled_codes``). Those routes are named only for the flagged
+    columns the app reads as numbers (:func:`_read_as_numbers`): the pack also flags numbers it
+    reads neither way, a thousands group beside a decimal point (`57,689.59`) or two thousands
+    groups (`1,250,000`)."""
+    flagged = [str(c) for c in finding.get("affected_columns") or []]
+    routed = [c for c in flagged if _read_as_numbers(fc, c)]
+    if routed and len(routed) == len(flagged):
+        return ("A predictor that does not parse as numeric can enter the models only as a "
+                f"category until it is read as numbers, {NUMBER_ROUTES}, so a continuous "
+                "measurement left as text becomes a one-hot level for each distinct value.")
+    lead = ("A predictor that does not parse as numeric enters the models as a category, so a "
+            "continuous measurement left as text becomes a one-hot level for each distinct value")
+    if routed:
+        return (f"{lead}; {listing(routed, limit=len(routed))} can be read as numbers first, "
+                f"{NUMBER_ROUTES}.")
+    return f"{lead}."
+
+
+def _qc_rlsc_reads(m: re.Match[str], finding: dict[str, Any], fc: FindingContext) -> str:
+    """The no-run-order reason's promise that a run order lets drift diagnostics and QC-RLSC read
+    it. The drift reading reads any column that runs 1 to n (``detectors.assay.drift_reading``);
+    QC-RLSC is offered on the pooled-QC finding's rows (``reference_rows._offer``), the rows the
+    findings stage reads as pooled QCs (:attr:`FindingContext.reference_rows`), and fits no curve
+    to fewer than ``qc_drift.MIN_QC`` of them (``qc_drift.sufficiency``). So the promise is kept
+    where that many are found, and elsewhere the reason says what QC-RLSC lacks."""
+    from turbotab.core.methods.qc_drift import MIN_QC
+
+    n = len(fc.reference_rows)
+    if n >= MIN_QC:
+        return m.group(0)
+    found = "none is found" if n == 0 else f"{n:,} {plural(n, 'is', 'are')} found"
+    return (f"adding it as a run-order column that runs 1 to {m['n']} lets the drift diagnostics "
+            f"read it; QC-RLSC also needs at least {MIN_QC} pooled QC injections, and {found} in "
+            f"this table.")
+
+
+def _wide_reason(m: re.Match[str], finding: dict[str, Any], fc: FindingContext) -> str:
+    """The legacy wide-shape reason advises one row per measurement, a reshape v2 does not have.
+    Where a lens reframes the shape as expected (the finding's ``lens``: ``packs.reframe`` and
+    ``detectors.reframe``), the card's detail carries that lens's note, which says why a reshape
+    would rebuild what a row is, so the advice is not served beside it; where none does, it
+    stands."""
+    return "" if finding.get("lens") else m.group(0)
+
+
+#: The clauses of legacy reasons true of some tables and not of others, by family, each restated
+#: from what the finding and the table hold (``(match, finding, context) -> words``), after
+#: :data:`UNTRUE_CLAUSES`: the number-format reason's routes to numbers (:func:`_number_routes`),
+#: the no-run-order reason's promise of QC-RLSC (:func:`_qc_rlsc_reads`), and the wide-shape
+#: reason's reshape beside a lens's note that rules it out (:func:`_wide_reason`).
+READ_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str], dict[str, Any],
+                                                                  FindingContext], str]], ...]] = {
+    "pack::clinical::number_format": (
+        (re.compile(r"^A column that does not parse as numeric is treated as a category by "
+                    r"everything downstream, so a continuous measurement silently becomes "
+                    r"hundreds of one-hot levels\."), _number_routes),),
+    "pack::metabolomics::no_run_order": (
+        (re.compile(r"adding it as a run-order column that runs 1 to (?P<n>[\d,]+) lets both read "
+                    r"it\."), _qc_rlsc_reads),),
+    "wide_repeated_measures": (
+        (re.compile(r"^Wide repeated measures are fine for prediction, .*$", re.S), _wide_reason),),
 }
 
 #: The families whose legacy reason holds no sentence true of v2, served with none. The
@@ -1227,6 +1355,10 @@ def speak(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: FindingCon
     for clause, said in UNTRUE_CLAUSES.get(fam, ()):
         if finding.get("why_it_matters"):
             finding["why_it_matters"] = clause.sub(said, finding["why_it_matters"])
+    for clause, read in READ_CLAUSES.get(fam, ()):
+        if finding.get("why_it_matters"):
+            finding["why_it_matters"] = clause.sub(lambda m, read=read: read(m, finding, fc),
+                                                   finding["why_it_matters"])
     say = FAMILIES.get(fam)
     voice = say(finding, params, fc) if say is not None else None
     if voice is None:

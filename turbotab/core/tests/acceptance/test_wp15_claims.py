@@ -583,14 +583,26 @@ def test_3_not_in_dispute_is_served_nowhere():
             assert "confounded by it until adjusted" not in text
 
 
+#: The energy reason's last sentence as served (pp2-why-audit): the reason the pack writes says
+#: "models that keep total energy predict alike", and the multivariate density model does not
+#: (``test_findings_hold_under_every_goal``, by least squares).
+PREDICT_ALIKE = (
+    "For prediction, the standard model, the residual model with total energy kept and the "
+    "partition model are one linear model in different terms, so a linear fit without a penalty "
+    "predicts the same under each; the multivariate density model is a different model and can "
+    "predict differently.")
+
+
 def test_3_the_energy_finding_states_the_choice_and_its_badge_reads_the_outcome():
+    choice, said = ENERGY_WHY.split(" For prediction, ")
+    assert said == "models that keep total energy predict alike."
     plain = _energy_finding("ldl")
-    assert plain["why_it_matters"] == voice.finish(ENERGY_WHY)
+    assert plain["why_it_matters"] == voice.finish(f"{choice} {PREDICT_ALIKE}")
     assert plain["evidence"]["status"] == "CONVENTION"
     related = _energy_finding("bmi")
     assert related["evidence"] == {"status": "DISPUTED", "source": (
         "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature")}
-    assert related["why_it_matters"].startswith(voice.finish(ENERGY_WHY)[:-1])
+    assert related["why_it_matters"].startswith(f"{choice} {PREDICT_ALIKE}")
     assert "`bmi` reads as BMI" in related["why_it_matters"]
     assert "collider" in related["why_it_matters"]
 

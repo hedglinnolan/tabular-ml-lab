@@ -975,9 +975,13 @@ def text_number_findings(frame: pd.DataFrame) -> list[tuple[dict, dict]]:
                           f"detection limit."),
                 "detail": (f"{_named_values({'<' + k: v for k, v in below.items()})}. Each is a value "
                            f"somewhere below its limit, not a missing one."),
-                "why_it_matters": ("Read as blanks they are left out as if unknown, though each is "
-                                   "known to be small; replaced by one value they all become that "
-                                   "value, which narrows their spread."),
+                # Read as blanks, each missing-values answer treats them as unknown: complete cases
+                # drop their rows (``rows.cohort_flow``), and the single fill in each training fold
+                # and multiple imputation fill them from the other values (pp2-why-audit).
+                "why_it_matters": ("Read as blanks they are treated as unknown, dropped with their "
+                                   "rows or filled from the other values, though each is known to "
+                                   "be small; replaced by one value they all become that value, "
+                                   "which narrows their spread."),
                 "affected_columns": [c], "source": "structural", "lens": None, "evidence": None,
                 "summary": (f"{_count(n_below)} {_plural(n_below, 'value')} of {_tick(c)}, such as "
                             f"{_tick('<' + first)}, lie below a detection limit."),

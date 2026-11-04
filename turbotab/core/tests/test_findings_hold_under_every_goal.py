@@ -44,6 +44,25 @@ the condition itself. The re-scan of every family's served reason found these fa
 * the plausibility reason called the unusual values "the case mix the model exists to learn", and
   the two-level outcome's reason asked "which one you are predicting": goal-blind under Estimate.
 
+The second round's re-scan found reasons whose truth depends on the table, restated from it
+(``finding_words.READ_CLAUSES``), and more that said what v2 does not do:
+
+* the number-format reason named a repair and the fit's codes-or-amounts question for every
+  column it flags, where the app reads neither `57,689.59` nor `1,250,000` as numbers; and its
+  decimal comma "no error anywhere would report", where v2 reads a comma as a thousands separator
+  only on the researcher's answer;
+* the no-run-order reason said a run order lets QC-RLSC read it, on tables with no pooled QC
+  (QC-RLSC fits no curve to fewer than five, Broadhurst et al. 2018);
+* the below-detection reason said the blanks are "left out", which only complete cases do;
+* the energy reason said "models that keep total energy predict alike", where the multivariate
+  density model does not (least squares, numpy);
+* the duplicate-ids reason said a duplicated feature makes the correction anticonservative, where
+  under Benjamini–Hochberg the direction depends on the copy's p-value (statsmodels);
+* the genomics data-type reasons asked which pipeline or tool produced the matrix, beside a card
+  that takes no answer;
+* the wide-shape reason advised one row per measurement beside a lens's note that rules the reshape
+  out.
+
 Each truth is by construction (a table built here, or a shipped sample whose companion says what it
 holds), by numpy or scikit-learn, or by the code's own structure; the true sentences of each reason
 stay as they were.
@@ -51,6 +70,7 @@ stay as they were.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
@@ -69,7 +89,11 @@ UNTRUE = ("cannot be modeled", "sit out of", "held-out set is drawn",
           "propagates into every result", "exists to learn", "which one you are predicting",
           "silently becomes", "an unregularized fit is not", "hundreds of one-hot",
           "mixed-unit predictor", "a recall of 300 kcal", "it enters the models as a category, "
-          "each distinct value a level of its own, rather than as a number, until")
+          "each distinct value a level of its own, rather than as a number, until",
+          # Round 2.
+          "left out as if unknown", "predict alike", "in the anticonservative direction",
+          "no error anywhere would report", "You know; they do not", "Which tool produced this "
+          "matrix?", "Which did your pipeline produce", "you know, the matrix does not")
 
 
 def _run(tmp: Path, source: Path, lens: list[str], target: str | None = None) -> tuple[Ingested, dict]:
@@ -102,13 +126,23 @@ TEXT_NUMBERS_WHY = ("As a predictor it can enter the models only as a category, 
                     "exposures.")
 NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a category, each "
                        "distinct value a level of its own, rather than as a number.")
+#: The number-format reason's second sentence, which holds whichever columns it flags: the comma is
+#: read as a thousands separator only on the researcher's answer (the round-2 tests below).
+NUMBER_FORMAT_COMMA = (
+    "The decimal-comma case is worse in a reader that takes the comma for a thousands separator: "
+    "there it can parse and be wrong by a factor of a hundred with no error. This app reads no "
+    "comma as a thousands separator unless you answer that it is one.")
+NUMBER_FORMAT_ROUTES = ("by a repair or through the fit's question whether it holds codes or "
+                        "amounts (not asked of an assay's exposures)")
+#: Every column it flags is one the app reads as numbers (the text-number finding's).
 NUMBER_FORMAT_WHY = (
     "A predictor that does not parse as numeric can enter the models only as a category until it "
-    "is read as numbers, by a repair or through the fit's question whether it holds codes or "
-    "amounts (not asked of an assay's exposures), so a continuous measurement left as text becomes "
-    "a one-hot level for each distinct value. The decimal-comma case is worse "
-    "than that: it can parse successfully and be wrong by a factor of a hundred, which no error "
-    "anywhere would report.")
+    f"is read as numbers, {NUMBER_FORMAT_ROUTES}, so a continuous measurement left as text becomes "
+    f"a one-hot level for each distinct value. {NUMBER_FORMAT_COMMA}")
+#: No column it flags is one the app reads as numbers: no route is named.
+NUMBER_FORMAT_NO_ROUTE = (
+    "A predictor that does not parse as numeric enters the models as a category, so a continuous "
+    "measurement left as text becomes a one-hot level for each distinct value.")
 
 
 @pytest.fixture(scope="module")
@@ -724,12 +758,394 @@ def test_a_units_factor_moves_densities_and_the_screen_but_not_a_residual():
     assert low <= 2000 <= high and 2000 * 4.184 > high
 
 
+# ── reasons whose truth depends on the table (round 2) ───────────────────────
+
+
+def _table(tmp: Path, columns: dict[str, Any], lens: list[str], target: str | None = None
+           ) -> tuple[Ingested, dict]:
+    path = tmp / "table.csv"
+    pd.DataFrame(columns).to_csv(path, index=False)
+    return _run(tmp, path, lens, target)
+
+
+def _number_formats(tmp: Path, **text: list[str]) -> tuple[Ingested, dict, dict]:
+    """A clinical table of 60 rows with the text columns ``text``, `age` and a two-level
+    `outcome`, read under the clinical lens before a target and with `outcome`."""
+    rng = np.random.default_rng(1)
+    read, before = _table(tmp, {"patient_id": np.arange(60), "age": rng.integers(20, 80, 60),
+                                **text, "outcome": rng.choice(["yes", "no"], 60)}, ["clinical"])
+    return read, before, read.run(findings_stage, ProjectState(lens=["clinical"], target="outcome"))
+
+
+def test_the_number_format_reason_names_no_route_where_the_app_reads_none(tmp_path):
+    """By construction `cost` (`57,689.59`: a thousands group beside a decimal point) and `big`
+    (`1,250,000`: two thousands groups) are numbers the app's text-number reading does not read:
+    no text-number finding reads them, no repair the served findings offer reads them, and the
+    fit's codes-or-amounts question is asked of neither. The number-format reason flags both, and
+    names neither a repair nor that question."""
+    from turbotab.core.readings import unsettled_codes, whole_facts
+
+    rng = np.random.default_rng(2)
+    cost = [f"{v:,.2f}" for v in rng.uniform(1_000, 90_000, 60)]
+    big = [f"{v:,}" for v in rng.integers(1_000_000, 9_000_000, 60)]
+    assert cost[0].count(",") == 1 and "." in cost[0] and big[0].count(",") == 2
+    read, before, after = _number_formats(tmp_path, cost=cost, big=big)
+    info = {c["name"]: c for c in read.info["columns"]}
+    with read.store() as store:
+        facts = whole_facts(["cost", "big"], info, store=store)
+    assert unsettled_codes(ProjectState(lens=["clinical"], target="outcome"), ["cost", "big"],
+                           facts) == []
+    for artifact in (before, after):
+        found = _one(artifact, "pack::clinical::number_format")
+        assert found["affected_columns"] == ["big", "cost"]
+        assert found["why_it_matters"] == f"{NUMBER_FORMAT_NO_ROUTE} {NUMBER_FORMAT_COMMA}"
+        assert not [f["id"] for f in artifact["findings"] if family(f["id"]) == "text_numbers"]
+        offered = [(f["id"], o["key"]) for f in artifact["findings"]
+                   if {"cost", "big"} & set(f["affected_columns"]) for o in f.get("repairs") or []]
+        assert offered == []
+
+
+def test_the_number_format_reason_names_the_route_only_for_the_columns_it_has(tmp_path):
+    """Beside `cost`, `crp` holds numbers in exponent form with five `<LOD` marks: the app's own
+    finding reads it, with its repair, and the fit asks whether it holds codes or amounts. The
+    reason names the route for `crp` alone."""
+    from turbotab.core.readings import unsettled_codes, whole_facts
+
+    rng = np.random.default_rng(1)
+    cost = [f"{v:,.2f}" for v in rng.uniform(1_000, 90_000, 60)]
+    crp = [f"{v:.2E}" for v in rng.uniform(1, 50, 60)]
+    crp[:5] = ["<LOD"] * 5
+    read, before, after = _number_formats(tmp_path, cost=cost, crp=crp)
+    info = {c["name"]: c for c in read.info["columns"]}
+    with read.store() as store:
+        facts = whole_facts(["cost", "crp"], info, store=store)
+    asked = unsettled_codes(ProjectState(lens=["clinical"], target="outcome"), ["cost", "crp"],
+                            facts)
+    assert [r.column for r in asked] == ["crp"]
+    for artifact in (before, after):
+        assert [o["key"] for o in _one(artifact, "text_numbers")["repairs"]] == ["read_numbers"]
+        found = _one(artifact, "pack::clinical::number_format")
+        assert found["affected_columns"] == ["cost", "crp"]
+        assert found["why_it_matters"] == (
+            f"{NUMBER_FORMAT_NO_ROUTE[:-1]}; `crp` can be read as numbers first, "
+            f"{NUMBER_FORMAT_ROUTES}. {NUMBER_FORMAT_COMMA}")
+
+
+def test_no_comma_is_read_as_a_thousands_separator_without_an_answer(tmp_path):
+    """The second sentence, both ways, by construction. Forty values with a comma that can only
+    mark decimals (`4,73`) are read at ingest as pandas reads them once the comma is a point; forty
+    whose every comma could split thousands (`8,654`) stay text, and the text-number finding offers
+    both readings; read as numbers without an answer they stay text, and on the "commas split
+    thousands" answer `8,654` is 8654."""
+    from turbotab.core import repairs
+
+    rng = np.random.default_rng(0)
+    decimal = [f"{v:.2f}".replace(".", ",") for v in rng.uniform(0.5, 9.5, 40)]
+    grouped = [f"{v:,}" for v in rng.integers(1_000, 9_999, 40)]
+    read, artifact = _table(tmp_path, {"decimal": decimal, "grouped": grouped,
+                                       "y": rng.normal(size=40)}, ["clinical"])
+    frame = read.frame()
+    want = pd.Series(decimal).str.replace(",", ".", regex=False).astype(float)
+    np.testing.assert_array_equal(frame["decimal"].to_numpy(dtype=float), want.to_numpy())
+    assert frame["grouped"].tolist() == grouped
+    found = _one(artifact, "text_numbers")
+    assert found["affected_columns"] == ["grouped"]
+    assert [o["key"] for o in found["repairs"]] == ["thousands", "decimal_comma"]
+    unanswered = repairs.numbers_read(frame, ProjectState(lens=["clinical"]))
+    assert unanswered["grouped"].tolist() == grouped
+    d = next(o for o in found["repairs"] if o["key"] == "thousands")["decision"]
+    answered = repairs.numbers_read(frame, ProjectState(lens=["clinical"], numbers_read={
+        d["finding_id"]: {"option": d["option"], "params": d["params"]}}))
+    np.testing.assert_array_equal(answered["grouped"].to_numpy(dtype=float),
+                                  [float(v.replace(",", "")) for v in grouped])
+
+
+def test_the_below_detection_reason_holds_under_every_missing_values_answer(labs, labs_glucose):
+    """`hs_crp` (`clinical_labs.csv`) has values below a detection limit, before a target and with
+    one; the reason no longer says the blanks are left out, which only complete cases do."""
+    _, before, _ = labs_glucose
+    for artifact in (before, labs):
+        assert _one(artifact, "below_detection")["why_it_matters"] == (
+            "Read as blanks they are treated as unknown, dropped with their rows or filled from "
+            "the other values, though each is known to be small; replaced by one value they all "
+            "become that value, which narrows their spread.")
+
+
+def test_complete_cases_drop_the_blanks_rows_and_the_fills_keep_them_filled():
+    """The truth both ways, by construction (seven blanks in 60 rows): complete cases drop exactly
+    those rows (``rows.cohort_flow``); the single fill in each training fold and multiple
+    imputation keep every row, and the in-fold fill (the design every family shares) and each of
+    multiple imputation's completed tables leave no blank."""
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.decisions import MissingSpec
+    from turbotab.core.methods.imputation import chained_equations
+    from turbotab.core.models.pipeline import design_spec, shared_steps
+    from turbotab.core.stages.rows import cohort_flow
+
+    rng = np.random.default_rng(5)
+    hs = rng.lognormal(0, 0.6, 60)
+    y = hs + rng.normal(0, 0.5, 60)
+    hs[:7] = np.nan
+    X = pd.DataFrame({"hs_crp": hs, "age": rng.normal(50, 10, 60), "y": y})
+    blank = set(range(7))
+    for strategy in ("complete_case", "impute", "multiple_imputation"):
+        _, kept = cohort_flow(X, target="y", rules=None, missing=strategy,
+                              predictor_columns=["hs_crp"])
+        kept = set(int(i) for i in kept)
+        assert kept == (set(range(60)) - blank if strategy == "complete_case" else set(range(60)))
+        spec = design_spec(ProjectState(target="y", missing=MissingSpec(strategy=strategy)),
+                           X[["hs_crp", "age"]], ["hs_crp", "age"])
+        assert spec.impute is (strategy != "complete_case")
+        if spec.impute:
+            filled = Pipeline(shared_steps(spec)).set_output(transform="pandas").fit_transform(
+                X[["hs_crp", "age"]])
+            assert len(filled) == 60 and not filled.isna().to_numpy().any()
+    drawn = chained_equations(X, m=3, seed=1)
+    assert len(drawn.frames) == 3
+    assert all(len(f) == 60 and not f.isna().to_numpy().any() for f in drawn.frames)
+
+
+# ── the run order and the pooled QCs ─────────────────────────────────────────
+
+
+RUN_ORDER_LEAD = (
+    "Instrument drift is often the largest single variance component in a run, and every way of "
+    "seeing it is ordered by injection: drift diagnostics and QC-RLSC correction both become "
+    "impossible without one. The order is in the instrument's sequence file — if you still have "
+    "it, adding it as a run-order column that runs 1 to ")
+
+
+@pytest.fixture(scope="module")
+def no_qc(tmp_path_factory) -> dict:
+    """`metabolomics_no_qc.csv`: 72 participants, no pooled QC and no run order (its companion)."""
+    return _run(tmp_path_factory.mktemp("no_qc"), SAMPLES / "metabolomics_no_qc.csv",
+                ["metabolomics"])[1]
+
+
+def test_without_pooled_qcs_a_run_order_is_not_said_to_let_qc_rlsc_read_it(no_qc):
+    """By its companion the table has no pooled QC, and none is found; the drift reading reads a
+    run order on it, and QC-RLSC (which needs at least five pooled QC injections; Broadhurst et
+    al. 2018) is not promised."""
+    from turbotab.core.detectors.assay import drift_reading
+
+    assert not [f for f in no_qc["findings"] if family(f["id"]) == "pack::metabolomics::pooled_qc"]
+    assert _one(no_qc, "pack::metabolomics::no_run_order")["why_it_matters"] == (
+        f"{RUN_ORDER_LEAD}72 lets the drift diagnostics read it; QC-RLSC also needs at least 5 "
+        "pooled QC injections, and none is found in this table.")
+    frame = pd.read_csv(SAMPLES / "metabolomics_no_qc.csv")
+    assert drift_reading(frame.assign(run_order=np.arange(1, len(frame) + 1))) is not None
+
+
+def _untargeted(keep_qc: Sequence[int]) -> pd.DataFrame:
+    """`metabolomics_untargeted.csv` in its run order up to its last pooled QC (row 70 of 80, so
+    the run begins and ends with one), with only the QCs at ``keep_qc`` and no run-order column."""
+    frame = pd.read_csv(SAMPLES / "metabolomics_untargeted.csv").sort_values("run_order")
+    frame = frame.reset_index(drop=True).iloc[:71]
+    qc = np.flatnonzero(frame["sample_type"] == "pooled_qc")
+    assert list(qc) == [0, 10, 20, 30, 40, 50, 60, 70]
+    gone = [i for i in qc if i not in keep_qc]
+    return frame.drop(index=gone, columns=["run_order"]).reset_index(drop=True)
+
+
+@pytest.mark.parametrize("keep_qc, n_qc", [((0, 10, 20, 30, 40, 50, 60, 70), 8),
+                                           ((0, 30, 50, 70), 4)], ids=["eight", "four"])
+def test_qc_rlsc_is_promised_where_the_pooled_qcs_can_fit_its_curve(tmp_path, keep_qc, n_qc):
+    """Eight pooled QCs that begin and end the run keep the promise: with a run order added,
+    QC-RLSC fits one curve over the run (an option with no refusal) and the drift reading reads
+    the order. Four are found but are too few: every QC-RLSC option is refused, and the reason
+    says so."""
+    from turbotab.core.detectors.assay import drift_reading
+
+    frame = _untargeted(keep_qc)
+    n = len(frame)
+    _, artifact = _table(tmp_path, frame.to_dict("list"), ["metabolomics"])
+    assert _one(artifact, "pack::metabolomics::pooled_qc")["title"].startswith(f"{n_qc} rows")
+    why = _one(artifact, "pack::metabolomics::no_run_order")["why_it_matters"]
+    if n_qc >= 5:
+        assert why == f"{RUN_ORDER_LEAD}{n} lets both read it."
+    else:
+        assert why == (f"{RUN_ORDER_LEAD}{n} lets the drift diagnostics read it; QC-RLSC also "
+                       f"needs at least 5 pooled QC injections, and {n_qc} are found in this "
+                       f"table.")
+    ordered = tmp_path / "ordered"
+    ordered.mkdir()
+    _, with_order = _table(ordered, frame.assign(run_order=np.arange(1, n + 1)).to_dict("list"),
+                           ["metabolomics"])
+    rlsc = [o for o in _one(with_order, "pack::metabolomics::pooled_qc")["repairs"]
+            if o["key"].startswith("qc_rlsc")]
+    assert rlsc
+    assert any(not o["decision"]["params"].get("problems") for o in rlsc) is (n_qc >= 5)
+    assert drift_reading(frame.assign(run_order=np.arange(1, n + 1))) is not None
+
+
+@pytest.mark.parametrize("n_qc", [4, 5])
+def test_qc_rlsc_refuses_a_run_with_fewer_than_five_pooled_qcs(n_qc):
+    """Broadhurst et al. 2018: "at least five pooled QCs distributed evenly across a single
+    batch". A run of 40 injections that begins and ends with a QC: four QCs are refused, five
+    are not."""
+    from turbotab.core.methods.qc_drift import Injections, sufficiency
+
+    qc = np.zeros(40, dtype=bool)
+    qc[np.linspace(0, 39, n_qc).round().astype(int)] = True
+    inj = Injections(order=np.arange(1.0, 41.0), batch=np.full(40, "", dtype=object), qc=qc)
+    assert bool(sufficiency(inj)) is (n_qc < 5)
+
+
+# ── the dietary, metabolomics and genomics reasons ───────────────────────────
+
+
+def test_the_energy_reason_names_the_models_that_predict_alike(recalls):
+    why = _one(recalls, "pack::dietary::energy_adjustment")["why_it_matters"]
+    assert why.endswith(
+        "For prediction, the standard model, the residual model with total energy kept and the "
+        "partition model are one linear model in different terms, so a linear fit without a "
+        "penalty predicts the same under each; the multivariate density model is a different "
+        "model and can predict differently."), why
+
+
+def test_the_standard_residual_and_partition_models_predict_alike_and_density_does_not():
+    """By least squares (numpy), on v2's own energy steps over constructed intakes: the residual
+    model with energy kept and the partition model reproduce the standard model's predictions
+    (they span one design), and the multivariate density model's differ."""
+    from turbotab.core.methods.energy import EnergyAdjuster
+
+    rng = np.random.default_rng(7)
+    kcal = rng.normal(2000, 400, 400)
+    fat = 0.035 * kcal + rng.normal(0, 12, 400)
+    age = rng.normal(50, 10, 400)
+    y = 0.02 * fat + 0.001 * kcal + 0.03 * age + rng.normal(0, 1, 400)
+    X = pd.DataFrame({"fat_g": fat, "energy_kcal": kcal, "age": age})
+
+    def predictions(method: str, **kw: Any) -> np.ndarray:
+        Z = EnergyAdjuster(method, "energy_kcal", ["fat_g"], **kw).fit(X).transform(X)
+        design = np.column_stack([np.ones(len(X)), np.asarray(Z, dtype=float)])
+        beta, *_ = np.linalg.lstsq(design, y, rcond=None)
+        return design @ beta
+
+    standard = predictions("standard")
+    for method, kw in (("residual", {}), ("partition", {"atwater": {"fat_g": 9.0}})):
+        np.testing.assert_allclose(predictions(method, **kw), standard, atol=1e-9)
+    assert np.max(np.abs(predictions("density_multivariate") - standard)) > 0.1 * np.std(y)
+
+
+def test_the_duplicate_ids_reason_says_the_correction_moves_either_way(merged):
+    _, artifact = merged
+    assert _one(artifact, "pack::metabolomics::duplicate_ids")["why_it_matters"] == (
+        "A feature counted twice is counted twice in the number of metabolites you report and "
+        "twice in every multiple-testing correction, which moves the other features' adjusted "
+        "p-values: down when the copy's own p-value is among the smallest, up when it is among "
+        "the largest. A sample id on two rows is two injections of one sample, and whichever way "
+        "a later join resolves it — fanning out, or keeping one arbitrarily — it does so without "
+        "saying which.")
+
+
+@pytest.mark.parametrize("copied", ["smallest", "largest"])
+def test_a_duplicated_feature_moves_benjamini_hochberg_both_ways(copied):
+    """statsmodels' Benjamini–Hochberg (the feature-wise tests' correction) over 100 constructed
+    p-values: a copy of the smallest lowers the others' adjusted p-values and raises none; a copy
+    of the largest raises them and lowers none."""
+    from statsmodels.stats.multitest import multipletests
+
+    rng = np.random.default_rng(2)
+    p = np.sort(np.r_[rng.uniform(0, 0.01, 10), rng.uniform(0, 1, 90)])
+    k = 0 if copied == "smallest" else len(p) - 1
+    before = multipletests(p, method="fdr_bh")[1]
+    after = multipletests(np.append(p, p[k]), method="fdr_bh")[1][:len(p)]
+    others = np.delete(np.arange(len(p)), k)
+    lower = int((after[others] < before[others] - 1e-12).sum())
+    higher = int((after[others] > before[others] + 1e-12).sum())
+    assert (lower > 90 and higher == 0) if copied == "smallest" else (higher > 90 and lower == 0)
+
+
+@pytest.fixture(scope="module", params=["genomics_cpm.csv", "genomics_estimated_counts.csv",
+                                        "genomics_fpkm.csv"])
+def data_type(request, tmp_path_factory) -> tuple[str, dict]:
+    """Each matrix whose data-type card says the matrix cannot settle what it is (its
+    companion), under the genomics lens."""
+    name = request.param
+    return name, _run(tmp_path_factory.mktemp(name.split(".")[0]), SAMPLES / name,
+                      ["genomics"])[1]
+
+
+STATE_IT = "is yours to state in the methods; the matrix cannot settle it."
+
+
+def test_the_data_type_reasons_ask_no_question_the_app_takes_no_answer_to(data_type):
+    """The card offers no repair and routes to no question (its summary says there is no control),
+    so its reason asks none: what the matrix cannot settle is the researcher's to state."""
+    from turbotab.core.stages.finding_words import NO_LEVER
+
+    name, artifact = data_type
+    found = _one(artifact, "pack::genomics::data_type")
+    assert found["routes_to"] is None and not found.get("repairs")
+    assert found["summary"].endswith(NO_LEVER)
+    why = found["why_it_matters"]
+    assert "?" not in why and "You know" not in why
+    if name == "genomics_cpm.csv":
+        assert why.endswith(
+            "CPM and TPM both rescale every sample to exactly one million, and TPM divides by "
+            "effective length before that rescale, so the trace is gone from the matrix — no test "
+            f"on these numbers separates them. Which one your pipeline produced {STATE_IT}"), why
+    else:
+        assert why.endswith(
+            "What separates them here is the spread of the library sizes, and that is evidence "
+            f"rather than a determination. Which tool produced this matrix {STATE_IT}"), why
+
+
+def test_the_log_expression_reason_asks_no_question(tmp_path):
+    """A constructed log2(CPM + 1) matrix (negative-binomial counts, 24 samples, 200 genes): the
+    data-type card reads it as log CPM or TPM, which cannot be told apart once logged, and its
+    reason asks nothing."""
+    rng = np.random.default_rng(0)
+    counts = rng.negative_binomial(5, 0.01, size=(24, 200)).astype(float)
+    cpm = counts / counts.sum(axis=1, keepdims=True) * 1e6
+    genes = {f"ENSG{i:011d}": np.log2(cpm[:, i] + 1) for i in range(200)}
+    _, artifact = _table(tmp_path, {"condition": rng.choice(["a", "b"], 24), **genes},
+                         ["genomics"])
+    found = _one(artifact, "pack::genomics::data_type")
+    assert found["title"].startswith("What your numbers are: log2(CPM or TPM + 1)")
+    assert found["why_it_matters"].endswith(
+        "Which pipeline produced these values is yours to state in the methods: CPM and TPM are "
+        "indistinguishable once logged, and the matrix cannot settle which."), found
+    assert "?" not in found["why_it_matters"]
+
+
+@pytest.fixture(scope="module")
+def cpm(tmp_path_factory) -> dict:
+    return _run(tmp_path_factory.mktemp("cpm"), SAMPLES / "genomics_cpm.csv", ["genomics"])[1]
+
+
+@pytest.mark.parametrize("name, note", [
+    ("expression", "These are different genes"), ("cpm", "These are different genes"),
+    ("survey", "These are the items of one instrument"), ("no_qc", "These are different analytes")])
+def test_a_reframed_wide_shape_serves_its_note_and_not_the_reshape_advice(name, note, request):
+    """Under a lens that reads the wide shape as expected the card's detail carries the lens's note
+    (genes, items, analytes: reshaping would rebuild what a row is), and the legacy reason, which
+    advises a reshape v2 does not have, is not served."""
+    found = _one(request.getfixturevalue(name), "wide_repeated_measures")
+    assert found["title"] == "The wide shape is expected here." and found["lens"]
+    assert note in found["detail"]
+    assert found["why_it_matters"] is None
+
+
+def test_the_wide_shape_reason_stands_where_no_lens_reframes_it(visits):
+    _, before, after = visits
+    for artifact in (before, after):
+        found = _one(artifact, "wide_repeated_measures")
+        assert found["lens"] is None
+        assert found["why_it_matters"] == (
+            "Wide repeated measures are fine for prediction, but if each row is a subject measured "
+            "several times you may want one row per measurement instead — and clustered rows need "
+            "a group-aware split.")
+
+
 # ── every reason served on these tables ──────────────────────────────────────
 
 
 @pytest.mark.parametrize("name", ["visits", "labs", "labs_glucose", "paired", "merged",
                                   pytest.param("redundant", marks=pytest.mark.slow),
-                                  "expression", "survey", "kilojoules", "recalls"])
+                                  "expression", "survey", "kilojoules", "recalls", "no_qc", "cpm"])
 def test_no_served_reason_says_what_v2_does_not_do(name, request):
     """Every reason served on these tables, before a target and with one where the fixture has
     one (`clinic_visits.csv` both ways, `clinical_labs.csv` before one and with its flagged
