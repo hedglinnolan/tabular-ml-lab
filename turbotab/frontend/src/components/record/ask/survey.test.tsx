@@ -422,6 +422,26 @@ describe("the answer on record is marked on the option that records it", () => {
     expect(recordedOptions()).toEqual(["custom"]);
   });
 
+  it("on one's own design only while its fields name the columns on record", () => {
+    // the attested no-PSU answer on record: its fields start as recorded, and its line says so
+    const attested = PARTIAL.error.exits[1]!.decision as unknown as ProjectState["survey"];
+    expect(attested!.psu).toBeNull();
+    renderCard(NHANES.survey, attested);
+    expect(recordedOptions()).toEqual(["custom"]);
+    const recordedLine = lineOf("custom");
+    // naming a PSU: the line now says what an unrecorded design would do, so nothing is marked,
+    // the engine's option for those columns neither, since the record names no PSU
+    const psu = FIRST.decision.psu;
+    expect(typeof psu).toBe("string"); // the capture's population option names its PSU
+    type("PSU column", psu as string);
+    expect(lineOf("custom")).not.toBe(recordedLine);
+    expect(recordedOptions()).toEqual([]);
+    // the edit undone: the fields name the record's columns again, and it is marked again
+    type("PSU column", "");
+    expect(lineOf("custom")).toBe(recordedLine);
+    expect(recordedOptions()).toEqual(["custom"]);
+  });
+
   it("on these participants for the sample answer", () => {
     renderCard(NHANES.survey, {
       estimand: "sample",

@@ -1323,7 +1323,8 @@ export function SurveyAsk({
     : [];
 
   // An answer on record is marked on the option whose line says what it holds: the engine's where
-  // that option names every column on record, else one's own design.
+  // that option names every column on record, else one's own design while its fields name them
+  // (its line is said from its fields), and no option once they are edited away from them.
   const recorded = !current
     ? null
     : current.estimand === "sample"
@@ -1332,7 +1333,7 @@ export function SurveyAsk({
           (o) =>
             o.decision.estimand === "population" &&
             sameDesign(designOf(o.decision), designOf(current)),
-        )?.key ?? OWN_DESIGN);
+        )?.key ?? (sameDesign(cols, designOf(current)) ? OWN_DESIGN : null));
   return (
     <Question {...p.shell} entry={p.entry}>
       <Options
