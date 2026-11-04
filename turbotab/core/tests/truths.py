@@ -125,16 +125,34 @@ def triage_answers(error: dict[str, Any]) -> list[dict[str, Any]]:
             if (e.get("decision") or {}).get("kind") == "confirm_sweep"]
 
 
+def asks(error: dict[str, Any]) -> bool:
+    """Whether a refusal (``error``) only asks for readings the truth answers: its code is one of
+    :data:`ASKING`, except a ``role_unconfirmed`` that carries a route, the revisit refused because
+    a recorded answer reads what it would unsettle (its last exit keeps the answers as they are,
+    ``decisions.KEEP_THE_ANSWERS``). That one refuses the revisit itself, and its other exits are
+    routes (a reading's other value in place of the one revisited, the answer withdrawn first),
+    none a question: answering it from the truth recorded the declared reading again, after which
+    the revisit undid nothing, or the other value, a route nobody chose."""
+    from turbotab.core.decisions import KEEP_THE_ANSWERS
+
+    code = error.get("code")
+    if code not in ASKING:
+        return False
+    keeps = any(e.get("label") == KEEP_THE_ANSWERS["label"] and e.get("decision") is None
+                for e in error.get("exits") or [])
+    return not (code == "role_unconfirmed" and keeps)
+
+
 def answer_refusal(post: Callable[[dict[str, Any]], Any], response: Any, truth: Truth,
                    retry: Callable[[], Any], rounds: int = 4) -> Any:
-    """While ``response`` is a refusal that only asks for readings, post the answers ``truth``
-    declares (:func:`answers`) and ``retry``; an opening refused while the triage is open is
-    settled as it offers (:func:`triage_answers`) and retried. Returns the last response."""
+    """While ``response`` is a refusal that only asks for readings (:func:`asks`), post the answers
+    ``truth`` declares (:func:`answers`) and ``retry``; an opening refused while the triage is open
+    is settled as it offers (:func:`triage_answers`) and retried. Returns the last response."""
     for _ in range(rounds):
         if response.status_code != 409:
             return response
         error = response.json().get("error") or {}
-        if error.get("code") not in (*ASKING, *TRIAGE):
+        if not asks(error) and error.get("code") not in TRIAGE:
             return response
         decisions = triage_answers(error) if error.get("code") in TRIAGE else answers(error, truth)
         if not decisions:
@@ -147,7 +165,7 @@ def answer_refusal(post: Callable[[dict[str, Any]], Any], response: Any, truth: 
 
 
 __all__ = ["ASKING", "FIXTURE_TRUTHS", "TRIAGE", "Truth", "answer_refusal", "answers", "asked",
-           "fixture_truth", "triage_answers"]
+           "asks", "fixture_truth", "triage_answers"]
 
 
 # The sample fixtures' truths, each from the fixture's own data card (``turbotab/sample_data/*.md``)
