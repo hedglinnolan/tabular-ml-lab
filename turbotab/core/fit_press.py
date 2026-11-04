@@ -306,16 +306,34 @@ def _said(summary: str) -> str:
     return summary.strip().rstrip(".")
 
 
+def _noticings(n: int) -> str:
+    return f"{n} noticing{'' if n == 1 else 's'}"
+
+
+def _named(items: Sequence[Any], *, recommended: bool = False) -> str:
+    """The noticings ``items``, named where no summary can be misread: one after a colon, several
+    each in a numbered sentence of its own ("(1) …"), so a summary's own semicolon, colon or
+    capital stays inside its noticing. With ``recommended``, each is followed by the disposition
+    the engine recommends for it, in a sentence of its own ("Recommended: could bias the estimate
+    (not measurable here)."), so no label sits inside parentheses. Ends with a period."""
+    said = [f"{_said(i.summary)}." + (f" Recommended: {i.label.lower()}." if recommended else "")
+            for i in items]
+    if len(said) == 1:
+        return f": {said[0]}"
+    return ". " + " ".join(f"({k}) {s}" for k, s in enumerate(said, 1))
+
+
 def triage_refusal(t: Any) -> Any:
     """Under Estimate and Describe the open noticings are triaged before the plan's lock
     (calm/FOUNDATION §7), and pressing Fit records the lock, so a press waits while ``t``, the
     triage at that gate (``sweep.triage``), is not confirmed: the refusal (``triage_open``) that
-    names each noticing and the way forward, else None. While a noticing blocks, each blocking one
-    is decided on its own first (the triage's "Confirm all" refuses it); while one has no recorded
-    disposition (none recorded, or the one recorded no longer stands), the ways forward are the
-    triage in Models and its "Confirm all", which records each as the engine recommends, with its
-    reason. Silent once every disposition is recorded, whatever it is, with nothing to triage, and
-    once the gate has passed (the plan is locked)."""
+    names each noticing (:func:`_named`) and the way forward, else None. While a noticing blocks,
+    each blocking one is decided on its own first (the triage's "Confirm all" refuses it); while
+    one has no recorded disposition (none recorded, or the one recorded no longer stands), each
+    such noticing is named with its recommended disposition, and the ways forward are the triage
+    in Models and its "Confirm all", which records each as the engine recommends, with its reason.
+    Silent once every disposition is recorded, whatever it is, with nothing to triage, and once the
+    gate has passed (the plan is locked)."""
     from turbotab.core.decisions import Refusal
     from turbotab.core.quest import STAGE_NAMES
 
@@ -325,23 +343,20 @@ def triage_refusal(t: Any) -> Any:
     stage = _get(t, "stage", "models")
     blocking = [i for i in items if i.blocker]
     if blocking:
-        k = len(blocking)
         return Refusal(
             "triage_open",
-            f"{PRESS_WAITS_FOR_TRIAGE} {k} noticing{'' if k == 1 else 's'} must be resolved "
-            f"first: {'; '.join(_said(i.summary) for i in blocking)}.",
+            f"{PRESS_WAITS_FOR_TRIAGE} {_noticings(len(blocking))} must be resolved first"
+            f"{_named(blocking)}",
             exits=[{"label": f"Decide: {i.summary}", "decision": None} for i in blocking])
     waiting = [i for i in items if i.recorded is None]
     if not waiting:
         return None
     n, where = len(waiting), STAGE_NAMES[stage]
-    named = "; ".join(f"{_said(i.summary)} ({i.label.lower()})" for i in waiting)
     return Refusal(
         "triage_open",
-        f"{PRESS_WAITS_FOR_TRIAGE} {n} {'is' if n == 1 else 'are'} still open, "
-        f"{'with its' if n == 1 else 'each with its'} recommended disposition: {named}. Triage "
-        f"{'it' if n == 1 else 'them'} in {where} first, so "
-        f"{'it is' if n == 1 else 'each is'} decided before any estimate is seen.",
+        f"{PRESS_WAITS_FOR_TRIAGE} {_noticings(n)} {'is' if n == 1 else 'are'} still open"
+        f"{_named(waiting, recommended=True)} Triage {'it' if n == 1 else 'them'} in {where} "
+        f"first, so {'it is' if n == 1 else 'each is'} decided before any estimate is seen.",
         exits=[{"label": f"Triage the open noticings in {where}", "decision": None},
                {"label": "Keep the recommended dispositions",
                 "decision": {"kind": "confirm_sweep", "stage": stage, "sweep": "noticings",

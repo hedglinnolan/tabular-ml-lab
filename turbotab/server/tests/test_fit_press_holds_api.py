@@ -12,7 +12,7 @@ triaged before the lock, so the server holds the press:
   locks the plan as before.
 
 Under Predict nothing changes (its triage's gate is the held-out rows): the press is taken with the
-triage open. An Estimate fit with nothing to triage is pressed as before.
+triage open, and with the fit refused. An Estimate fit with nothing to triage is pressed as before.
 
 What the triages hold rests on each table's construction, read here with pandas: NHANES's
 `gender` and the dietary file's `sex` are two-level text, each a noticing of which level counts as
@@ -146,14 +146,18 @@ def test_under_estimate_fit_waits_for_the_open_noticings_triage_and_locks_once_i
     assert r.status_code == 409, r.text[:600]
     error = r.json()["error"]
     assert error["code"] == "triage_open"
+    # each open noticing in a sentence of its own, numbered when there are several, with its
+    # recommended disposition after it, as the triage serves them
     n = len(still)
-    named = "; ".join(f"{i['summary'].strip().rstrip('.')} ({i['label'].lower()})" for i in still)
+    said = [f"{i['summary'].strip().rstrip('.')}. Recommended: {i['label'].lower()}."
+            for i in still]
+    listed = (f"1 noticing is still open: {said[0]}" if n == 1 else
+              f"{n} noticings are still open. "
+              + " ".join(f"({k}) {e}" for k, e in enumerate(said, 1)))
     assert error["message"] == (
         f"Fit waits: pressing it locks the analysis plan, and the open noticings are triaged "
-        f"before the plan is locked. {n} {'is' if n == 1 else 'are'} still open, "
-        f"{'with its' if n == 1 else 'each with its'} recommended disposition: {named}. "
-        f"Triage {'it' if n == 1 else 'them'} in Models first, "
-        f"so {'it is' if n == 1 else 'each is'} decided before any estimate is seen.")
+        f"before the plan is locked. {listed} Triage {'it' if n == 1 else 'them'} in Models "
+        f"first, so {'it is' if n == 1 else 'each is'} decided before any estimate is seen.")
     assert error["exits"] == [{"label": "Triage the open noticings in Models", "decision": None},
                               {"label": "Keep the recommended dispositions", "decision": CONFIRM}]
     nothing_pressed_or_locked(client, pid, before)
@@ -212,6 +216,40 @@ def test_under_prediction_fit_is_taken_with_the_triage_open(client):
 
 # ── a fit that cannot run ────────────────────────────────────────────────────
 
+# Refusals written here: one of a stage the fit waits on, one of the fit's own.
+REFUSALS = (
+    Refused(stage="cohort", code="too_few_rows",
+            message="The eligibility rules written here leave too few rows to analyze.",
+            exits=[{"label": "Keep every row",
+                    "decision": parse_decision({"kind": "set_exclusions", "rules": []})
+                    .model_dump(mode="json")},
+                   {"label": "Change the eligibility rules", "decision": None}]),
+    Refused(stage="fit", code="singular_model_matrix",
+            message="The model matrix written here is singular.",
+            exits=[{"label": "Leave one of the dependent columns out of the model",
+                    "decision": None}]))
+
+
+def serve_refused(client, monkeypatch, pid: str, refusal: Refused) -> None:
+    """``refusal`` served as the fit's status for ``pid``, as the engine serves a stage the fit
+    waits on that refused (``graph.Engine._status``), or the fit's own; the premise read back as
+    the server serves it."""
+    service: ProjectService = client.app.state.service
+    real = service.engine.status
+
+    def refused(p: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        stages = dict(real(p, *args, **kwargs))
+        if p == pid:
+            stages["fit"] = stages["fit"].model_copy(update={
+                "status": "error", "fresh": False, "refusal": refusal,
+                "error": f"Needs {refusal.stage!r}, which failed." if refusal.stage != "fit" else
+                         refusal.message})
+        return stages
+
+    monkeypatch.setattr(service.engine, "status", refused)
+    assert client.get(f"/api/projects/{pid}").json()["stages"]["fit"]["refusal"] == (
+        refusal.model_dump(mode="json"))  # the premise, as the server serves it
+
 
 def test_under_estimate_a_refused_fit_refuses_the_press_with_its_own_refusal(client, tmp_path,
                                                                               monkeypatch):
@@ -222,31 +260,8 @@ def test_under_estimate_a_refused_fit_refuses_the_press_with_its_own_refusal(cli
     service: ProjectService = client.app.state.service
     pid = walking_under_estimate(client, tmp_path / "data")
     before = kinds(client, pid)
-    real = service.engine.status
-    for refusal in (
-            Refused(stage="cohort", code="too_few_rows",
-                    message="The eligibility rules written here leave too few rows to analyze.",
-                    exits=[{"label": "Keep every row",
-                            "decision": parse_decision({"kind": "set_exclusions", "rules": []})
-                            .model_dump(mode="json")},
-                           {"label": "Change the eligibility rules", "decision": None}]),
-            Refused(stage="fit", code="singular_model_matrix",
-                    message="The model matrix written here is singular.",
-                    exits=[{"label": "Leave one of the dependent columns out of the model",
-                            "decision": None}])):
-
-        def refused(p: str, *args: Any, _r: Refused = refusal, **kwargs: Any) -> dict[str, Any]:
-            stages = dict(real(p, *args, **kwargs))
-            if p == pid:
-                stages["fit"] = stages["fit"].model_copy(update={
-                    "status": "error", "fresh": False, "refusal": _r,
-                    "error": f"Needs {_r.stage!r}, which failed." if _r.stage != "fit" else
-                             _r.message})
-            return stages
-
-        monkeypatch.setattr(service.engine, "status", refused)
-        assert client.get(f"/api/projects/{pid}").json()["stages"]["fit"]["refusal"] == (
-            refusal.model_dump(mode="json"))  # the premise, as the server serves it
+    for refusal in REFUSALS:
+        serve_refused(client, monkeypatch, pid, refusal)
         r = press(client, pid)
         assert r.status_code == 409, r.text[:600]
         assert r.json()["error"] == {"code": refusal.code, "message": refusal.message,
@@ -258,3 +273,28 @@ def test_under_estimate_a_refused_fit_refuses_the_press_with_its_own_refusal(cli
     taken = press(client, pid)
     assert taken.status_code == 200, taken.text[:600]
     assert taken.json()["locked"] is True and kinds(client, pid)[-1] == "lock_plan"
+
+
+def test_under_prediction_a_refused_fit_does_not_hold_the_press(client, monkeypatch):
+    """Under Predict nothing changes: with the fit served as refused, by a stage it waits on or by
+    itself (the refusals written here), the press is taken as before: pressed, nothing locked, no
+    record added, the press kept for the outcome (withdrawn after each, so the next is a new
+    press)."""
+    service: ProjectService = client.app.state.service
+    pid = sealed_project(client)
+    decide(client, pid, {"kind": "select_models", "models": ["linear"]})
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    assert client.get(f"/api/projects/{pid}").json()["state"]["purpose"] == "prediction"
+    pdir = service.workspace.project_dir(pid)
+    assert not fit_press.pressed_for(fit_press.read_press(pdir), "hba1c")
+    before = kinds(client, pid)
+    for refusal in REFUSALS:
+        serve_refused(client, monkeypatch, pid, refusal)
+        r = press(client, pid)
+        assert r.status_code == 200, r.text[:600]
+        assert r.json()["pressed"] is True and r.json()["locked"] is False
+        assert kinds(client, pid) == before  # a job command, not a decision
+        assert fit_press.pressed_for(fit_press.read_press(pdir), "hba1c")
+        monkeypatch.undo()
+        fit_press.withdraw_press(pdir)  # the next refusal meets Fit not pressed
+        assert not fit_press.pressed_for(fit_press.read_press(pdir), "hba1c")

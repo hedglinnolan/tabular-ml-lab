@@ -12,6 +12,9 @@ recommended).
   disposition (the triage in Models, or its "Confirm all" as recommended), one noticing or several.
 * It is silent once every disposition is recorded, "act on it" among them (the gate is the
   confirmation, FOUNDATION §7), with nothing to triage, and once the gate has passed.
+* It names each noticing where no summary can be misread: one after a colon, several each in a
+  numbered sentence of its own, with its recommended disposition in a sentence after it, so a
+  summary's own semicolon and a label's own parentheses stay inside their noticing.
 """
 from __future__ import annotations
 
@@ -30,10 +33,10 @@ LEAD = ("Fit waits: pressing it locks the analysis plan, and the open noticings 
 
 
 def item(fid: str, summary: str, recommended: str = "no_change", *, blocker: bool = False,
-         recorded: str | None = None) -> TriageItem:
+         recorded: str | None = None, label: str | None = None) -> TriageItem:
     return TriageItem(id=fid, line=f"finding:{fid}", stage="models", summary=summary,
                       severity="critical" if blocker else "info", recommended=recommended,
-                      label=LABELS[recommended], reason="the reason", blocker=blocker,
+                      label=label or LABELS[recommended], reason="the reason", blocker=blocker,
                       recorded=recorded)
 
 
@@ -52,9 +55,9 @@ def test_one_noticing_with_no_recorded_disposition_holds_fit_with_the_triage_as_
              "could_bias", recorded="could_bias")))
     assert isinstance(refused, Refusal) and refused.code == "triage_open"
     assert refused.message == (
-        f"{LEAD} 1 is still open, with its recommended disposition: `gender` is two-level "
-        f"text (`female`, `male`) (doesn't change your numbers here). Triage it in Models first, "
-        f"so it is decided before any estimate is seen.")
+        f"{LEAD} 1 noticing is still open: `gender` is two-level text (`female`, `male`). "
+        f"Recommended: doesn't change your numbers here. Triage it in Models first, so it is "
+        f"decided before any estimate is seen.")
     assert refused.exits == [{"label": "Triage the open noticings in Models", "decision": None},
                              {"label": "Keep the recommended dispositions", "decision": CONFIRM}]
 
@@ -66,11 +69,34 @@ def test_several_open_noticings_are_each_named_with_their_recommended_dispositio
         item("diet-implausible-reporters", "Some energy reports are implausible", "could_bias")))
     assert refused is not None and refused.code == "triage_open"
     assert refused.message == (
-        f"{LEAD} 2 are still open, each with its recommended disposition: Cells hold 5.4e-79: a "
-        f"zero in a SAS transport file, misread (act on it); Some energy reports are implausible "
-        f"(could bias the estimate). Triage them in Models first, so each is decided before any "
-        f"estimate is seen.")
+        f"{LEAD} 2 noticings are still open. (1) Cells hold 5.4e-79: a zero in a SAS transport "
+        f"file, misread. Recommended: act on it. (2) Some energy reports are implausible. "
+        f"Recommended: could bias the estimate. Triage them in Models first, so each is decided "
+        f"before any estimate is seen.")
     assert refused.exits[1] == {"label": "Keep the recommended dispositions", "decision": CONFIRM}
+
+
+def test_a_summary_s_own_semicolon_and_a_label_s_parentheses_stay_inside_their_noticing():
+    """The verifier's NHANES words: a summary holding a semicolon read as two noticings once the
+    noticings were joined by semicolons, and a label ending in parentheses nested inside the
+    parentheses that held it. Each noticing is now its own numbered sentence, its recommended
+    disposition a sentence of its own."""
+    refused = fit_press.triage_refusal(triage(
+        item("binary_text__gender", "`gender` is two-level text (`female`, `male`); which level "
+             "counts as 1 is not asked yet"),
+        item("diet-day-to-day-variance", "Part of `sugar`'s spread is day-to-day noise",
+             "could_bias", label="Could bias the estimate (not measurable here)"),
+        item("diet-implausible-reporters",
+             "Some energy reports are implausible, and the screen removes them.", "could_bias")))
+    assert refused is not None and refused.code == "triage_open"
+    assert refused.message == (
+        f"{LEAD} 3 noticings are still open. (1) `gender` is two-level text (`female`, `male`); "
+        f"which level counts as 1 is not asked yet. Recommended: doesn't change your numbers "
+        f"here. (2) Part of `sugar`'s spread is day-to-day noise. Recommended: could bias the "
+        f"estimate (not measurable here). (3) Some energy reports are implausible, and the screen "
+        f"removes them. Recommended: could bias the estimate. Triage them in Models first, so "
+        f"each is decided before any estimate is seen.")
+    assert "(could bias" not in refused.message and "))" not in refused.message
 
 
 def test_a_blocking_noticing_is_decided_on_its_own_before_the_rest_are_triaged():
@@ -82,7 +108,7 @@ def test_a_blocking_noticing_is_decided_on_its_own_before_the_rest_are_triaged()
     assert refused.exits == [{"label": "Decide: `glucose` takes one value", "decision": None}]
     two = fit_press.triage_refusal(triage(item("a", "A.", blocker=True),
                                           item("b", "B", blocker=True, recorded="no_change")))
-    assert two.message == f"{LEAD} 2 noticings must be resolved first: A; B."
+    assert two.message == f"{LEAD} 2 noticings must be resolved first. (1) A. (2) B."
     assert [e["label"] for e in two.exits] == ["Decide: A.", "Decide: B"]
 
 
