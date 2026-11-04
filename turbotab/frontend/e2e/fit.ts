@@ -33,12 +33,15 @@ export interface DecidingWay {
 }
 
 /**
- * The way forward of a refused press of Fit that confirms the open noticings' triage before the
- * lock, or null. Under Estimate and Describe the server refuses the press (`triage_open`) while a
- * noticing has no recorded disposition, and offers "Keep the recommended dispositions": the
- * triage's Confirm all, a `confirm_sweep` that records each noticing as the engine recommends
- * (core/fit_press.py `triage_refusal`). A blocking noticing's refusal offers no such way (each is
- * decided on its own), nor does any other refusal.
+ * The way forward of a refused press of Fit that records dispositions in the open noticings'
+ * triage before the lock, or null. Under Estimate and Describe the server refuses the press
+ * (`triage_open`) while a noticing has no recorded disposition, and offers "Keep the recommended
+ * dispositions": the triage's Confirm all, a `confirm_sweep` that records each noticing as the
+ * engine recommends; then, while a noticing recorded "act on it" is not acted on, it offers
+ * "Record as a limitation" for each, a `confirm_sweep` of that one noticing's line (its
+ * disposition changed, the owner's Q8), which moves no fitted number, as acting on it might
+ * (core/fit_press.py `triage_refusal`). The first such way is taken. A blocking noticing's refusal
+ * offers none (each is decided on its own), nor does any other refusal.
  */
 export function triageWay(body: unknown): DecidingWay | null {
   const error = (body as { error?: { code?: string; exits?: { label?: string; decision?: Record<string, unknown> | null }[] } } | null)
@@ -65,16 +68,22 @@ async function takeWay(page: Page, way: DecidingWay): Promise<void> {
   expect(said.status, `“${way.label}” is recorded (${said.text})`).toBe(200);
 }
 
+/** How many of the triage's refusals one press goes through: its Confirm all, then one for each
+ *  noticing marked "act on it" and not acted on, with room for a disposition that no longer
+ *  stands (as the server's drivers go: core/tests/acceptance/server_drive.py `TRIAGE_ROUNDS`). */
+const TRIAGE_ROUNDS = 12;
+
 /** The Results' Fit, pressed: the Results are shown on the stage (the banner's result segment,
  *  when the stage shows something else), Fit is pressed, and the stage goes back to what it
  *  showed. Waits for Fit to be offered, then for the press to be taken (the Fit gone from the
  *  Results, for as long as the fit job runs) or refused (the Results say why, and this fails with
  *  it). Under Estimate and Describe a press the open noticings' triage holds (`triage_open`) takes
- *  that refusal's way forward "Keep the recommended dispositions", the triage's Confirm all, and
- *  Fit is pressed again, once. Neither screen draws that triage yet (the shell draws one only
- *  under Predict, in Results: quest/log.ts `triageStage`), nor the refusal's ways forward beside
- *  Fit (its words alone), so the way the served refusal offers (:func:`triageWay`) is posted as
- *  the app posts a decision. A blocking noticing's refusal, or any other, fails as before. */
+ *  that refusal's way forward that records dispositions (:func:`triageWay`: "Keep the recommended
+ *  dispositions", the triage's Confirm all, then each "Record as a limitation" a noticing kept to
+ *  act on and not acted on offers), and Fit is pressed again after each, through at most
+ *  `TRIAGE_ROUNDS` such refusals. Neither screen draws the refusal's ways forward that record
+ *  something beside Fit (its words alone), so the way the served refusal offers is posted as the
+ *  app posts a decision. A blocking noticing's refusal, or any other, fails as before. */
 export async function pressFit(page: Page, timeout = 300_000): Promise<{ waited: number; firstBusy: number | null }> {
   const press = page.getByTestId("press-fit");
   const segment = page.getByTestId("banner-result");
@@ -111,20 +120,27 @@ export async function pressFit(page: Page, timeout = 300_000): Promise<{ waited:
     page.off("response", keep);
   }
   const first = served as Response | null;
-  const way = (await refusal.count()) && first && first.status() === 409 ? triageWay(await first.json().catch(() => null)) : null;
-  if (way) {
+  let way = (await refusal.count()) && first && first.status() === 409 ? triageWay(await first.json().catch(() => null)) : null;
+  const taken: string[] = [];
+  for (let round = 0; way; round++) {
+    if (round === TRIAGE_ROUNDS) throw new Error(`Fit was still held by the triage after ${taken.length} ways forward: ${taken.join("; ")}`);
     await takeWay(page, way);
+    taken.push(way.label);
     await expect(press, "Fit is offered again once the triage is recorded").toBeEnabled({ timeout });
     const again = page.waitForResponse(fitPress, { timeout });
     await press.click();
-    const second = await again;
-    if (second.status() !== 200)
-      throw new Error(`Fit was refused after “${way.label}”: ${JSON.stringify(await second.json().catch(() => null)).slice(0, 600)}`);
-    // Taken: the first press's refusal leaves with the press's error.
-    await expect(refusal, "the refusal of the first press is gone once Fit is taken").toHaveCount(0, { timeout: 30_000 });
+    const next = await again;
+    if (next.status() === 200) break;
+    const body: unknown = await next.json().catch(() => null);
+    way = next.status() === 409 ? triageWay(body) : null;
+    if (!way) throw new Error(`Fit was refused after “${taken[taken.length - 1]}”: ${JSON.stringify(body).slice(0, 600)}`);
+  }
+  if (taken.length) {
+    // Taken: the refusal of the presses before leaves with the press's error.
+    await expect(refusal, "the refusal of the presses before is gone once Fit is taken").toHaveCount(0, { timeout: 30_000 });
     answered = await answer();
     try {
-      test.info().annotations.push({ type: "triage", description: `Fit waited for the open noticings' triage: took “${way.label}”` });
+      for (const label of taken) test.info().annotations.push({ type: "triage", description: `Fit waited for the open noticings' triage: took “${label}”` });
     } catch {
       /* not inside a test */
     }

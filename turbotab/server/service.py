@@ -2195,11 +2195,11 @@ class ProjectService:
         refused, and kept nowhere. A press there is refused too, recording nothing, while the fit
         or a stage it waits on is refused, with that stage's own refusal (its code, words and ways
         forward, as the fit's status serves it), and, while the plan is unlocked, while the open
-        noticings' triage, which comes before the lock (calm/FOUNDATION §7), is not confirmed
-        (``fit_press.triage_refusal``). Under Predict neither holds a press: the triage's gate there
-        is the held-out rows. Otherwise the press is kept beside the project with the estimate it
-        confirms, which releases the scheduler's hold. Returns the lock as the quest log shows
-        it."""
+        noticings' triage, which comes before the lock (calm/FOUNDATION §7), is not confirmed or
+        holds a noticing recorded "act on it" and not acted on (``fit_press.triage_refusal``; the
+        owner's Q8). Under Predict neither holds a press: the triage's gate there is the held-out
+        rows. Otherwise the press is kept beside the project with the estimate it confirms, which
+        releases the scheduler's hold. Returns the lock as the quest log shows it."""
         from turbotab.core.fit_press import fit_estimate, record_press, triage_refusal
 
         self.workspace.get(pid)
