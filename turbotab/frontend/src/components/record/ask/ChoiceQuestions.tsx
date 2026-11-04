@@ -13,6 +13,7 @@ import type {
   ExclusionRule,
   LevelRule,
   MissingColumn,
+  MissingReading,
   ProposalsArtifact,
   ShelfArtifact,
   ShelfFamily,
@@ -407,6 +408,29 @@ export function takesLevel(info: { dtype: string; n_unique: number } | undefined
 }
 
 type MissingDecision = Extract<Decision, { kind: "set_missing" }>;
+type MissingOffer = MissingReading["methods"][number];
+type BelowDetection = NonNullable<MissingDecision["below_detection"]>;
+type ImputationModel = NonNullable<MissingDecision["imputation_model"]>;
+
+/** m, the imputations multiple imputation draws at least, as the contract bounds it (decisions.py
+ *  SetMissing `m`; missing.test.tsx holds the card to openapi.json's). The fit draws one per
+ *  percent of the rows with a blank to impute where that is more (methods/imputation.py
+ *  `m_rule`). */
+const M_IMPUTATIONS = { default: 20, min: 20, max: 200 } as const;
+
+/** The m a typed value asks for: a whole number within the contract's bounds, else null. */
+function parseM(text: string): number | null {
+  const t = text.trim();
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return n >= M_IMPUTATIONS.min && n <= M_IMPUTATIONS.max ? n : null;
+}
+
+/** The answers the server offers for the declared purpose: every one it lists but those it
+ *  refuses (methods/missing.py `methods_for`, `imputation_model_options`,
+ *  `below_detection_options`). */
+const offered = (list: MissingOffer[] | undefined): MissingOffer[] =>
+  (list ?? []).filter((o) => o.rung !== "refused");
 
 /** The option an answer on record reads back as. */
 export function missingKey(current: ProjectState["missing"]): string | null {
@@ -462,6 +486,134 @@ export function MissingAsk({
     ...patch,
   });
 
+  // Values below a detection limit (audit ME-08), where the record names their columns: the server
+  // names them when it refuses a fill that reads them as any other blank, and its ways forward
+  // record them. Before that this card cannot know them (it is given no findings), so the first
+  // answer meets the server's refusal. The fills offered are the server's for the purpose.
+  const censored = current?.censored_columns ?? [];
+  const fillOnRecord = current?.below_detection ?? null;
+  const fillOffers = offered(proposals?.missing?.below_detection);
+  const askFill = censored.length > 0 && fillOnRecord !== null && fillOffers.length > 0;
+  // The fill on record until one is chosen here, so the choice always shows what a press posts
+  // (an exit taken at this card's refusal records one while the card stays open).
+  const [chosenFill, setFill] = useState<BelowDetection | null>(null);
+  const fill = chosenFill ?? fillOnRecord;
+  const belowDetection: Partial<MissingDecision> = askFill
+    ? { below_detection: fill, censored_columns: censored }
+    : {};
+  const fillChoice = (where: string) =>
+    askFill ? (
+      <>
+        <span className={c.modifierLabel}>values below detection</span>
+        <select
+          className={c.inlineSelect}
+          aria-label="How values below detection are filled"
+          value={fill ?? ""}
+          onChange={(e) => setFill(e.target.value as BelowDetection)}
+          data-testid={`missing-fill-${where}`}
+        >
+          {fillOffers.map((o) => (
+            <option key={o.key} value={o.key} title={o.sound}>
+              {o.label}
+            </option>
+          ))}
+          {fillOffers.some((o) => o.key === fillOnRecord) ? null : (
+            <option value={fillOnRecord ?? ""}>as recorded</option>
+          )}
+        </select>
+      </>
+    ) : null;
+
+  // Multiple imputation where the server offers it (inference's; refused under prediction, so not
+  // offered there), with its m and the imputation model as the server serves them (MS1–MS2). The
+  // compatible, clustered imputation is the engine's reading of an answer that names neither.
+  const miOffer = offered(proposals?.missing?.methods).find((o) => o.key === "multiple_imputation");
+  const subOffers = offered(proposals?.missing?.imputation_models);
+  const modelOffers = subOffers.filter((o) => typeof o.decision.imputation_model === "string");
+  const singleOffer = subOffers.find((o) => o.decision.imputation_levels === "single_level");
+  const miOnRecord = current?.strategy === "multiple_imputation" ? current : null;
+  const [mText, setMText] = useState(String(miOnRecord?.m ?? M_IMPUTATIONS.default));
+  const [model, setModel] = useState<ImputationModel>(
+    miOnRecord?.imputation_model === "passive" ? "passive" : "compatible",
+  );
+  const [single, setSingle] = useState(miOnRecord?.imputation_levels === "single_level");
+  const m = parseM(mText);
+  const multipleImputation: OptionItem | null = miOffer
+    ? {
+        key: "multiple_imputation",
+        label: taught(p.entry, "multiple_imputation")?.label ?? "Multiple imputation",
+        // Not the teaching's line, which says 20 times: m is the user's, and the fit may draw more.
+        line: "Each blank imputed several times with the outcome; results pooled by Rubin's rules.",
+        decision:
+          m === null
+            ? null
+            : spec({
+                strategy: "multiple_imputation",
+                m,
+                imputation_model: model,
+                imputation_levels: single ? "single_level" : "clustered",
+                ...belowDetection,
+              }),
+        extra: (
+          <span
+            className={c.modifierInline}
+            role="group"
+            aria-label="How multiple imputation draws"
+          >
+            <label className={c.check}>
+              at least
+              <input
+                inputMode="numeric"
+                size={3}
+                className={c.inlineSelect}
+                value={mText}
+                onChange={(e) => setMText(e.target.value)}
+                aria-label="Imputations, at least"
+                data-testid="missing-m"
+              />
+              imputations
+            </label>
+            {m === null ? (
+              <span className={c.coachNote} data-testid="missing-m-bounds">
+                A whole number from {M_IMPUTATIONS.min} to {M_IMPUTATIONS.max}.
+              </span>
+            ) : (
+              <span className={c.hint}>
+                more where over {m}% of the rows have a blank to impute
+              </span>
+            )}
+            {modelOffers.length ? (
+              <select
+                className={c.inlineSelect}
+                aria-label="Imputation model"
+                value={model}
+                onChange={(e) => setModel(e.target.value as ImputationModel)}
+                data-testid="missing-imputation-model"
+              >
+                {modelOffers.map((o) => (
+                  <option key={o.key} value={String(o.decision.imputation_model)} title={o.sound}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {singleOffer ? (
+              <label className={c.check} title={singleOffer.sound}>
+                <input
+                  type="checkbox"
+                  checked={single}
+                  onChange={(e) => setSingle(e.target.checked)}
+                  data-testid="missing-single-level"
+                />
+                {singleOffer.label}
+              </label>
+            ) : null}
+            {fillChoice("mi")}
+          </span>
+        ),
+      }
+    : null;
+
   const missingLevel: OptionItem | null = levelable.length
     ? {
         key: "missing_level",
@@ -499,6 +651,7 @@ export function MissingAsk({
     strategy: "impute",
     categorical: levels && levelable.length ? "missing_category" : "impute",
     indicators: indicators && numeric.length > 0,
+    ...belowDetection,
   });
   const impute: OptionItem = {
     key: "impute",
@@ -507,7 +660,7 @@ export function MissingAsk({
     decision: imputeDecision,
     previewLabel: `Impute${imputeDecision.categorical === "missing_category" ? ", blanks as a level" : ""}${imputeDecision.indicators ? ", with indicators" : ""}`,
     extra:
-      levelable.length || numeric.length ? (
+      levelable.length || numeric.length || askFill ? (
         <span className={c.modifierInline} role="group" aria-label="How imputation treats blanks">
           {levelable.length ? (
             <label className={c.check}>
@@ -534,19 +687,34 @@ export function MissingAsk({
           {indicators && numeric.length && purpose === "inference" ? (
             <span className={c.coachNote}>Under inference, an indicator biases the estimates.</span>
           ) : null}
+          {fillChoice("impute")}
         </span>
       ) : undefined,
   };
-  const items = [missingLevel, leaveOut, completeCase, impute].filter(
+  const items = [missingLevel, leaveOut, multipleImputation, completeCase, impute].filter(
     (x): x is OptionItem => x !== null,
   );
+  // An option reads as the answer on record only while pressing it would record that answer.
   const recordedKey = (() => {
     const key = missingKey(current);
-    if (key !== "impute" || !current) return key;
-    const same =
-      (current.categorical === "missing_category") === (levels && levelable.length > 0) &&
-      current.indicators === (indicators && numeric.length > 0);
-    return same ? key : null;
+    if (!current) return key;
+    const sameFill = !askFill || fill === fillOnRecord;
+    if (key === "impute") {
+      const same =
+        (current.categorical === "missing_category") === (levels && levelable.length > 0) &&
+        current.indicators === (indicators && numeric.length > 0) &&
+        sameFill;
+      return same ? key : null;
+    }
+    if (key === "multiple_imputation") {
+      const same =
+        m === current.m &&
+        (current.imputation_model === "passive") === (model === "passive") &&
+        (current.imputation_levels === "single_level") === single &&
+        sameFill;
+      return same ? key : null;
+    }
+    return key;
   })();
   const listed = blanks.slice(0, 4).map((b) => "`" + b.column + "` " + pct(b.share));
   const data =
