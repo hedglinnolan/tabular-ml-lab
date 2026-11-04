@@ -9,6 +9,10 @@ Models' cards and the estimates out of date, and Results stays reached to say so
 of date only until it is computed again, which can take less time than a second request, so those
 read the log as it stood when the change was recorded: with the stage statuses the decision's own
 response reports.
+
+B1 (WO1): the same journey reaches Write-up once the plan is locked and Results' exhibits are
+computed for the answers now (each placed in Results by default until C7a adds placement), not
+before the lock and not while they recompute after the eligibility rule.
 """
 from __future__ import annotations
 
@@ -38,7 +42,7 @@ def test_the_quest_log_is_served_versioned_with_the_seven_stages_in_order(client
     r = client.get(f"/api/projects/{pid}/quest")
     assert r.status_code == 200, r.text
     log = r.json()
-    assert log["version"] == QUEST_VERSION == 5
+    assert log["version"] == QUEST_VERSION == 6
     assert [(s["key"], s["name"]) for s in log["stages"]] == SEVEN
     # Nothing is locked, and the log says why (P0.8): no goal is chosen yet.
     assert log["fit"]["purpose"] is None and log["fit"]["locked"] is False
@@ -210,32 +214,140 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
 
     served = drive.c.get(f"/api/projects/{drive.pid}/stages/fit").json()["artifact"]
     assert shows_estimates("fit", served)
+    settle(drive)
     stages = quest(drive)
     assert all(s["reopened"] == [] for s in stages.values())
     # Under Estimate Results counts the Estimate exhibits the engine serves (TRUST; the
     # crosswalk's goals): Table 2 (effects) and Model 3 (secondary). Usual intake is Describe's,
-    # the performance table and the decision curve Predict's.
+    # the performance table and the decision curve Predict's. B1 (WO1): the plan locked and both
+    # computed for the answers now, each is placed in Results by default (C7a adds placing it
+    # elsewhere): Results reads 2 of 2, and Write-up is reached, asking nothing, so the shell
+    # offers the download and the checklist it reads.
+    view = drive.view()["stages"]
+    assert (view["effects"]["status"], view["secondary"]["status"]) == ("fresh", "fresh")
     assert stages["results"]["reached"] and stages["results"]["progress"] == {
-        "answered": 0, "required": 2, "complete": False}
-    assert not stages["writeup"]["reached"] and stages["writeup"]["progress"] is None
+        "answered": 2, "required": 2, "complete": True}
+    assert stages["writeup"]["reached"] and stages["writeup"]["progress"] == {
+        "answered": 0, "required": 0, "complete": True}
+    assert drive.c.get(f"/api/projects/{drive.pid}/checklist").status_code == 200
 
     # 4 · Who's in → Models and Results: an eligibility rule leaves the shelf, the cards and the
     # estimates out of date. Results stays reached and says why (with Fit held, until Fit is
-    # pressed again).
+    # pressed again); while its exhibits recompute none is placed, and Write-up waits for them.
     changed, stages = at_the_change(drive, rule(700, 4000), monkeypatch)
     [shelf] = [r for r in stages["models"]["reopened"] if r["decision_id"] == changed]
     assert shelf["changed_in"] == "whos_in" and "shelf" in shelf["results"]
     assert shelf["sentence"] == out_of_date("Who's in", len(shelf["results"]), "Models")
     results = stages["results"]
     assert results["reached"] and not stages["writeup"]["reached"]
+    assert stages["writeup"]["progress"] is None
     assert results["progress"] == {"answered": 0, "required": 2, "complete": False}
     [estimates] = results["reopened"]
     assert estimates["decision_id"] == changed and estimates["changed_in"] == "whos_in"
-    # the reason names Results' own objectives: Table 2, never the Predict exhibits
-    assert "effects" in estimates["results"]
+    # the reason names Results' own objectives, both out of date: Table 2 and Model 3, never the
+    # Predict exhibits
+    assert {"effects", "secondary"} <= set(estimates["results"])
     assert not {"fit", "evaluation", "usual_intake"} & set(estimates["results"])
     assert estimates["sentence"] == out_of_date("Who's in", len(estimates["results"]), "Results")
     settle(drive)
     stages = quest(drive)
     assert all(s["reopened"] == [] for s in stages.values())
-    assert stages["results"]["reached"]
+    # computed again for the new rule, both are placed again, and Write-up is reached again
+    assert stages["results"]["reached"] and stages["results"]["progress"] == {
+        "answered": 2, "required": 2, "complete": True}
+    assert stages["writeup"]["reached"]
+
+
+# ── B1 (WO1): Write-up opens under Estimate, on a real server ────────────────
+
+# The sodium table's Estimate exhibits, by each stage's ``requires`` against the answers below
+# (models ["linear"], the clinical lens, the estimand and the adjustment set answered, nothing
+# else declared): effects (models, estimand, purpose) and secondary (models, adjustment, purpose).
+# usual_intake is Describe's; fit and evaluation are Predict's; sensitivity, calibration, scales,
+# causal, time_varying, modification, explain and substitution wait for answers never given here.
+SODIUM_EXHIBITS = {"effects", "secondary"}
+
+
+@pytest.mark.slow
+def test_write_up_is_reached_once_the_plan_is_locked_and_the_exhibits_are_fresh(
+        client, tmp_path, monkeypatch):
+    """The vision audit's V2: after a full Estimate walk the export was served, yet Write-up was
+    never reached, so the shell offered no download and no checklist. Each exhibit is placed in
+    Results by default once it is shown for the answers now: Write-up is reached after the lock
+    with both exhibits fresh; not before the lock, and not while they recompute."""
+    from turbotab.core.tests.acceptance.server_drive import open_project
+    from turbotab.core.tests.acceptance.test_routing_gate_repair import (
+        SODIUM_TRUTH, _sodium, _to_models)
+    from turbotab.core.tests.truths import Truth
+
+    path = tmp_path / "writeup_opens.csv"
+    _sodium().to_csv(path, index=False)
+    drive = open_project(client, path, Truth(SODIUM_TRUTH, fixture="the sodium table"))
+    _to_models(drive, "inference")
+    drive.answer("exclusions", {"kind": "set_exclusions", "rules": []})
+    drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
+    drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+    drive.answer_plan("sodium_g")
+    drive.reach("models")
+    drive.decide({"kind": "select_models", "models": ["linear"]})
+    settle(drive)
+
+    # Before the lock: the exhibits may compute, but none is shown, so none is placed.
+    log = drive.c.get(f"/api/projects/{drive.pid}/quest").json()
+    stages = {s["key"]: s for s in log["stages"]}
+    assert log["fit"]["locks"] is True and log["fit"]["locked"] is False
+    assert not stages["results"]["reached"]
+    assert not stages["writeup"]["reached"] and stages["writeup"]["progress"] is None
+
+    # After the lock, both exhibits computed for the answers now: Results reads 2 of 2 and
+    # Write-up is reached, asking nothing; the checklist and the export it offers are served.
+    assert drive.press_fit()
+    settle(drive)
+    view = drive.view()
+    assert view["state"]["plan_locked"] is True
+    assert {name: view["stages"][name]["status"] for name in SODIUM_EXHIBITS} == {
+        name: "fresh" for name in SODIUM_EXHIBITS}
+    stages = quest(drive)
+    assert stages["results"]["progress"] == {"answered": 2, "required": 2, "complete": True}
+    assert stages["writeup"]["reached"] and stages["writeup"]["progress"] == {
+        "answered": 0, "required": 0, "complete": True}
+    assert drive.c.get(f"/api/projects/{drive.pid}/checklist").status_code == 200
+    exported = drive.c.get(f"/api/projects/{drive.pid}/export")
+    assert exported.status_code == 200, exported.text[:600]
+
+    # An eligibility rule after the lock: while the exhibits recompute (the statuses the
+    # decision's response reports), none is placed, and Write-up is not reached; Results says why.
+    rule = {"kind": "set_exclusions", "rules": [
+        {"column": "age", "low": 25, "high": 80, "reason": "outside the study's age range"}]}
+    changed, stages = at_the_change(drive, rule, monkeypatch)
+    results = stages["results"]
+    assert results["reached"] and results["progress"] == {
+        "answered": 0, "required": 2, "complete": False}
+    assert not stages["writeup"]["reached"] and stages["writeup"]["progress"] is None
+    [estimates] = [r for r in results["reopened"] if r["decision_id"] == changed]
+    assert SODIUM_EXHIBITS <= set(estimates["results"])
+
+    # Computed again for the new rule: both placed again, and Write-up is reached again.
+    settle(drive)
+    stages = quest(drive)
+    assert stages["results"]["progress"] == {"answered": 2, "required": 2, "complete": True}
+    assert stages["writeup"]["reached"]
+
+    # B1 round 1 (V1; §7.2 I11): a sensitivity analysis declared after the lock (a Models answer;
+    # its stage requires it) serves a third exhibit. While it computes (the statuses the
+    # decision's response reports) Results reads 2 of 3 and Write-up waits for it, and Results
+    # names the answer and the exhibit it served; computed, it is placed, and nothing is said.
+    sensitivity = {"kind": "set_sensitivity", "analyses": [{"label": "Every row", "rules": []}]}
+    changed, stages = at_the_change(drive, sensitivity, monkeypatch)
+    results = stages["results"]
+    assert results["progress"] == {"answered": 2, "required": 3, "complete": False}
+    assert not stages["writeup"]["reached"]
+    [added] = [r for r in results["reopened"] if r["decision_id"] == changed]
+    assert (added["changed_in"], added["added"], added["results"]) == (
+        "models", ["sensitivity"], [])
+    assert added["sentence"] == "Your change to Models added 1 result to Results."
+    settle(drive)
+    assert drive.view()["stages"]["sensitivity"]["status"] == "fresh"
+    stages = quest(drive)
+    assert stages["results"]["progress"] == {"answered": 3, "required": 3, "complete": True}
+    assert stages["writeup"]["reached"] and stages["results"]["reopened"] == []

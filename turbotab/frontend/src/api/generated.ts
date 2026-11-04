@@ -4201,10 +4201,11 @@ export interface components {
          *     reached has no progress at all (empty, never "0 of N").
          *
          *     Results under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed
-         *     each exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the
-         *     exhibit-bearing stages the engine serves (:func:`served_exhibits`), and is not complete, not
-         *     "0 of 0" full; and Write-up is not reached (no progress) until Results is placed (C7a adds
-         *     placement).
+         *     each exhibit's wording and placement is an objective of Results, so it reads k of N, N the
+         *     exhibit-bearing stages the engine serves (:func:`served_exhibits`) and k those placed, not
+         *     "0 of 0" full; and Write-up is not reached (no progress) until Results is placed. Until C7a
+         *     adds placement, an exhibit is placed in Results by default once it is shown for the answers
+         *     now (:func:`placed_exhibits`).
          */
         Progress: {
             /** Answered */
@@ -4467,7 +4468,7 @@ export interface components {
         QuestLog: {
             /**
              * Version
-             * @default 5
+             * @default 6
              */
             version: number;
             /** Stages */
@@ -4722,7 +4723,9 @@ export interface components {
          * Reopened
          * @description Why a stage dropped back: an answer decided in another stage asked its questions again or
          *     left its results computed for other answers; or (``within``) another answer in the stage
-         *     itself asked its questions again.
+         *     itself asked its questions again. Under Estimate and Describe, Results also names an answer
+         *     given since the plan's lock that served an exhibit not placed yet (``added``; B1): one more
+         *     of its objectives, which Write-up waits for.
          */
         Reopened: {
             /** Changed In */
@@ -4741,6 +4744,11 @@ export interface components {
              * @default []
              */
             results: string[];
+            /**
+             * Added
+             * @default []
+             */
+            added: string[];
             /**
              * Within
              * @default false

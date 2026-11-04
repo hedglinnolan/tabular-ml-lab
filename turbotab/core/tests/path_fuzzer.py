@@ -776,10 +776,14 @@ def i11_monotone_progress(prev: Snapshot, snap: Snapshot) -> list[str]:
     for old in prev.log.stages:
         if not old.reached or stages_now[old.key].reached:
             continue
-        # Write-up is not reached under Estimate and Describe until Results is placed (Q-c; C7a
-        # adds placement, and removes this): only a goal that became Estimate closes it, which is
-        # its definition and not a reopening.
-        if old.key == "writeup" and _became_estimate(prev, snap):
+        # Write-up is not reached under Estimate and Describe until Results is placed (Q-c; B1:
+        # each exhibit is placed in Results by default once it is shown for the answers now). A
+        # goal that became Estimate closes it, which is its definition and not a reopening; under
+        # Estimate, so does an exhibit of Results left out of date, or served since the lock and
+        # not placed yet, which Results, holding the exhibits Write-up waits for, says.
+        if old.key == "writeup" and (_became_estimate(prev, snap) or (
+                getattr(snap.state, "purpose", None) == "inference"
+                and bool(getattr(stages_now.get("results"), "reopened", None)))):
             continue
         why = bool(stages_now[old.key].reopened) or (
             asking is not None and (bool(asking.reopened) or any(

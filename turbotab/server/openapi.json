@@ -12473,7 +12473,7 @@
           "complete"
         ],
         "title": "Progress",
-        "description": "A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``\nonce every one is answered. A reached stage that asks nothing (0 of 0: First look until its\nnoticings are wired, Write-up under Predict) is complete, its segment full; a stage not\nreached has no progress at all (empty, never \"0 of N\").\n\nResults under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed\neach exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the\nexhibit-bearing stages the engine serves (:func:`served_exhibits`), and is not complete, not\n\"0 of 0\" full; and Write-up is not reached (no progress) until Results is placed (C7a adds\nplacement)."
+        "description": "A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``\nonce every one is answered. A reached stage that asks nothing (0 of 0: First look until its\nnoticings are wired, Write-up under Predict) is complete, its segment full; a stage not\nreached has no progress at all (empty, never \"0 of N\").\n\nResults under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed\neach exhibit's wording and placement is an objective of Results, so it reads k of N, N the\nexhibit-bearing stages the engine serves (:func:`served_exhibits`) and k those placed, not\n\"0 of 0\" full; and Write-up is not reached (no progress) until Results is placed. Until C7a\nadds placement, an exhibit is placed in Results by default once it is shown for the answers\nnow (:func:`placed_exhibits`)."
       },
       "ProjectState": {
         "properties": {
@@ -13664,7 +13664,7 @@
           "version": {
             "type": "integer",
             "title": "Version",
-            "default": 5
+            "default": 6
           },
           "stages": {
             "items": {
@@ -14365,6 +14365,14 @@
             "title": "Results",
             "default": []
           },
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added",
+            "default": []
+          },
           "within": {
             "type": "boolean",
             "title": "Within",
@@ -14382,11 +14390,12 @@
           "kind",
           "questions",
           "results",
+          "added",
           "within",
           "sentence"
         ],
         "title": "Reopened",
-        "description": "Why a stage dropped back: an answer decided in another stage asked its questions again or\nleft its results computed for other answers; or (``within``) another answer in the stage\nitself asked its questions again."
+        "description": "Why a stage dropped back: an answer decided in another stage asked its questions again or\nleft its results computed for other answers; or (``within``) another answer in the stage\nitself asked its questions again. Under Estimate and Describe, Results also names an answer\ngiven since the plan's lock that served an exhibit not placed yet (``added``; B1): one more\nof its objectives, which Write-up waits for."
       },
       "ReopenedBy": {
         "properties": {

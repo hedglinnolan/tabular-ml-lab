@@ -14,6 +14,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { keys } from "../api/queries";
 import type {
+  ChecklistReport,
   DecisionRecord,
   ForTheRecord,
   ProjectView,
@@ -1167,5 +1168,50 @@ describe("a line a change reopened says which change (G20)", () => {
       expect(within(card).getByTestId(`line-${l.key}`)).toBeInTheDocument();
       expect(note(card, l.key), l.key).toBeNull();
     }
+  });
+});
+
+// ── B1 (WO1; the vision audit's V2): Write-up under Estimate ─────────────────
+// The engine's log under Estimate (the contract's `estimate_placed`: NHANES, the plan locked, Table 2
+// and the further-adjusted model fresh), where each exhibit is placed in Results by default and
+// Write-up is reached. The checklist is the one GET /checklist serves, built here as its input.
+
+describe("Write-up under Estimate, once Results is placed (B1)", () => {
+  const PLACED = CONTRACT.logs.estimate_placed.log;
+  const REPORT: ChecklistReport = {
+    checklist: "STROBE-nut",
+    title: "STROBE-nut: reporting nutritional epidemiology",
+    citation: "",
+    source: { table: "", pmcid: "", doi: "", url: "", retrieved: "", sha256: "", license: "" },
+    purpose: "inference",
+    items: [],
+    counts: { items: 24, answered: 10, partly_answered: 4, unanswered: 10 },
+    unanswered: [],
+    note: "",
+    waiting: [],
+  };
+  const withChecklist = (qc: QueryClient) => qc.setQueryData(keys.checklist(PID), REPORT);
+
+  it("offers the download and the checklist once the engine reaches it, as under Predict", () => {
+    expect(PLACED.fit).toMatchObject({ purpose: "inference", locked: true });
+    expect(stageIn(PLACED, "writeup").reached).toBe(true);
+    const { card } = cardOf(PLACED, "writeup", { seed: withChecklist });
+    expect(within(card).getByRole("button", { name: "Download" })).toBeEnabled();
+    expect(within(card).getByTestId("checklist")).toHaveTextContent(REPORT.title);
+    expect(within(card).getByTestId("checklist")).toHaveTextContent("10 answered, 4 partly answered, 10 unanswered, of 24 items.");
+  });
+
+  it("offers neither while the engine holds Write-up back (before the lock, or an exhibit recomputing)", () => {
+    // By construction: the same log as the engine serves it while Table 2 recomputes after the
+    // lock (core/quest.py `placed_exhibits`): Results 1 of 2, Write-up not reached.
+    const held: QuestLog = {
+      ...PLACED,
+      stages: PLACED.stages.map((s) =>
+        s.key === "writeup" ? { ...s, reached: false, progress: null } : s.key === "results" ? { ...s, progress: { answered: 1, required: 2, complete: false } } : s,
+      ),
+    };
+    const { card } = cardOf(held, "writeup", { seed: withChecklist });
+    expect(within(card).queryByRole("button", { name: "Download" })).toBeNull();
+    expect(within(card).queryByTestId("checklist")).toBeNull();
   });
 });

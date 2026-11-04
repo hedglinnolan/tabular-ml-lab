@@ -45,9 +45,12 @@ Estimate and Describe, which counts the exhibits the engine serves on this state
 Results is reached once Fit is pressed (SIZING P0.8; FOUNDATION §7): under Estimate and Describe
 once the plan is locked, under Predict once Fit is pressed for the outcome; it stays reached when
 its results go out of date, so it can say why it dropped back. Under Predict Write-up opens
-with Results; under Estimate and Describe it is not reached until Results is placed (C7a adds
-placement). Without what Fit says (``fit``), Results is reached once an estimate has been
-computed, for the answers now or for earlier ones.
+with Results; under Estimate and Describe it is not reached until Results is placed: until C7a
+adds placement, each exhibit arrives placed in Results by default once it is shown for the
+answers now (:func:`placed_exhibits`: the plan locked, no question the estimates rest on open, its
+stage fresh), so Write-up is reached once every exhibit served is, and not before the lock, while
+one recomputes or while the estimates are withheld. Without what Fit says (``fit``), Results is
+reached once an estimate has been computed, for the answers now or for earlier ones.
 
 **The lock is visible** (``fit``, :class:`fit_press.FitLock`): whether the plan is locked, when,
 its SHA-256 and why, in plain words; whether Fit was pressed, and whether the fit waits for it.
@@ -62,7 +65,11 @@ question reopened by another answer in its own stage says so too ("Your change t
 in Your data reopened 1 question.", FOUNDATION §3's "the join added 12 columns, so what each new
 column is gets read again"; ``within``); a result its own stage's answers left out of date is not
 a drop-back (each answer redraws its stage's cards). A result whose stage is blocked (the analysis
-was withdrawn) is never computed again, so it is not out of date. Under Predict an open noticing
+was withdrawn) is never computed again, so it is not out of date. Under Estimate and Describe an
+answer given since the plan's lock that served an exhibit not placed yet (a sensitivity analysis
+declared, say) gives Results one more objective, which Write-up waits for: Results names it, in
+whichever stage it was decided ("Your change to Models added 1 result to Results.";
+``added``), until the exhibit is computed and placed. Under Predict an open noticing
 counts toward the triage in Results, not toward the stage it sits in (ruling R-a); a change of the
 goal from Predict makes it count there again, so a stage complete just before the goal changed
 names that change on each noticing it held open then, and on each the change made fire (the
@@ -114,7 +121,11 @@ from turbotab.core.fit_press import FitLock
 # curve among them, and is complete at 0 of 0 only when none waits on the fit; a consumer's refusal
 # measured on the table (``Asked``) is a Decide ahead of the question whose consumer refused, never
 # For the record (``waits_on_an_answer``).
-QUEST_VERSION = 5
+# 6 (B1): under Estimate and Describe each exhibit shown for the answers now is placed in Results
+# by default and counted answered (``placed_exhibits``), and Write-up is reached once every one is;
+# an answer given since the lock that served an exhibit not placed yet is named in Results
+# (``Reopened.added``).
+QUEST_VERSION = 6
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("data", "Your data"),
@@ -839,6 +850,24 @@ def exhibits_waiting(state: Any) -> tuple[str, ...]:
                  and fit and set(missing[name]) <= fit)
 
 
+def placed_exhibits(state: Any, steps: Sequence[Any], stages: Mapping[str, Any],
+                    fit: FitLock | None = None) -> tuple[str, ...] | None:
+    """Under Estimate and Describe, the exhibits Results serves (:func:`served_exhibits`) that are
+    placed: until C7a adds placement, each arrives placed in Results by default (FOUNDATION §8:
+    "Each exhibit arrives with a default place") once it is shown for the answers now, its stage
+    fresh. None while none is shown: before the plan is locked (``fit.locked``; without ``fit``,
+    the state's lock), or while a question the estimates rest on is open
+    (``estimand.served_gate``, as the server withholds them). An exhibit still computing, out of
+    date, waiting or failed is not placed."""
+    from turbotab.core.estimand import served_gate
+
+    locked = fit.locked if fit is not None else bool(getattr(state, "plan_locked", None))
+    if not locked or served_gate(state, steps) is not None:
+        return None
+    return tuple(name for name in served_exhibits(state)
+                 if _get(stages.get(name), "status") == "fresh")
+
+
 def _goal_reasons(reasons: list[Reopened], state: Any) -> list[Reopened]:
     """Results' reasons under its goal (TRUST): a result that is no exhibit of the goal (the
     performance table under Estimate) is none of Results' objectives, so its being out of date is
@@ -1043,10 +1072,11 @@ class Progress(BaseModel):
     reached has no progress at all (empty, never "0 of N").
 
     Results under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed
-    each exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the
-    exhibit-bearing stages the engine serves (:func:`served_exhibits`), and is not complete, not
-    "0 of 0" full; and Write-up is not reached (no progress) until Results is placed (C7a adds
-    placement)."""
+    each exhibit's wording and placement is an objective of Results, so it reads k of N, N the
+    exhibit-bearing stages the engine serves (:func:`served_exhibits`) and k those placed, not
+    "0 of 0" full; and Write-up is not reached (no progress) until Results is placed. Until C7a
+    adds placement, an exhibit is placed in Results by default once it is shown for the answers
+    now (:func:`placed_exhibits`)."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
@@ -1076,7 +1106,9 @@ class Sweep(BaseModel):
 class Reopened(BaseModel):
     """Why a stage dropped back: an answer decided in another stage asked its questions again or
     left its results computed for other answers; or (``within``) another answer in the stage
-    itself asked its questions again."""
+    itself asked its questions again. Under Estimate and Describe, Results also names an answer
+    given since the plan's lock that served an exhibit not placed yet (``added``; B1): one more
+    of its objectives, which Write-up waits for."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
@@ -1085,6 +1117,7 @@ class Reopened(BaseModel):
     kind: str
     questions: list[str] = []  # the lines asked again (their ids)
     results: list[str] = []  # the compute stages out of date
+    added: list[str] = []  # the exhibits it served since the lock, not placed yet (B1)
     within: bool = False  # the answer that changed is in this stage
     sentence: str
 
@@ -2569,7 +2602,7 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
     result, for the answers now (fresh) or for earlier ones (``shown_at``: out of date, or
     withdrawn since) (``usual_intake``'s offer computes on the lens and goal alone, so it opens
     nothing). Write-up opens with Results here; under Estimate and Describe :func:`quest_log` holds
-    it back until Results is placed."""
+    it back until Results is placed (:func:`placed_exhibits`)."""
     from turbotab.core.estimand import ESTIMATE_STAGES
 
     # A question whose own reading recomputes while its answer holds is answered meanwhile (the
@@ -2613,18 +2646,25 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
 
 
 def _sentence(changed_in: str, here: str, questions: int, results: int, *,
-              within: bool = False) -> str:
+              within: bool = False, added: int = 0) -> str:
     from turbotab.core.voice import plural
 
     if within:
-        return (f"Your change to another answer in {here} reopened {questions} "
-                f"{plural(questions, 'question')}.")
+        parts = []
+        if questions:
+            parts.append(f"reopened {questions} {plural(questions, 'question')}")
+        if added:
+            parts.append(f"added {added} {plural(added, 'result')}")
+        return f"Your change to another answer in {here} {' and '.join(parts)}."
     parts = []
     if questions:
         parts.append(f"reopened {questions} {plural(questions, 'question')} in {here}")
     if results:
         where = "there" if questions else f"in {here}"
         parts.append(f"made {results} {plural(results, 'result')} {where} out of date")
+    if added:
+        where = "there" if questions or results else f"to {here}"
+        parts.append(f"added {added} {plural(added, 'result')} {where}")
     return f"Your change to {changed_in} {' and '.join(parts)}."
 
 
@@ -2685,6 +2725,72 @@ def _exhibits_reopened(reasons: list[Reopened], log: _Log,
     return [reopened, *reasons]
 
 
+def _exhibits_added(reasons: list[Reopened], log: _Log, exhibits: Sequence[str],
+                    placed: Sequence[str] | None) -> list[Reopened]:
+    """Results' reasons under Estimate and Describe, with each answer given since the plan's lock
+    that served an exhibit not placed yet (B1; SURFACING_POLICY §7.2 I11): Results, complete once
+    every exhibit it served was placed, has one more objective, and Write-up waits for it, so
+    Results names the answer and each exhibit it served (``added``): "Your change to Models added
+    1 result to Results." The answer is the latest since the lock after which the exhibit is
+    served and before which it was not (the log replayed), decided in any stage, Results itself
+    among them (``within``). An exhibit served at the lock was never one more, placed or not; one
+    a reason already names (out of date, or the goal's change) is not named twice; and once it is
+    placed, nothing is waited for, so nothing is said."""
+    lock = log.last_answer(("lock_plan",))
+    named = {name for r in reasons for name in (*r.results, *r.added)}
+    waiting = [name for name in exhibits if name not in (placed or ()) and name not in named]
+    if lock is None or not waiting:
+        return reasons
+    served_at: dict[int, frozenset[str] | None] = {}
+
+    def served(seq: int) -> frozenset[str] | None:  # what the log as it stood then served
+        if seq not in served_at:
+            state = log.state_at(seq)
+            try:
+                served_at[seq] = None if state is None else frozenset(served_exhibits(state))
+            except Exception:  # noqa: BLE001 - a state the scheduler cannot read says nothing
+                served_at[seq] = None
+        return served_at[seq]
+
+    causes: dict[str, Any] = {}
+    for record in log.live:
+        if record.seq <= lock.seq:
+            continue
+        before, after = served(record.seq - 1), served(record.seq)
+        if before is None or after is None:
+            continue
+        for name in waiting:
+            if name in after and name not in before:
+                causes[name] = record  # the latest wins
+    found: dict[str, list[str]] = {}
+    for name in waiting:
+        if name in causes:
+            found.setdefault(causes[name].id, []).append(name)
+    out = list(reasons)
+    for record_id, names in found.items():
+        record = log.by_id[record_id]
+        changed_in = log.stage_of(record)
+        if changed_in is None:
+            continue
+        same = next((i for i, r in enumerate(out) if r.decision_id == record_id), None)
+        if same is not None:  # the same answer also asked again, or left out of date
+            r = out[same]
+            added = [*r.added, *names]
+            out[same] = r.model_copy(update={"added": added, "sentence": _sentence(
+                STAGE_NAMES[r.changed_in], STAGE_NAMES["results"], len(r.questions),
+                len(r.results), within=r.within, added=len(added))})
+            continue
+        within = changed_in == "results"
+        out.append(Reopened(
+            changed_in=changed_in, decision_id=record_id, kind=record.decision.kind,
+            added=names, within=within,
+            sentence=_sentence(STAGE_NAMES[changed_in], STAGE_NAMES["results"], 0, 0,
+                               within=within, added=len(names))))
+    if out == reasons:
+        return reasons
+    return sorted(out, key=lambda r: log.by_id[r.decision_id].seq, reverse=True)
+
+
 def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
               stages: Mapping[str, Any] | None = None, *, findings: Any = None,
               columns: Sequence[str] | None = None,
@@ -2739,10 +2845,18 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     unlisted = unlisted_to_come(steps, state)
     sweeps.cover_noticings(placed, state, log, findings, unlisted)
     frontier = _frontier(steps, stages, shown_at, fit, state)
-    # Under Estimate and Describe the exhibits are Results' objectives, none placed yet (C7a adds
-    # placement): Results reads 0 of N, and Write-up is not reached until Results is placed.
+    # Under Estimate and Describe the exhibits are Results' objectives (it reads k of N). Until
+    # C7a adds placement, each is placed in Results by default once it is shown for the answers
+    # now (:func:`placed_exhibits`: the plan locked, no question the estimates rest on open, its
+    # stage fresh), and Results counts it answered. Write-up is not reached until Results is
+    # placed: every exhibit served placed, so not before the lock, while one recomputes, or while
+    # the estimates are withheld (B1, the vision audit's V2); with none served, nothing is placed
+    # and it waits, as before.
     estimates = fit.locks if fit is not None else getattr(state, "purpose", None) == "inference"
-    if estimates and frontier >= STAGE_INDEX["writeup"]:
+    exhibits = served_exhibits(state) if estimates else ()
+    in_results = placed_exhibits(state, steps, stages, fit) if estimates else None
+    results_placed = bool(exhibits) and in_results is not None and len(in_results) == len(exhibits)
+    if estimates and frontier >= STAGE_INDEX["writeup"] and not results_placed:
         frontier = STAGE_INDEX["results"]
     # Ruling R-a (W1-R round 2; FOUNDATION §7): under Predict the triage of open noticings is in
     # Results, before the held-out rows open, so an open noticing waits for that triage, not for
@@ -2782,19 +2896,22 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
             required = len(decide) + int(sweep is not None)
             complete = answered >= required
             if estimates and key == "results":
-                served = len(served_exhibits(state))
-                required += served
+                # each exhibit served one objective, answered once placed (B1)
+                answered += len(in_results or ())
+                required += len(exhibits)
                 # TRUST: with no exhibit of the goal served yet while some wait only on what the
                 # fit waits on (the families withdrawn, say), Results waits for them: it is not
                 # complete at 0 of 0, so the exhibits that answer serves are not lines gained by
                 # a complete stage. A goal with nothing of its own to serve is complete at 0 of 0.
-                complete = answered >= required and (served > 0 or not exhibits_waiting(state))
+                complete = answered >= required and (bool(exhibits) or not exhibits_waiting(state))
             progress = Progress(answered=answered, required=required, complete=complete)
         # A stage not reached yet has nothing to drop back from.
         reasons = _reasons(key, mine, log, stages, shown_at) if reached else []
         if reached and estimates and key == "results":
-            reasons = _exhibits_reopened(_goal_reasons(reasons, state), log,
-                                         served_exhibits(state))
+            reasons = _exhibits_reopened(_goal_reasons(reasons, state), log, exhibits)
+            # an exhibit served since the lock and not placed yet is one Write-up waits for: Results
+            # names the answer that served it (B1, the path fuzzer's I11)
+            reasons = _exhibits_added(reasons, log, exhibits, in_results)
         out.append(QuestStage(key=key, name=name, reached=reached, progress=progress, sweep=sweep,
                               lines=mine, reopened=reasons))
     made = QuestLog(stages=out, kinds=kind_stages(), fit=fit)
@@ -2814,7 +2931,8 @@ __all__ = [
     "asks", "explore_label", "explore_place", "finding_place", "fit_waits", "goal_of", "kind_place",
     "kind_stages", "noticing_place",
     "OUTCOME_KIND_QUESTIONS", "not_known_until_the_outcome_is_read", "unlisted_to_come",
-    "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
+    "noticing_places", "noticing_stage", "noticing_stages", "placed_exhibits", "quest_log",
+    "question_reads",
     "ROLE_GROUP_ITEM", "record_stage", "record_steps", "role_choices", "role_group_head",
     "role_group_key", "role_group_name", "role_group_reason", "role_line_key", "role_line_reason",
     "role_line_text",
