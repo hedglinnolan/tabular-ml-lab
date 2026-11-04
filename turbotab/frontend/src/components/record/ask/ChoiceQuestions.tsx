@@ -1201,6 +1201,33 @@ const designShown = (d: SurveyDecision) =>
   (d.cycle ? `, cycle ${d.cycle}` : "") +
   (d.four_year_weight ? `, four-year weight ${d.four_year_weight}` : "");
 
+/** What recording one's own design does, from its fields, in the words the engine uses for its own
+ *  options (core/survey.py `offered`): the weight, the strata and PSU it is weighted over, and a
+ *  named cycle's pooling, which divides each weight by the number of cycles pooled. A four-year
+ *  weight is said with a named cycle, where `analysis_weights` takes it (methods/survey.py): when
+ *  the cycle pools 1999–2000 with other cycles, the 1999–2002 rows take it, doubled, then divided by
+ *  that number; with no cycle named it takes the weight as it is, so none is said. The weight is
+ *  "the weight you name" until one is. What the intervals or scores are, which the engine's lines
+ *  end with, is not said: it depends on the purpose, which this card is not given. */
+function designLine(cols: SurveyColumns): string {
+  const named = (field: SurveyField) => cols[field].trim();
+  const tick = (column: string) => `\`${column}\``;
+  const weight = named("weight") ? tick(named("weight")) : "the weight you name";
+  const units = [named("strata"), named("psu")].filter((c) => c).map(tick);
+  const within = units.length ? ` over ${units.join(" and ")}` : "; no strata or PSU named";
+  const cycle = named("cycle");
+  const four = named("four_year_weight");
+  const pooled = cycle
+    ? `; pooled over the survey cycles ${tick(cycle)} names, each weight divided by their number`
+    : "";
+  const early =
+    cycle && four
+      ? `; where ${tick(cycle)} pools 1999–2000 with other cycles, the 1999–2002 rows take ` +
+        `${tick(four)}, doubled, then divided by the same number`
+      : "";
+  return `Weighted by ${weight}${within}${pooled}${early}.`;
+}
+
 /** Whose estimate it is under a survey design: the server offers one "surveyed population"
  *  option per weight it recognized, and "these participants"; each carries its decision. Between
  *  them, a design of one's own (G16; the owner's Q4): the weight, strata, PSU, cycle and four-year
@@ -1255,7 +1282,7 @@ export function SurveyAsk({
   const ownItem: OptionItem = {
     key: OWN_DESIGN,
     label: "Your own design columns",
-    line: "Weighted by the weight you name, over the strata and PSU you name.",
+    line: designLine(cols),
     decision: own ? (ownPreview(own, offered) as unknown as Decision) : null,
     previewLabel: own ? designShown(own) : undefined,
     extra: (

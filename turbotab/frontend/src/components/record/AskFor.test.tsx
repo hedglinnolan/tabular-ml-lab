@@ -32,7 +32,9 @@
  * nothing else in its block but the lists of the engine's candidates after the options: a design
  * of one's own ("Your own design columns", in survey.html and in the ask block that holds that
  * card), its weight, strata, PSU, cycle and four-year weight as fields starting from the engine's
- * first population option.
+ * first population option. Its second repair round's V2-2 changed that option's line alone: it is
+ * built from the fields in the engine's words for its own options ("Weighted by `WTDRD1` over
+ * `SDMVSTRA` and `SDMVPSU`."), so it says a named cycle's pooling where one is named.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

@@ -16,6 +16,11 @@
  * - The I4 table itself, driven the same way: its refusal of the population answer with no PSU
  *   (partial_design, its words and its two exits), and its acceptance (200) of that refusal's
  *   attested exit.
+ * - Pooled cycles: test_wp10_survey_design's `pooled_table` of the cycles 1, 2 and 3 (1999–2004),
+ *   driven the same way with that file's test_3 roles: the proposal it served, and its refusal
+ *   (409, name_the_cycle) of that proposal's population answer with no cycle named.
+ * - A weight alone: that pooled table kept to `SEQN`, `WTMEC2YR`, `x` and `y`, driven the same way
+ *   (`WTMEC2YR` set to design): the proposal it served, a population option with no strata or PSU.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -139,6 +144,81 @@ const PARTIAL: Refusal = {
   },
 };
 
+/** The pooled 1999–2004 table's proposal, as the server served it (each option's
+ *  `needs_confirmation`, served empty, left out: the contract's SurveyOption does not carry it): its
+ *  population option names the cycle column and the four-year weight. */
+const POOLED: Survey = {
+  weights: ["WTMEC2YR"],
+  strata: ["SDMVSTRA"],
+  psu: ["SDMVPSU"],
+  cycle: "SDDSRVYR",
+  cycles: ["1", "2", "3"],
+  four_year: { WTMEC2YR: "WTMEC4YR" },
+  options: [
+    {
+      key: "population:WTMEC2YR",
+      label: "Surveyed population",
+      consequence:
+        "Weighted by `WTMEC2YR` over `SDMVSTRA` and `SDMVPSU`; pooled over the survey cycles `SDDSRVYR` names, each weight divided by their number; intervals by Taylor linearization.",
+      decision: {
+        kind: "set_survey",
+        estimand: "population",
+        weight: "WTMEC2YR",
+        strata: "SDMVSTRA",
+        psu: "SDMVPSU",
+        cycle: "SDDSRVYR",
+        four_year_weight: "WTMEC4YR",
+        acknowledged: false,
+      },
+    },
+    {
+      key: "sample",
+      label: "These participants",
+      consequence: "Unweighted; the methods state the comparison is this sample's.",
+      decision: { kind: "set_survey", estimand: "sample" },
+    },
+  ],
+};
+const POOLED_FIRST = POOLED.options[0]!;
+/** The pooled table's refusal (409) of that population answer with no cycle named. */
+const NAME_THE_CYCLE =
+  "`SDDSRVYR` pools 1999–2000 with other cycles; name it, so the 1999–2002 rows take their four-year weight (NHANES Analytic Guidelines 2011–2016 §3.1.4).";
+
+/** The weight-only table's proposal, as the server served it (its empty `needs_confirmation` left
+ *  out, as in POOLED). */
+const WEIGHT_ONLY: Survey = {
+  weights: ["WTMEC2YR"],
+  strata: [],
+  psu: [],
+  cycle: null,
+  cycles: [],
+  four_year: {},
+  options: [
+    {
+      key: "population:WTMEC2YR",
+      label: "Surveyed population",
+      consequence:
+        "Weighted by `WTMEC2YR`; no strata or PSU named; intervals by Taylor linearization.",
+      decision: {
+        kind: "set_survey",
+        estimand: "population",
+        weight: "WTMEC2YR",
+        strata: null,
+        psu: null,
+        cycle: null,
+        four_year_weight: null,
+        acknowledged: false,
+      },
+    },
+    {
+      key: "sample",
+      label: "These participants",
+      consequence: "Unweighted; the methods state the comparison is this sample's.",
+      decision: { kind: "set_survey", estimand: "sample" },
+    },
+  ],
+};
+
 /** The design fields, in the card's order, by their accessible names. */
 const FIELDS = [
   ["weight", "Survey weight column"],
@@ -159,7 +239,7 @@ function StageProbe() {
   );
 }
 
-function renderCard(survey: Survey | undefined, current: ProjectState["survey"] = null) {
+function renderCard(survey: Survey | null | undefined, current: ProjectState["survey"] = null) {
   const record = vi.fn<(d: Decision, at?: string) => void>();
   render(
     <StageFocusProvider>
@@ -211,6 +291,17 @@ function previewedOptions(): string[] {
     .map((o) => o.getAttribute("data-key") ?? "");
 }
 const optionEl = (key: string) => screen.getByTestId(`option-${key}`);
+/** An option's consequence line as written: Options draws it after the pip and the name, and
+ *  Taught draws each backticked name as a chip, put back in its backticks here. */
+function lineOf(key: string): string {
+  const line = optionEl(key).children[2]!;
+  return [...line.childNodes]
+    .map((n) => (n.nodeName === "CODE" ? `\`${n.textContent}\`` : n.textContent))
+    .join("");
+}
+/** An engine option's line without its last clause, what the intervals or scores are: the card is
+ *  not told the purpose that clause depends on (core/survey.py `offered`). */
+const withoutEffect = (line: string) => `${line.slice(0, line.lastIndexOf("; "))}.`;
 const focusOn = (key: string) => act(() => optionEl(key).focus());
 const hoverOn = (key: string) => fireEvent.pointerMove(optionEl(key), { pointerType: "mouse" });
 /** The decision the stage previews, and records from its button, for the option shown. */
@@ -220,6 +311,35 @@ const stagedDecision = () => {
 };
 
 afterEach(cleanup);
+
+describe("a design of one's own is offered beside the engine's proposal, and only there", () => {
+  const designFields = () => FIELDS.map(([, name]) => screen.queryByLabelText(name));
+
+  it("not while no survey is proposed, with or without an answer on record", () => {
+    // AskFor passes no proposal (undefined) until the proposals stage serves one with a survey;
+    // the artifact itself says null where no column reads as a survey weight
+    const attested = PARTIAL.error.exits[1]!.decision as unknown as ProjectState["survey"];
+    const cases: [Survey | null | undefined, ProjectState["survey"]][] = [
+      [undefined, null],
+      [undefined, attested],
+      [null, null],
+    ];
+    for (const [proposal, current] of cases) {
+      renderCard(proposal, current);
+      expect(screen.queryByTestId("option-custom")).toBeNull();
+      expect(designFields()).toEqual(FIELDS.map(() => null));
+      expect(document.querySelector("datalist")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("beside a served proposal, with its fields and the engine's candidates", () => {
+    renderCard(NHANES.survey);
+    expect(screen.queryByTestId("option-custom")).not.toBeNull();
+    expect(designFields().every((f) => f !== null)).toBe(true);
+    expect(document.querySelector("datalist")).not.toBeNull();
+  });
+});
 
 describe("the design's columns start from the engine's proposal", () => {
   it("as the engine's first population option names them", () => {
@@ -350,6 +470,67 @@ describe("previewing an option marks that option alone", () => {
     expect(stagedDecision()).toEqual(FIRST.decision);
     fireEvent.click(optionEl("custom"));
     expect(record.mock.calls).toEqual([[I4_NO_PSU, "custom"]]);
+  });
+});
+
+/** What one's own design says it records is what the engine says of its own options for the same
+ *  columns (their served lines, less what the intervals or scores are), and where a cycle and a
+ *  four-year weight are named, when the 1999–2002 rows take that weight, in the server's words for
+ *  it (its name_the_cycle refusal). How they take it, doubled, then divided by the number of cycles
+ *  pooled, is the Analytic Guidelines' §3.1.4 rule as `analysis_weights` applies it
+ *  (turbotab/core/methods/survey.py): test_wp10_survey_design's test_3 checks the estimate on 2 ×
+ *  `WTMEC4YR` ÷ 3 on the 1999–2002 rows of three pooled cycles against samplics, built from the
+ *  guideline's formula. With no cycle named, `analysis_weights` takes the weight as it is and no
+ *  four-year weight, so the line says none. */
+describe("one's own design says what recording it does, as the engine says it of its options", () => {
+  it("names its columns as the engine's option for those columns does", () => {
+    renderCard(NHANES.survey);
+    expect(lineOf(FIRST.key)).toBe(FIRST.consequence); // a line read as served
+    expect(shown()).toEqual(asFields(FIRST.decision));
+    expect(lineOf("custom")).toBe(withoutEffect(FIRST.consequence));
+  });
+
+  it("says no strata or PSU is named as the engine's option says it", () => {
+    const [first] = WEIGHT_ONLY.options;
+    renderCard(WEIGHT_ONLY);
+    expect(shown()).toEqual(asFields(first!.decision));
+    expect(lineOf("custom")).toBe(withoutEffect(first!.consequence));
+  });
+
+  it("says the weight is yet to be named until it is", () => {
+    renderCard(OTHER);
+    expect(lineOf("custom")).toBe(`Weighted by the weight you name over \`${OTHER.psu[0]}\`.`);
+    type("Survey weight column", OTHER_ACCEPTED.weight);
+    expect(lineOf("custom")).toBe(
+      `Weighted by \`${OTHER_ACCEPTED.weight}\` over \`${OTHER.psu[0]}\`.`,
+    );
+  });
+
+  it("says a named cycle pools the weights as the engine's option says it, and says none unnamed", () => {
+    const served = POOLED_FIRST.consequence;
+    renderCard(POOLED);
+    type("Four-year weight column", "");
+    expect(lineOf("custom")).toBe(withoutEffect(served));
+    type("Survey cycle column", "");
+    expect(lineOf("custom")).toBe(`${served.slice(0, served.indexOf(";"))}.`);
+  });
+
+  it("says the 1999–2002 rows take the four-year weight where the cycle pools 1999–2000, and not without a cycle", () => {
+    const served = POOLED_FIRST.consequence;
+    const { cycle, four_year_weight: four } = POOLED_FIRST.decision as Record<string, string>;
+    renderCard(POOLED);
+    expect(shown()).toEqual(asFields(POOLED_FIRST.decision)); // as it starts: both named
+    // the server's words for when they take it: "`SDDSRVYR` pools 1999–2000 with other cycles; name
+    // it, so the 1999–2002 rows take their four-year weight"
+    const pools = NAME_THE_CYCLE.slice(0, NAME_THE_CYCLE.indexOf(";"));
+    expect(pools.startsWith(`\`${cycle}\` `)).toBe(true);
+    expect(NAME_THE_CYCLE).toContain("the 1999–2002 rows take");
+    expect(lineOf("custom")).toBe(
+      `${withoutEffect(served).slice(0, -1)}; where ${pools}, the 1999–2002 rows take \`${four}\`, doubled, then divided by the same number.`,
+    );
+    type("Survey cycle column", "");
+    expect(shown().four_year_weight).toBe(four);
+    expect(lineOf("custom")).toBe(`${served.slice(0, served.indexOf(";"))}.`);
   });
 });
 
