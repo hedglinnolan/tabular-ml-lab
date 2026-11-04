@@ -644,8 +644,8 @@ def _left_censored(df: pd.DataFrame, qc_rows: Optional[pd.Series] = None,
     reached them. Where no row is a QC row, every row is read; where any is,
     the detail opens with the count of rows it reads. `_pooled_qc` reads a
     two-level label only, so the app passes the rows its own pooled-QC reading
-    names, which reads a Case/Control/QC label too, and the outcome as
-    `target`
+    names, which reads a Case/Control/QC label too
+    (`turbotab.core.detectors.pack_findings`), and the outcome as `target`
     (`turbotab.core.stages.finding_words.left_censoring_on_the_participants`).
 
     **Read over the assay features only**, the columns the `omics_scale`
@@ -663,9 +663,10 @@ def _left_censored(df: pd.DataFrame, qc_rows: Optional[pd.Series] = None,
     feature detected on one or two participants, or on none (named, though
     with no mean it is not in the correlation), is the most censored kind,
     and its blanks are non-detections. `packs.findings`
-    passes no `target`, nor does the app before an outcome is chosen: there
-    a 0/1 outcome is set aside as two-valued, and an outcome of more values
-    that no name rule sets aside is read as a feature. The missing rate, the
+    passes the `target` it is handed, and the legacy interview hands none,
+    nor does the app before an outcome is chosen: there a 0/1 outcome is set
+    aside as two-valued, and an outcome of more values that no name rule sets
+    aside is read as a feature. The missing rate, the
     abundance, the correlation, both counts and the columns named are the
     features'. Read with the covariates among them on the participants'
     rows, where a covariate has no blank, the covariates pulled the
@@ -851,7 +852,13 @@ def _pooled_qc_rows(df: pd.DataFrame) -> pd.Series:
     QC level, compared as text as an exclusion of that level compares them —
     and none where it reads none. One reading, so a detector here that sets the
     QC rows aside sets aside the rows `_pooled_qc`'s finding names."""
-    found = _pooled_qc(df)
+    return _rows_named(df, _pooled_qc(df))
+
+
+def _rows_named(df: pd.DataFrame, found: Optional[Dict[str, Any]]) -> pd.Series:
+    """The rows a pooled-QC finding names (its column at its QC level, compared
+    as text), none where there is no finding: `_pooled_qc_rows` from a finding
+    already read."""
     if found is None:
         return pd.Series(False, index=df.index)
     p = found["params"]
@@ -5782,23 +5789,45 @@ PACKS: Dict[str, Pack] = {
 }
 
 
-def findings(df: pd.DataFrame, lens: Sequence[str]) -> List[Dict[str, Any]]:
+def findings(df: pd.DataFrame, lens: Sequence[str],
+             target: Optional[str] = None) -> List[Dict[str, Any]]:
     """What the selected packs see in this table. Empty is the common answer.
 
     Ordered by pack, then by the order the detectors are declared in, so the
     same table and the same lens always produce the same list — the Router's
     determinism requirement applies to anything feeding it.
+
+    `target` is the outcome, where one is chosen: the left-censoring reading
+    sets it aside, so an outcome of three or more values that no name rule
+    sets aside is not read as an assay feature. The legacy interview hands
+    none (`engine.rank_findings`, `project.AnalysisProject.pack_findings`).
+    The pooled-QC reading is made once per call and is the one both
+    `_pooled_qc`'s finding and the rows `_left_censored` sets aside come from.
     """
     out: List[Dict[str, Any]] = []
     if df is None or df.empty:
         return out
+    pooled: List[Optional[Dict[str, Any]]] = []
+
+    def pooled_qc() -> Optional[Dict[str, Any]]:
+        if not pooled:
+            pooled.append(_pooled_qc(df))
+        return pooled[0]
+
+    def read(detector: Callable[..., Any]) -> Any:
+        if detector is _pooled_qc:
+            return pooled_qc()
+        if detector is _left_censored:
+            return _left_censored(df, qc_rows=_rows_named(df, pooled_qc()), target=target)
+        return detector(df)
+
     for key in normalize_quiet(lens):
         pack = PACKS.get(key)
         if pack is None:
             continue
         for detector in pack.detectors:
             try:
-                found = detector(df)
+                found = read(detector)
             except Exception:
                 # A detector that cannot read this table reports nothing. It
                 # must not take the interview down with it, and it must not be
@@ -5865,19 +5894,23 @@ def restore_loaded_for_test(keys) -> None:
     _LOADED.update(keys)
 
 
-def prior_columns(pack_key: str, detector: str,
-                  df: pd.DataFrame) -> Optional[List[str]]:
+def prior_columns(pack_key: str, detector: str, df: pd.DataFrame,
+                  target: Optional[str] = None) -> Optional[List[str]]:
     """The columns a column-scoped prior applies to, from its own detector.
 
     `None` — not `[]` — when the detector did not fire. The difference is the
     whole of `GUIDED-027`: an empty list would say *"this prior applies to no
     columns"*, and `None` says *"the evidence for this prior is absent"*, which
     is why the prior is withheld rather than rendered over nothing.
+
+    `target`, the outcome where one is chosen, is handed to `findings`, whose
+    left-censoring reading sets it aside, so the prior it scopes never reads
+    the outcome as a feature.
     """
     if detector == "pack::clinical::reference_columns":
         found = clinical_reference_columns(df)
         return found or None
-    for f in findings(df, [pack_key]):
+    for f in findings(df, [pack_key], target=target):
         if f["id"] == detector:
             columns = (f.get("params") or {}).get("columns")
             if columns:
@@ -5887,7 +5920,8 @@ def prior_columns(pack_key: str, detector: str,
 
 
 def priors(lens: Sequence[str], name: str,
-           df: Optional[pd.DataFrame] = None) -> List[Dict[str, Any]]:
+           df: Optional[pd.DataFrame] = None,
+           target: Optional[str] = None) -> List[Dict[str, Any]]:
     """Every selected pack's prior on one question, with the pack named.
 
     **A list, and it stays a list.** The lens is multi-select and two packs can
@@ -5902,7 +5936,9 @@ def priors(lens: Sequence[str], name: str,
     about the table, and a dataset-level *"below the detection limit"* on an
     NHANES-shaped file would be wrong for most of its columns. Passing `df`
     resolves the scope; omitting it returns the declarations unscoped, which is
-    what a caller reading the catalogue rather than a dataset wants.
+    what a caller reading the catalogue rather than a dataset wants. `target`,
+    the outcome where one is chosen, is set aside where the scope is read
+    (`prior_columns`).
     """
     out: List[Dict[str, Any]] = []
     for key in normalize_quiet(lens):
@@ -5923,7 +5959,7 @@ def priors(lens: Sequence[str], name: str,
             if prior.scope == COLUMNS:
                 entry["detector"] = prior.detector
                 if df is not None:
-                    columns = prior_columns(key, prior.detector, df)
+                    columns = prior_columns(key, prior.detector, df, target=target)
                     if columns is None:
                         # The evidence is absent, so the prior has nothing to
                         # be about. Withheld rather than rendered over every
@@ -5935,15 +5971,18 @@ def priors(lens: Sequence[str], name: str,
 
 
 def prior_for_column(lens: Sequence[str], name: str, column: str,
-                     df: pd.DataFrame) -> List[Dict[str, Any]]:
+                     df: pd.DataFrame,
+                     target: Optional[str] = None) -> List[Dict[str, Any]]:
     """The priors on one question that apply to ONE column.
 
     Dataset-scoped priors apply to every column and are included. Column-scoped
     ones are included only where their detector named this column — which is
     what makes a mixed table get the dietary reading on its recall columns and
-    the lab reading on its labs.
+    the lab reading on its labs. Handed `target`, the outcome, the
+    left-censoring reading sets it aside (`findings`), so the prior that
+    reading scopes does not reach it.
     """
-    return [p for p in priors(lens, name, df)
+    return [p for p in priors(lens, name, df, target=target)
             if p["scope"] == DATASET or column in (p.get("columns") or [])]
 
 

@@ -206,10 +206,22 @@ class OfferContext:
 
     frame: pd.DataFrame
     target: str | None = None
+    # The positions in ``frame`` of the rows the pooled-QC finding names, the findings' own
+    # (``finding_words.FindingContext.reference_rows``): not participants. Empty without it.
+    reference_rows: frozenset[int] = frozenset()
 
     @property
     def n_rows(self) -> int:
         return int(len(self.frame))
+
+    @property
+    def kept(self) -> pd.DataFrame:
+        """The rows that stay once the reference rows leave: every row where there are none."""
+        if not self.reference_rows:
+            return self.frame
+        keep = np.ones(len(self.frame), dtype=bool)
+        keep[sorted(self.reference_rows)] = False
+        return self.frame[keep]
 
     def has(self, column: str | None) -> bool:
         return column is not None and column in self.frame.columns
@@ -511,16 +523,36 @@ def _offer_binary(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) 
     order = levels
     if p.get("positive_known") and p.get("positive") in levels:  # the usual reading first
         order = [str(p["positive"])] + [v for v in levels if v != p["positive"]]
+    # Each level said as the data write it, every spelling its count and recode cover; recorded
+    # as the token the recode compares.
+    said = level_spellings(oc.frame[column], levels)
     out = []
     for one in order:
         zero = next(v for v in levels if v != one)
         out.append(_option(
-            finding, "level", f"{_tick(one)} counts as 1",
-            f"{_tick(column)} becomes `1` for {_tick(one)} ({_count(counts.get(one, 0))} rows) and "
-            f"`0` for {_tick(zero)} ({_count(counts.get(zero, 0))}).",
-            f"{_tick(column)} was recoded with {_tick(one)} as `1` and {_tick(zero)} as `0`.",
+            finding, "level", f"{said[one]} counts as 1",
+            f"{_tick(column)} becomes `1` for {said[one]} ({_count(counts.get(one, 0))} rows) "
+            f"and `0` for {said[zero]} ({_count(counts.get(zero, 0))}).",
+            f"{_tick(column)} was recoded with {said[one]} as `1` and {said[zero]} as `0`.",
             "values", {"column": str(column), "one": one, "zero": zero, "relabels": relabels}))
     return out
+
+
+def level_spellings(s: pd.Series, levels: Sequence[str]) -> dict[str, str]:
+    """Each level of a two-level reading (``ml.binary_text``'s token: stripped, lower case) -> every
+    spelling the column gives it, in the order it first gives them, as the finding's own detail
+    lists them, ticked and joined by a slash (`F` for ``f``; `North`/`north` for ``north``, whose
+    count and recode cover both); the token itself where the column gives it none. One word per
+    level, so a label keeps its budget (``LABEL_WORDS``). The token is read, not copied, from that
+    module (``ml.binary_text._normalize``)."""
+    from ml.binary_text import _normalize
+
+    spelled: dict[str, list[str]] = {str(v): [] for v in levels}
+    for value in pd.unique(s.dropna()):
+        token, text = _normalize(value), str(value)
+        if token in spelled and text not in spelled[token]:
+            spelled[token].append(text)
+    return {v: "/".join(_tick(w) for w in (spelled[v] or [v])) for v in spelled}
 
 
 def _relabels(s: pd.Series) -> bool:
@@ -587,8 +619,13 @@ def _offer_not_asked(finding: dict[str, Any], p: dict[str, Any], oc: OfferContex
     column = p.get("column") or (finding.get("affected_columns") or [None])[0]
     if not oc.has(column) or column == oc.target:
         return []
-    s = oc.frame[column]
-    base = oc.frame[oc.target].notna().to_numpy() if oc.has(oc.target) else None
+    # Read on the participants (:attr:`OfferContext.kept`): a pooled-QC injection is asked
+    # nothing, so its blanks are no skip pattern, and they are not counted among the people not
+    # asked (the two-level finding beside this counts the same rows); the recode fills them too,
+    # so they are said apart.
+    rows = oc.kept
+    s = rows[column]
+    base = rows[oc.target].notna().to_numpy() if oc.has(oc.target) else None
     if not blanks_mean_not_asked(s, base):
         return []
     written = _written_no(s, str(p.get("negative") or ""), p.get("written_as"))
@@ -597,15 +634,25 @@ def _offer_not_asked(finding: dict[str, Any], p: dict[str, Any], oc: OfferContex
     kind, no = written
     n_blank = int(s.isna().sum())
     shown = {"bool": "False", "number": "0"}.get(kind, str(no))
-    yes = int(s.notna().sum()) - int((s.dropna().astype(str).str.strip().str.lower()
-                                      == str(p.get("negative")).strip().lower()).sum())
+    # The recode (:func:`_not_asked_values`) fills every blank in the column, the reference rows'
+    # too, and leaves every answer as given: each is said, counted over every row.
+    whole = oc.frame[column]
+    on_qc = int(whole.isna().sum()) - n_blank
+    yes = int(whole.notna().sum()) - int((whole.dropna().astype(str).str.strip().str.lower()
+                                          == str(p.get("negative")).strip().lower()).sum())
+    if on_qc:
+        filled = (f"{_count(n_blank)} non-QC and {_count(on_qc)} pooled-QC blanks in "
+                  f"{_tick(column)} become {_tick(shown)}; {_count(yes)} other answers stay as given.")
+        recoded = (f"those blanks, and the {_count(on_qc)} on the pooled-QC rows, were recoded as "
+                   f"{_tick(shown)}")
+    else:
+        filled = (f"{_count(n_blank)} blanks in {_tick(column)} become {_tick(shown)}; its "
+                  f"{_count(yes)} other answers stay as given.")
+        recoded = f"those blanks were recoded as {_tick(shown)}"
     return [_option(
-        finding, "not_asked_no", "Not asked as No",
-        f"{_count(n_blank)} blanks in {_tick(column)} become {_tick(shown)}; its {_count(yes)} other "
-        f"answers stay as given.",
-        f"{_tick(column)} was blank for the {_count(n_blank)} people not asked; those blanks were "
-        f"recoded as {_tick(shown)}, on the assumption that a person not asked would have "
-        f"answered no.",
+        finding, "not_asked_no", "Not asked as No", filled,
+        f"{_tick(column)} was blank for the {_count(n_blank)} people not asked; {recoded}, on the "
+        f"assumption that a person not asked would have answered no.",
         "values", {"column": str(column), "no": no, "kind": kind, "n_blank": n_blank,
                    "relabels": False})]
 
@@ -1437,8 +1484,14 @@ def attach(pairs: Iterable[tuple[Mapping[str, Any] | None, dict[str, Any]]], fra
     """Give every finding its ``repairs`` (possibly none), in place.
 
     A finding with a repair has a control after all, so its summary stops saying it has none.
+    The offers set aside the rows the pooled-QC finding among ``pairs`` names, as the findings'
+    own readings do (``finding_words.pooled_qc_rows``).
     """
-    oc = OfferContext(frame=frame, target=target)
+    from turbotab.core.stages.finding_words import pooled_qc_rows
+
+    pairs = list(pairs)
+    oc = OfferContext(frame=frame, target=target,
+                      reference_rows=pooled_qc_rows(frame, [raw for raw, _ in pairs if raw]))
     for raw, finding in pairs:
         options = offer(finding, raw, oc)
         finding["repairs"] = [o.model_dump(mode="json") for o in options]

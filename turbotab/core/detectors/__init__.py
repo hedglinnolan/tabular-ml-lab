@@ -16,10 +16,14 @@ finding                                legacy reading                           
 ``pack::clinical::impossible_vs_…``    ``clinical.impossible_vs_extreme_finding``   :mod:`.plausibility`
 ``pack::genomics::data_type``          ``packs._genomics_data_type``                :mod:`.genomics`
 ``pack::metabolomics::pooled_qc``      ``packs._pooled_qc``                         ``reference_rows``
+``pack::metabolomics::left_censored``  ``packs._left_censored``, on the rows        ``packs``
+                                       outside the served pooled-QC finding's
 =====================================  ===========================================  ==============
 
 :func:`pack_findings` runs every other pack detector exactly as ``packs.findings`` does (same
-order, same failure handling), so a superseded detector is never computed twice.
+order, same failure handling), so a superseded detector is never computed twice. These are the
+pack's readings; the findings stage speaks for some of them and adds others
+(``stages.findings.speak_for``), and the lens preview counts the findings as it serves them.
 
 Beside the findings: :mod:`.lenses` (the profile stage's lens hints and the lens contradiction
 finding), :mod:`.orientation` (the oriented stage's reading, names before shape),
@@ -30,20 +34,34 @@ from __future__ import annotations
 
 from typing import Any, Callable, Sequence
 
+import numpy as np
 import pandas as pd
 
 from turbotab.core.detectors import codes, scales
 
 
-def _superseding(units: Any = None, codings: Any = None
+def _superseding(units: Any = None, codings: Any = None, target: str | None = None
                  ) -> dict[str, Callable[[pd.DataFrame], list[dict[str, Any]]]]:
     """Legacy detector name -> the reading served in its place (a list: one may become two).
     ``units`` are the columns' recorded units (``set_column_unit``: an age in months);
-    ``codings`` the sex columns' codings the user confirmed (BLUEPRINT §14.3)."""
+    ``codings`` the sex columns' codings the user confirmed (BLUEPRINT §14.3); ``target`` the
+    outcome, where one is chosen. The served pooled-QC reading is made once per table here, and
+    the left-censoring reading sets aside the rows it names."""
+    from turbotab import packs
     from turbotab.core.detectors import assay, genomics, plausibility
 
     def one(fn: Callable[[pd.DataFrame], dict[str, Any] | None]) -> Callable[[pd.DataFrame], list]:
         return lambda df: [f for f in [fn(df)] if f]
+
+    read: list[tuple[pd.DataFrame, dict[str, Any] | None]] = []
+
+    def pooled_qc(df: pd.DataFrame) -> dict[str, Any] | None:
+        if not read or read[0][0] is not df:
+            read[:] = [(df, _pooled_qc_reading(df))]
+        return read[0][1]
+
+    def on_the_participants(df: pd.DataFrame) -> dict[str, Any] | None:
+        return packs._left_censored(df, qc_rows=_reference_rows(df, pooled_qc(df)), target=target)
 
     return {
         "_ordinal_declared": scales.findings,      # both survey findings, from one block reading
@@ -56,8 +74,23 @@ def _superseding(units: Any = None, codings: Any = None
         "_genomics_data_type": genomics.findings,
         # Audit RO-13 (WP18): the pooled-QC level of a Case/Control/QC label, read by variance,
         # with text that no longer says the rows are already out of the model.
-        "_pooled_qc": one(_pooled_qc_reading),
+        "_pooled_qc": one(pooled_qc),
+        # INBOX:1032: the pack's own pooled-QC reading needs a two-level label, so on a
+        # Case/Control/QC label the pack's left-censoring finding read the QC rows' blanks (age,
+        # BMI, the outcome, blank there by design); here it reads the rows outside the ones the
+        # served pooled-QC finding names, with the outcome set aside where one is handed.
+        "_left_censored": one(on_the_participants),
     }
+
+
+def _reference_rows(df: pd.DataFrame, found: dict[str, Any] | None) -> pd.Series:
+    """The rows the served pooled-QC finding ``found`` names, as a mask on ``df``
+    (``finding_words.pooled_qc_rows``, the rows the findings stage sets aside); none without it."""
+    from turbotab.core.stages.finding_words import pooled_qc_rows
+
+    at = np.zeros(len(df), dtype=bool)
+    at[sorted(pooled_qc_rows(df, [found] if found else []))] = True
+    return pd.Series(at, index=df.index)
 
 
 def _pooled_qc_reading(df: pd.DataFrame) -> dict[str, Any] | None:
@@ -67,14 +100,17 @@ def _pooled_qc_reading(df: pd.DataFrame) -> dict[str, Any] | None:
 
 
 def pack_findings(df: pd.DataFrame, lens: Sequence[str], units: Any = None,
-                  codings: Any = None) -> list[dict[str, Any]]:
-    """``packs.findings``, with the superseded detectors read here instead."""
+                  codings: Any = None, target: str | None = None) -> list[dict[str, Any]]:
+    """``packs.findings``, with the superseded detectors read here instead. ``target`` is the
+    outcome, where one is chosen: the left-censoring reading sets it aside. The findings stage
+    hands none and reads that finding again with it
+    (``finding_words.left_censoring_on_the_participants``)."""
     from turbotab import packs
 
     out: list[dict[str, Any]] = []
     if df is None or df.empty:
         return out
-    replaced = _superseding(units, codings)
+    replaced = _superseding(units, codings, target)
     for key in packs.normalize_quiet(lens):
         pack = packs.PACKS.get(key)
         if pack is None:

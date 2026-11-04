@@ -91,6 +91,7 @@ def _and(items: list[str]) -> str:
 # the checks run without counting what they raise.
 LENS_CHECK_CELLS = 2_000_000
 _FOUND: dict[tuple[Any, ...], int] = {}
+_READS: list[str] = []
 
 
 def _small_table(ctx: PreviewContext) -> Any:
@@ -119,21 +120,94 @@ def _reads_feature_major(lens: list[str], table: Any) -> bool:
         return False
 
 
+def _findings_reads() -> tuple[str, ...]:
+    """The answers the findings stage reads (its ``Stage`` line's reads) with the purpose the
+    page's own filter reads (``materiality.finding_fires``): what the served count depends on.
+    Read from the stage graph, so the count's cache and the stage's key cannot drift; the stages
+    import this module's neighbors, so it is read when first asked for, not at import."""
+    if not _READS:
+        from turbotab.core.stages import build_graph
+
+        _READS.extend(dict.fromkeys([*build_graph()["findings"].reads, "purpose"]))
+    return tuple(_READS)
+
+
 def _pack_findings(ctx: PreviewContext, lens: list[str], table: Any) -> int | None:
-    """How many findings the lens's packs raise on this table (cached per table and lens)."""
+    """How many pack findings the findings page serves under ``lens`` on this table
+    (:func:`served_pack_findings`), cached per table, lens and every other answer that page reads
+    (:func:`_findings_reads`, each keyed as the stage's own key keys it)."""
     if table is None:
         return None
-    key = (ctx.project_id, int(ctx.datastore.n_rows), tuple(table.columns), tuple(sorted(lens)))
-    if key not in _FOUND:
-        from turbotab.core import detectors
+    import json
 
-        try:  # the findings stage's own pack reading (audit WP14), so the two counts agree
-            _FOUND[key] = len(detectors.pack_findings(table, lens))
+    from turbotab.core.graph import key_value
+
+    state = ctx.state
+    values = state.model_dump(mode="json")
+    answers = {slot: key_value(slot, values.get(slot)) for slot in _findings_reads() if slot != "lens"}
+    key = (ctx.project_id, int(ctx.datastore.n_rows), tuple(table.columns), tuple(sorted(lens)),
+           json.dumps(answers, sort_keys=True, separators=(",", ":"), default=str))
+    if key not in _FOUND:
+        try:
+            _FOUND[key] = len(served_pack_findings(table, lens, state))
         except Exception:  # noqa: BLE001 - the count is a courtesy; the lineage is the preview
             return None
         while len(_FOUND) > 64:
             _FOUND.pop(next(iter(_FOUND)))
     return _FOUND[key]
+
+
+def served_pack_findings(written: Any, lens: list[str], state: Any) -> list[dict[str, Any]]:
+    """The pack findings the findings page serves under ``lens`` on the table ``written``, with the
+    answers ``state`` records (INBOX:1032: the count said 8 where clinical_labs served 7).
+
+    Composed as the findings stage composes them (``stages.findings.findings_stage`` and its
+    ``speak_for``), from the same readings and in the same order, less the summaries and details
+    the count does not read (on the NHANES export, about half a second): the pack's readings
+    (``detectors.pack_findings``) on the table its text-number repairs read as numbers; the
+    left-censoring finding read again with the outcome set aside, the energy findings re-pointed
+    to the column the app reads as energy, and those the pack's name matcher missed added, with
+    the survey-weights finding its reader missed; less the clinical censored-values finding whose
+    every column the app's own below-detection finding reads, the clinical numbers-as-text one
+    whose every column the app's own text-number finding reads, and what the page leaves out
+    under these answers (``materiality.finding_fires``).
+    ``test_lens_preview_counts_the_served_findings`` holds the two to the same findings."""
+    from turbotab.core import detectors, repairs
+    from turbotab.core.materiality import finding_fires
+    from turbotab.core.stages import finding_words as fw
+    from turbotab.core.stages.findings import pack_finding
+
+    target = state.target if state.target in written.columns else None
+    units = getattr(state, "column_units", None) or {}
+    codings = getattr(state, "sex_codings", None) or {}
+    frame = repairs.numbers_read(written, state)
+    from_packs = detectors.pack_findings(frame, lens, units=units, codings=codings, target=target)
+    own = repairs.text_number_findings(written)
+    limited = {c for _, f in own if fw.family(f["id"]) == "below_detection"
+               for c in f["affected_columns"]}
+    read = {c for _, f in own if fw.family(f["id"]) == "text_numbers" for c in f["affected_columns"]}
+    fc = fw.FindingContext(frame=frame, lens=tuple(lens), target=target, units=dict(units),
+                           below_detection=frozenset(str(c) for c in limited),
+                           reference_rows=fw.pooled_qc_rows(frame, from_packs))
+    pairs = fw.repoint_energy(fw.left_censoring_on_the_participants(
+        [(f, pack_finding(f)) for f in from_packs], fc), fc)
+    out = []
+    for raw, f in pairs:
+        kind = fw.family(f["id"])
+        if kind == "pack::clinical::censored_values":
+            rows, handed = fw.censored_rows(dict(raw.get("params") or {}), fc)
+            kept = set(f["affected_columns"])
+            if handed:  # the columns left to their below-detection repair leave it (``_censored``)
+                kept &= {r[0] for r in rows}
+            if not kept:
+                continue
+        if (kind == "pack::clinical::text_numeric" and f["affected_columns"]
+                and set(f["affected_columns"]) <= read):
+            continue
+        out.append(f)
+    spoken = [f for _, f in pairs]
+    out += fw.energy_findings(fc, spoken) + fw.weight_findings(fc, spoken)
+    return [f for f in out if finding_fires(f, state)]
 
 
 def lens_views(decision: Any, ctx: PreviewContext) -> list[Any]:
