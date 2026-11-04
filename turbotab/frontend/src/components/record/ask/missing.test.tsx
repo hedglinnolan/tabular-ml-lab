@@ -208,6 +208,177 @@ describe("m, within the contract's bounds", () => {
     expect(option.textContent).toContain("over 37% of the rows");
     expect(screen.queryByTestId("missing-m-bounds")).toBeNull();
   });
+
+  // The fit draws the larger of m and the percentage of rows with a blank to impute (rounded up;
+  // methods/imputation.py `m_rule`). A share of the rows is at most all of them, 100%, so from an
+  // m of 100 the fit draws m whatever the blanks, and the card says no more.
+  const ALL_ROWS = 100;
+  it("says the fit may draw more only below an m of 100, the share of all the rows", () => {
+    renderCard({ proposals: ESTIMATE.proposals, purpose: "inference" });
+    const option = screen.getByTestId("option-multiple_imputation");
+    typeM(String(ALL_ROWS - 1));
+    expect(option.textContent).toContain(`over ${ALL_ROWS - 1}% of the rows`);
+    for (const m of [ALL_ROWS, ALL_ROWS + 1, M.max]) {
+      typeM(String(m));
+      expect(option.textContent).not.toContain("% of the rows");
+      expect(screen.queryByTestId("missing-m-bounds")).toBeNull(); // an m the contract accepts
+    }
+  });
+});
+
+describe("what multiple imputation is said to do", () => {
+  // Under multiple imputation the cross-validated scores are the single fill's and the
+  // coefficients are pooled over the imputations (models/pipeline.py `impute_detail`), and a
+  // column below detection filled by half its minimum is not imputed (`imputation_count`).
+  it("says the coefficients are pooled, and claims no imputation of every blank", () => {
+    renderCard({ proposals: ESTIMATE.proposals, purpose: "inference" });
+    const said = screen.getByTestId("option-multiple_imputation").textContent ?? "";
+    expect(said).toContain("the coefficients are pooled");
+    expect(said).not.toMatch(/each blank|results pooled/i);
+  });
+});
+
+// ── a click on a control's words, inside an option ───────────────────────────────────────────
+// A checkbox's or a field's words are its label: a click on them works the control (the label's
+// activation) and records nothing, so a press of the option posts what the controls then show.
+
+describe("a click on the words of an option's controls", () => {
+  it("works multiple imputation's controls and records nothing", () => {
+    const record = renderCard({ proposals: ESTIMATE.proposals, purpose: "inference" });
+    const single = screen.getByTestId("missing-single-level") as HTMLInputElement;
+    fireEvent.click(single.closest("label")!);
+    expect(single.checked).toBe(true);
+    fireEvent.click(screen.getByTestId("missing-m").closest("label")!);
+    expect(record).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("option-multiple_imputation"));
+    expect(recorded(record)).toEqual([
+      mi({ imputation_levels: "single_level" }),
+      "multiple_imputation",
+    ]);
+  });
+
+  it("works the fill in each fold's boxes and records nothing", () => {
+    const blanks = PREDICT.proposals.missing!.columns.map((b) => b.column);
+    expect(blanks.length).toBeGreaterThanOrEqual(2);
+    // one blank column that can be a level (categorical), one that cannot (a number)
+    const columns = new Map([
+      [blanks[0]!, { dtype: "categorical", n_unique: 3 }],
+      [blanks[1]!, { dtype: "float", n_unique: 50 }],
+    ]);
+    const record = vi.fn<(d: Decision, at?: string) => void>();
+    render(
+      <MissingAsk
+        entry={ENTRY}
+        pending={false}
+        record={record}
+        answerAt={null}
+        shell={{
+          qkey: "missing",
+          now: true,
+          arriving: false,
+          onArrived: () => {},
+          onOpenDrawer: () => {},
+          reopened: false,
+        }}
+        proposals={PREDICT.proposals}
+        columns={columns}
+        purpose="prediction"
+        current={null}
+      />,
+    );
+    const levels = screen.getByTestId("missing-levels") as HTMLInputElement;
+    const indicators = screen.getByTestId("missing-indicators") as HTMLInputElement;
+    fireEvent.click(levels.closest("label")!);
+    fireEvent.click(indicators.closest("label")!);
+    expect([levels.checked, indicators.checked]).toEqual([true, true]);
+    expect(record).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("option-impute"));
+    expect(recorded(record)).toEqual([
+      expect.objectContaining({
+        kind: "set_missing",
+        strategy: "impute",
+        categorical: "missing_category",
+        indicators: true,
+      }),
+      "impute",
+    ]);
+  });
+});
+
+// ── a sub-answer the server does not recommend, said where it is chosen ──────────────────────
+// The server serves each sub-answer with its rung and its sound sentence for the purpose
+// (methods/missing.py `imputation_model_options`, `below_detection_options`; §11.3: an option is
+// never offered silently). The card shows the sentence beside the control while a sub-answer the
+// server does not recommend is chosen, and none for one it recommends.
+
+describe("a sub-answer the server does not recommend, said where it is chosen", () => {
+  const sub = (key: string) =>
+    ESTIMATE.proposals.missing!.imputation_models.find((o) => o.key === key)!;
+  const visible = (testId: string) => screen.getByTestId(testId).textContent ?? "";
+
+  it("says the passive model's caution while it is chosen, and none for the compatible model", () => {
+    expect(sub("passive").rung).not.toBe("recommended");
+    expect(sub("compatible").rung).toBe("recommended");
+    renderCard({ proposals: ESTIMATE.proposals, purpose: "inference" });
+    const said = () => visible("option-multiple_imputation");
+    expect(said()).not.toContain(sub("passive").sound);
+    expect(said()).not.toContain(sub("compatible").sound);
+    const model = screen.getByTestId("missing-imputation-model");
+    fireEvent.change(model, { target: { value: "passive" } });
+    expect(said()).toContain(sub("passive").sound);
+    fireEvent.change(model, { target: { value: "compatible" } });
+    expect(said()).not.toContain(sub("passive").sound);
+    expect(said()).not.toContain(sub("compatible").sound);
+  });
+
+  it("says single-level's caution while it is ticked, and none for clustered imputation", () => {
+    expect(sub("single_level").rung).not.toBe("recommended");
+    renderCard({ proposals: ESTIMATE.proposals, purpose: "inference" });
+    const said = () => visible("option-multiple_imputation");
+    expect(said()).not.toContain(sub("single_level").sound);
+    fireEvent.click(screen.getByTestId("missing-single-level"));
+    expect(said()).toContain(sub("single_level").sound);
+    fireEvent.click(screen.getByTestId("missing-single-level"));
+    expect(said()).not.toContain(sub("single_level").sound);
+  });
+
+  it("says a recorded passive, single-level answer's cautions when the card opens", () => {
+    const current = miSpec({ imputation_model: "passive", imputation_levels: "single_level" });
+    renderCard({ proposals: ESTIMATE.proposals, purpose: "inference", current });
+    const said = visible("option-multiple_imputation");
+    expect(said).toContain(sub("passive").sound);
+    expect(said).toContain(sub("single_level").sound);
+  });
+
+  it.each([
+    ["the fill in each fold", "impute", () => OMICS, () => OMICS_RECORD],
+    [
+      "multiple imputation",
+      "mi",
+      () => ESTIMATE,
+      () => ({ ...OMICS_RECORD, strategy: "multiple_imputation" }) as ProjectState["missing"],
+    ],
+  ])(
+    "under %s, says half the minimum's caution where it is the fill, and none for the censoring-aware fill",
+    (_, where, journey, current) => {
+      const { proposals, state } = journey();
+      const fills = proposals.missing!.below_detection;
+      const fill = (key: string) => fills.find((o) => o.key === key)!;
+      expect(fill("half_minimum").rung).not.toBe("recommended");
+      expect(fill("censoring_aware").rung).toBe("recommended");
+      renderCard({ proposals, purpose: state.purpose, current: current() });
+      const option = where === "mi" ? "option-multiple_imputation" : "option-impute";
+      const said = () => visible(option);
+      expect(said()).not.toContain(fill("half_minimum").sound);
+      expect(said()).not.toContain(fill("censoring_aware").sound);
+      const select = screen.getByTestId(`missing-fill-${where}`);
+      fireEvent.change(select, { target: { value: "half_minimum" } });
+      expect(said()).toContain(fill("half_minimum").sound);
+      fireEvent.change(select, { target: { value: "censoring_aware" } });
+      expect(said()).not.toContain(fill("half_minimum").sound);
+      expect(said()).not.toContain(fill("censoring_aware").sound);
+    },
+  );
 });
 
 describe("the imputation model and its levels, from the contract's enums", () => {

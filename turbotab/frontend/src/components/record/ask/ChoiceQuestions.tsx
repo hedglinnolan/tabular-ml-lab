@@ -5,7 +5,15 @@
  * recorded sentence). The pack's usual choice is tagged and ordered first, never pre-selected;
  * an option that does not apply stays on the shelf and says why.
  */
-import { createContext, useContext, useRef, useState, type FormEvent, type RefObject } from "react";
+import {
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  type FormEvent,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import type {
   EnergyMethod,
   EnergyReading,
@@ -417,6 +425,9 @@ type ImputationModel = NonNullable<MissingDecision["imputation_model"]>;
  *  percent of the rows with a blank to impute where that is more (methods/imputation.py
  *  `m_rule`). */
 const M_IMPUTATIONS = { default: 20, min: 20, max: 200 } as const;
+/** The m from which the fit draws m whatever the blanks: it draws more only where over m% of the
+ *  rows have a blank to impute, and a share of the rows is at most all of them. */
+const M_COVERS_EVERY_ROW = 100;
 
 /** The m a typed value asks for: a whole number within the contract's bounds, else null. */
 function parseM(text: string): number | null {
@@ -431,6 +442,21 @@ function parseM(text: string): number | null {
  *  `below_detection_options`). */
 const offered = (list: MissingOffer[] | undefined): MissingOffer[] =>
   (list ?? []).filter((o) => o.rung !== "refused");
+
+/** A sub-answer chosen that the server does not recommend, said beside its control in the server's
+ *  sound sentence (§11.3: an option is never offered silently); nothing for one it recommends. */
+function caution(offer: MissingOffer | undefined, testId: string) {
+  return offer && offer.rung !== "recommended" && offer.sound ? (
+    <span className={c.coachNote} data-testid={testId}>
+      {offer.sound}
+    </span>
+  ) : null;
+}
+
+/** A click inside an option's own controls works them and never presses the option. Options leaves
+ *  a click on an input, a select, a textarea, a button or a link to it, but a click on a control's
+ *  words, its label, would reach the option and record it before the label works the control. */
+const controlsOnly = (e: MouseEvent<HTMLElement>) => e.stopPropagation();
 
 /** The option an answer on record reads back as. */
 export function missingKey(current: ProjectState["missing"]): string | null {
@@ -521,6 +547,10 @@ export function MissingAsk({
             <option value={fillOnRecord ?? ""}>as recorded</option>
           )}
         </select>
+        {caution(
+          (proposals?.missing?.below_detection ?? []).find((o) => o.key === fill),
+          `missing-caution-fill-${where}`,
+        )}
       </>
     ) : null;
 
@@ -543,7 +573,10 @@ export function MissingAsk({
         key: "multiple_imputation",
         label: taught(p.entry, "multiple_imputation")?.label ?? "Multiple imputation",
         // Not the teaching's line, which says 20 times: m is the user's, and the fit may draw more.
-        line: "Each blank imputed several times with the outcome; results pooled by Rubin's rules.",
+        // What is pooled is the coefficients (the cross-validated scores are the single fill's;
+        // models/pipeline.py `impute_detail`), and a column below detection filled by half its
+        // minimum is not imputed (`imputation_count`), so the line claims no imputation of each blank.
+        line: "Several copies of the data imputed with the outcome; the coefficients are pooled across them by Rubin's rules.",
         decision:
           m === null
             ? null
@@ -559,6 +592,7 @@ export function MissingAsk({
             className={c.modifierInline}
             role="group"
             aria-label="How multiple imputation draws"
+            onClick={controlsOnly}
           >
             <label className={c.check}>
               at least
@@ -577,36 +611,45 @@ export function MissingAsk({
               <span className={c.coachNote} data-testid="missing-m-bounds">
                 A whole number from {M_IMPUTATIONS.min} to {M_IMPUTATIONS.max}.
               </span>
-            ) : (
+            ) : m < M_COVERS_EVERY_ROW ? (
               <span className={c.hint}>
                 more where over {m}% of the rows have a blank to impute
               </span>
-            )}
+            ) : null}
             {modelOffers.length ? (
-              <select
-                className={c.inlineSelect}
-                aria-label="Imputation model"
-                value={model}
-                onChange={(e) => setModel(e.target.value as ImputationModel)}
-                data-testid="missing-imputation-model"
-              >
-                {modelOffers.map((o) => (
-                  <option key={o.key} value={String(o.decision.imputation_model)} title={o.sound}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  className={c.inlineSelect}
+                  aria-label="Imputation model"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value as ImputationModel)}
+                  data-testid="missing-imputation-model"
+                >
+                  {modelOffers.map((o) => (
+                    <option key={o.key} value={String(o.decision.imputation_model)} title={o.sound}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                {caution(
+                  subOffers.find((o) => o.decision.imputation_model === model),
+                  "missing-caution-model",
+                )}
+              </>
             ) : null}
             {singleOffer ? (
-              <label className={c.check} title={singleOffer.sound}>
-                <input
-                  type="checkbox"
-                  checked={single}
-                  onChange={(e) => setSingle(e.target.checked)}
-                  data-testid="missing-single-level"
-                />
-                {singleOffer.label}
-              </label>
+              <>
+                <label className={c.check} title={singleOffer.sound}>
+                  <input
+                    type="checkbox"
+                    checked={single}
+                    onChange={(e) => setSingle(e.target.checked)}
+                    data-testid="missing-single-level"
+                  />
+                  {singleOffer.label}
+                </label>
+                {single ? caution(singleOffer, "missing-caution-levels") : null}
+              </>
             ) : null}
             {fillChoice("mi")}
           </span>
@@ -661,7 +704,12 @@ export function MissingAsk({
     previewLabel: `Impute${imputeDecision.categorical === "missing_category" ? ", blanks as a level" : ""}${imputeDecision.indicators ? ", with indicators" : ""}`,
     extra:
       levelable.length || numeric.length || askFill ? (
-        <span className={c.modifierInline} role="group" aria-label="How imputation treats blanks">
+        <span
+          className={c.modifierInline}
+          role="group"
+          aria-label="How imputation treats blanks"
+          onClick={controlsOnly}
+        >
           {levelable.length ? (
             <label className={c.check}>
               <input

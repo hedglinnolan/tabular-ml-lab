@@ -20,7 +20,9 @@
  * front-end audit added one option to the missing-values card, where the server offers it (the
  * captured view is under inference), before complete cases, and changed nothing else in its block
  * but the tab stop, which moves to the first option: multiple imputation ("Multiple imputation",
- * in missing.html), with its m, its imputation model and its levels.
+ * in missing.html), with its m, its imputation model and its levels. Its repair round's V3 changed
+ * that option's line alone: it says the coefficients are pooled, and claims no imputation of each
+ * blank ("Several copies of the data imputed with the outcome", in missing.html).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
