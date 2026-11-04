@@ -82,6 +82,9 @@ __all__ = [
     "EnergyAdjuster",
     "EnergyAdjustmentNotApplicable",
     "FactorReading",
+    "LOGGED_ZEROS",
+    "NO_LOG_EXIT",
+    "adjustment_columns",
     "MIN_LEVEL_ROWS",
     "StratifiedEnergyAdjuster",
     "Swap",
@@ -324,6 +327,26 @@ class EnergyAdjustmentNotApplicable(ValueError):
         super().__init__(f"{METHOD_TABLE.get(method, {}).get('label', method)} cannot be used: {reason}")
         self.method = method
         self.reason = reason
+
+
+# A recorded zero or negative value a log would meet (the log residual's, :meth:`EnergyAdjuster.
+# _fit_residual`, and the imputation's, ``smcfcs.refusal_before_drawing``): the refusal's code, and
+# the way forward both offer where the energy model is what logs the column.
+LOGGED_ZEROS = "zeros_cannot_be_logged"
+NO_LOG_EXIT = "Adjust for energy without the log"
+
+
+def adjustment_columns(adjustment: Any) -> List[str]:
+    """The columns ``adjustment`` (an ``EnergyAdjustment``) is computed with: its total energy and
+    the nutrients it adjusts; none without one, or for method ``"none"``, which only leaves total
+    energy out. Without any of them in the table the adjustment cannot be computed
+    (:func:`applicable_methods`: "The energy column … is not in this table"), so none of them may
+    be left out of the predictors while it holds."""
+    if adjustment is None or getattr(adjustment, "method", "none") == "none":
+        return []
+    named = [getattr(adjustment, "energy_column", None),
+             *_as_list(getattr(adjustment, "nutrients", None))]
+    return [str(c) for c in dict.fromkeys(named) if c]
 
 
 # ── Atwater factors and column recognition ───────────────────────────────────
@@ -801,12 +824,23 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
         if self.log_transform:
             bad = rows & ((n <= 0) | (e <= 0))
             if bad.any():
+                # A refusal in words (``graph.StageRefusal``, a ``ValueError`` whose error text is
+                # the same), so the design stage that fits this step refuses the plan with its way
+                # forward, the same model without the log, where it raised before.
+                from turbotab.core.graph import StageRefusal
+
                 which = name if (rows & (n <= 0)).any() else E
-                raise ValueError(
+                raise StageRefusal(
+                    LOGGED_ZEROS,
                     f"log_transform needs positive values, and {which} is zero or negative in "
                     f"{int(bad.sum())} of the fitting rows. Adding a small constant to zeros "
                     f"changes the answer and would have to be reported; adjust {name} without "
-                    f"the log, or decide how its zeros are handled first.")
+                    f"the log, or decide how its zeros are handled first.",
+                    exits=[{"label": NO_LOG_EXIT, "decision": {
+                        "kind": "set_energy_adjustment", "method": self.method,
+                        "energy_column": E, "nutrients": _as_list(self.nutrient_columns),
+                        "log_transform": False}}],
+                    changes=True)
             x, yv = np.log(e[rows]), np.log(n[rows])
         else:
             x, yv = e[rows], n[rows]

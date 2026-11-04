@@ -12,8 +12,11 @@ The arithmetic and its sources are in :mod:`turbotab.core.methods.scales`, the l
   (``methods.missing.impute_for_inference`` on the same rows, inputs, outcome and seed), and in each
   completed copy the score is formed, its reliability estimated, and the correction run with its
   own bootstrap; the copies are combined by Rubin's rules, each copy's variance its bootstrap
-  variance. Otherwise there is one copy, the rows as they are (complete cases: the cohort has left
-  out a row with a blank predictor).
+  variance. Where the sampler refuses the copies, the score is not corrected, in the words the
+  fit's table refuses them with (``methods.smcfcs.REFUSED_LEAD`` and the sampler's, given the same
+  columns an exit may leave out) and with its ways forward, each where the record accepts it.
+  Otherwise there is one copy, the rows as they are (complete cases: the cohort has left out a
+  row with a blank predictor).
 * **Clusters** (MODELING_SEQUENCE §2: repeated units or clusters imply cluster-aware intervals;
   ruling 7: the calibration's bootstrap resamples clusters). The rows are grouped exactly as the
   fit's coefficient table groups them (``models.inference.resolve_clusters`` over the same rows and
@@ -349,8 +352,12 @@ def _why_not(spec: Any, specs: Sequence[Any], *, inference: bool, task: str,
              copies: Sequence[pd.DataFrame], family: Any, pipeline: Any,
              blocked: tuple[str, list[dict[str, Any]]] | None,
              grouped: tuple[str, Sequence[dict[str, Any]]] | None,
-             codes: Codes | None) -> tuple[str | None, list[dict[str, Any]], bool]:
-    """``(why not, exits, eligible)`` for one scale's correction."""
+             codes: Codes | None,
+             unimputed: tuple[str, Sequence[dict[str, Any]]] | None = None
+             ) -> tuple[str | None, list[dict[str, Any]], bool]:
+    """``(why not, exits, eligible)`` for one scale's correction. ``unimputed``: the sampler's
+    refusal of the items' copies under multiple imputation, in the fit's words with its ways
+    forward (:func:`_imputation_exits`)."""
     from turbotab.core.scales import FORMATIVE, PREDICTION
 
     if spec.correction == "none":
@@ -373,11 +380,38 @@ def _why_not(spec: Any, specs: Sequence[Any], *, inference: bool, task: str,
                 [], False)
     if spec.kind == "formative" and spec.reliability == "internal_consistency":
         return FORMATIVE, [], False
+    if unimputed is not None:
+        return unimputed[0], [dict(e) for e in unimputed[1]], False
     if any(c.isna().any().any() for c in copies):
         return ("Blanks among the model's inputs are filled once here, and the correction would "
                 "treat each filled value as measured; answer multiple imputation to correct the "
                 "score.", [], False)
     return None, [], True
+
+
+def _imputation_exits(refused: Any, spec: Any, state: Any, leavable: Sequence[str],
+                      ctx: StageContext) -> list[dict[str, Any]]:
+    """The ways forward from the sampler's refusal of the items' copies, as the fit's table offers
+    them (``methods.smcfcs.ways_forward``), each with a decision only where the record accepts it
+    when it is taken now (``row_floor.accepted_exit``), counted on the table the stage reads
+    (``stages.data.open_store``) as ``row_floor.stage_exits`` counts the fit's; with no table to
+    count on, as they are, the record counting when one is taken."""
+    from turbotab.core.methods.smcfcs import ways_forward
+    from turbotab.core.row_floor import accepted_exit
+    from turbotab.core.stages.data import open_store
+
+    ways = ways_forward(refused, spec.missing or {}, state, adjustment=spec.energy_adjustment(),
+                        leavable=leavable)
+    if not any(e.get("decision") is not None for e in ways):
+        return ways
+    try:
+        store = open_store(ctx)
+    except Exception:  # noqa: BLE001 - no table to count on: the record counts when it is taken
+        return ways
+    with store:
+        record = {"state": state, "store": store}
+        return [e for e in ways if e.get("decision") is None
+                or accepted_exit(e["decision"], record) is not None]
 
 
 def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
@@ -572,14 +606,20 @@ def scales_stage(ctx: StageContext) -> Bundle:
     copies: list[pd.DataFrame] = [X]
     imputation = None
     imputations = None
+    unimputed: tuple[str, list[dict[str, Any]]] | None = None
     if inference and spec.multiple_imputation() and X.isna().any().any():
+        from turbotab.core.methods.smcfcs import REFUSED_LEAD, leavable_of
+
         ctx.progress(0.05, "Imputing the items, with the outcome, before scoring")
+        # The columns an exit may leave out, as the fit's table hands them to the sampler, so a
+        # refusal here is the fit's in its words (``stages.modeling._missing_for_table``).
+        leavable = leavable_of(state)
         try:
             imputations = impute_for_inference(spec, X, y, task, seed=seed,
-                                               cancelled=ctx.cancelled)
+                                               cancelled=ctx.cancelled, leavable=leavable)
         except ImputationRefused as exc:
             imputations = None
-            imputation = {"refused": str(exc)}
+            unimputed = (f"{REFUSED_LEAD}{exc}", _imputation_exits(exc, spec, state, leavable, ctx))
         if imputations is not None:
             copies = list(imputations.frames)
             items = {c for s in specs for c in s.items}
@@ -617,7 +657,7 @@ def scales_stage(ctx: StageContext) -> Bundle:
                 rel["reason"] = found.reason
         why, exits, ok = _why_not(s, specs, inference=inference, task=task, copies=copies,
                                   family=family, pipeline=pipeline, blocked=blocked,
-                                  grouped=grouped, codes=found)
+                                  grouped=grouped, codes=found, unimputed=unimputed)
         if ok:
             eligible.append(s)
         out.append({"name": s.name, "items": list(s.items), "reverse": list(s.reverse),
