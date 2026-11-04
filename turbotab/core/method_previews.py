@@ -237,7 +237,8 @@ def scales_views(decision: Any, ctx: PreviewContext) -> list[Any]:
             before_label=f"{score_col} as summed",
             after_label=f"{score_col} calibrated, E[X | W, Z]",
         ))
-    arrive, leave = lineage_change(now.lineage if now is not None else None, then.lineage)
+    # Two designs' matrices, every column by its name: a wide plan's drawings fold the items.
+    arrive, leave = lineage_change(now, then)
     if arrive or leave:
         views.append(LineageView(
             title=title("Items into one score"),
@@ -954,7 +955,7 @@ def batch_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         r_before=None,
         r_after=None,
     )]
-    arrive, leave = lineage_change(now.lineage, then.lineage)
+    arrive, leave = lineage_change(now, then)  # every column by its name, folded or not
     views.append(LineageView(
         title=title(f"Where {tick(decision.column)} enters"),
         caption=caption(f"{fmt_count(len(columns))} features batch-adjusted inside each training "
