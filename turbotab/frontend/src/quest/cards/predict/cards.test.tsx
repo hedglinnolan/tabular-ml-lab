@@ -1141,7 +1141,8 @@ describe("the intended use (finding 9)", () => {
  * The reason for an answer (G14, the owner's Q11: "an optional one-line box beside each recorded
  * answer, collapsed by default"): the server keeps a decision's reason as its record's note
  * (`POST …/decisions?note=`), so the card sends what the person typed with the decision it
- * records, and shows the note on the record that answers its line.
+ * records. It shows no note on record (the orchestrator's scope cut of 2026-11-04): the note is kept
+ * in the decision log and the export.
  */
 describe("the reason for an answer (G14)", () => {
   const shrinkage = CASES.find((c) => c.card === "set_updating" && c.press === "method:shrinkage")!;
@@ -1250,7 +1251,8 @@ describe("the reason for an answer (G14)", () => {
     expect(decide.mock.calls[1]).toEqual([PID, shrinkage.payload, { note: LATER }]);
   });
 
-  it("goes with a refusal's exit, the card's other way to record", async () => {
+  it("does not go with a refusal's exit, which records the engine's decision, and stays for the next press", async () => {
+    // The reason was written for shrinkage; the exit records no update at all.
     const exit: Decision = { kind: "set_updating", method: "none" };
     const refusal: Refusal = {
       error: { code: "no_refit", message: "Shrinkage needs a refit.", exits: [{ label: "Keep the model as fitted", decision: exit }] },
@@ -1262,191 +1264,22 @@ describe("the reason for an answer (G14)", () => {
     press(shrinkage.press);
     fireEvent.click(within(await screen.findByTestId("refusal")).getByTestId("refusal-exit"));
     await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
-    expect(decide.mock.calls[1]).toEqual([PID, exit, { note: REASON }]);
+    expect(decide.mock.calls[1]).toEqual([PID, exit]);
+    await waitFor(() => expect(screen.queryByTestId("refusal")).toBeNull());
+    expect(screen.getByTestId("reason-input")).toHaveValue(REASON);
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(3));
+    expect(decide.mock.calls[2]).toEqual([PID, shrinkage.payload, { note: REASON }]);
   });
 
-  it("on record is shown with the answer, from the record the quest log names for the line", () => {
-    const line = lineOf("set_updating", { status: "answered", decision_id: "r9" });
-    mount("set_updating", { ...answered, decisions: [record()], quest: [line] });
-    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(REASON);
-    // A new answer's reason is its own: the box does not start at the one on record.
-    open();
-    expect(screen.getByTestId("reason-input")).toHaveValue("");
-  });
-
-  it("on record is not shown where the record has none, or the line names no record that has one", () => {
-    const named = lineOf("set_updating", { status: "answered", decision_id: "r9" });
-    mount("set_updating", { ...answered, decisions: [record({ note: null })], quest: [named] });
-    expect(screen.queryByTestId("reason-on-record")).toBeNull();
-    cleanup();
-    // The line answered by another record: r8, the one in force after r9 was withdrawn (r10).
-    const r8 = record({ id: "r8", seq: 8, note: null, decision: { kind: "set_updating", method: "none" } });
-    const r10 = record({ id: "r10", seq: 10, note: null, decision: { kind: "revert", decision_id: "r9" } as Decision });
-    const other = lineOf("set_updating", { status: "answered", decision_id: "r8" });
-    mount("set_updating", {
-      recorded: { updating: { method: "none" } },
-      answered: true,
-      line: { decision_id: "r8" },
-      decisions: [r8, record(), r10],
-      quest: [other],
-    });
-    expect(screen.queryByTestId("reason-on-record")).toBeNull();
-    cleanup();
-    // The line open again: no record answers it, whatever an earlier one said.
-    mount("set_updating", { decisions: [record()], quest: [lineOf("set_updating")] });
-    expect(screen.queryByTestId("reason-on-record")).toBeNull();
-    cleanup();
-    // Another card's line naming the record: not this card's answer.
-    const elsewhere = lineOf("set_explain", { status: "answered", decision_id: "r9" });
-    mount("set_updating", { ...answered, decisions: [record()], quest: [elsewhere] });
-    expect(screen.queryByTestId("reason-on-record")).toBeNull();
-  });
-
-  const marked = () =>
-    Array.from(document.querySelectorAll("[role=option][data-recorded]")).map((o) => o.getAttribute("data-testid"));
-
-  // A second answer replacing the first, as the server keeps the log: the line's record is the last
-  // live record of its kind (core/quest.py `last_answer`), here r2. The shell refetches the quest log
-  // only after the decision's own response is merged, so the card first sees the new log with the
-  // line still naming r1.
-  const OLD = "Recalibration is out of scope for this paper.";
-  const first = () => record({ id: "r1", seq: 1, note: OLD, decision: { kind: "set_updating", method: "none" } });
-  const replacing = (note: string | null) => record({ id: "r2", seq: 2, note, decision: shrinkage.payload as Decision });
-  const before = lineOf("set_updating", { status: "answered", decision_id: "r1" });
-  const mountFirst = () =>
-    mount("set_updating", {
-      recorded: { updating: { method: "none" } },
-      answered: true,
-      line: { decision_id: "r1" },
-      decisions: [first()],
-      quest: [before],
-    });
-  const lineInCache = (qc: QueryClient) =>
-    qc.getQueryData<QuestLog>(keys.quest(PID))!.stages.flatMap((s) => s.lines).find((l) => l.key === "set_updating");
-
-  it.each([
-    ["its own reason", REASON],
-    ["no reason, where none was given for it", null],
-  ])("on record beside a new answer is %s, never the one it replaced, while the quest log still names that one", async (_, note) => {
-    const { decide, qc } = mountFirst();
-    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(OLD);
-    decide.mockResolvedValueOnce({
-      ...viewOf(stateWith({ updating: { method: "shrinkage" } })),
-      decisions: [first(), replacing(note)],
-    });
-    if (note !== null) {
-      open();
-      type("reason-input", note);
-    }
-    press(shrinkage.press);
-    await waitFor(() => expect(marked()).toEqual([`option-${shrinkage.press}`]));
-    expect(lineInCache(qc)?.decision_id).toBe("r1");
-    if (note === null) expect(screen.queryByTestId("reason-on-record")).toBeNull();
-    else expect(screen.getByTestId("reason-on-record")).toHaveTextContent(note);
-    expect(document.body).not.toHaveTextContent(OLD);
-  });
-
-  it("on record is not shown where the line names no record, whatever the log's last record says", () => {
-    // The card marks the answer (its own line says answered), so what keeps the note off is the
-    // quest log the shell holds, whose line names no record, not a card that marks nothing.
-    mount("set_updating", {
-      recorded: { updating: { method: "shrinkage" } },
-      answered: true,
-      line: { decision_id: "r2" },
-      decisions: [first(), replacing(REASON)],
-      quest: [lineOf("set_updating")],
-    });
-    expect(marked()).toEqual([`option-${shrinkage.press}`]);
+  it("shows no reason on record, though the record the line names has one, and starts empty", () => {
+    const line = { status: "answered", decision_id: "r9" } as const;
+    mount("set_updating", { ...answered, line, decisions: [record()], quest: [lineOf("set_updating", line)] });
+    expect(screen.getByTestId(`option-${shrinkage.press}`)).toHaveAttribute("data-recorded");
     expect(screen.queryByTestId("reason-on-record")).toBeNull();
     expect(document.body).not.toHaveTextContent(REASON);
-    expect(document.body).not.toHaveTextContent(OLD);
-  });
-
-  // The intended use as recorded for decision support (payloads.ts `intendedUse`), with its reason.
-  const WHY_DS = "The clinic acts on a cut-off, so the thresholds are the use.";
-  const supportUse = {
-    use: "decision_support",
-    threshold_low: null,
-    threshold_high: null,
-    threshold: 0.2,
-    subgroups: [] as string[],
-    fairness: "subgroup_performance",
-  };
-  const supportRecord = () =>
-    record({ note: WHY_DS, decision: { kind: "set_intended_use", ...supportUse } as Decision });
-  const mountUse = (task: string) =>
-    mount("set_intended_use", {
-      recorded: { task, intended_use: supportUse },
-      answered: true,
-      decisions: [supportRecord()],
-      quest: [lineOf("set_intended_use", { status: "answered", decision_id: "r9" })],
-    });
-
-  it("on record is not shown where the card marks no answer: a use on record it no longer lists", () => {
-    // The line stays answered after the outcome turns numeric (core/quest.py gives the intended use
-    // no holds), and a numeric outcome is offered no decision support (finding 9).
-    mountUse("regression");
-    expect(marked()).toEqual([]);
-    expect(screen.queryByTestId("reason-on-record")).toBeNull();
-    expect(document.body).not.toHaveTextContent(WHY_DS);
-  });
-
-  it("on record is shown beside the use the card lists and marks, its fields as recorded or invalid now", () => {
-    mountUse("binary");
-    expect(marked()).toEqual(["option-use:decision_support"]);
-    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(WHY_DS);
-    // The threshold's open top as served (below it, not at it): decision support's offer has a
-    // problem now.
-    type("field-threshold", String(FIXTURE.bounds.set_intended_use.threshold.lt));
-    press("use:decision_support");
-    expect(screen.getByTestId("blocked")).toBeInTheDocument();
-    expect(marked()).toEqual(["option-use:decision_support"]);
-    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(WHY_DS);
-  });
-
-  // The scheme and the draw share the split: `set_validation` writes its scheme onto the draw, and
-  // `set_split` writes the whole split, a scheme with it (core/decisions.py `register_kind`), while
-  // the scheme's line goes on naming the last `set_validation` record (core/quest.py `own_record`).
-  // The records as the view serves them, and each split below as the engine's fold leaves it for its
-  // log (decisions.fold over these records).
-  const WHY_BOOT = "Too few events to spare a holdout, so bootstrap optimism correction.";
-  const WHY_AGAIN = "Back to the bootstrap: cross-validation alone is too noisy here.";
-  const SPLIT_RECORD = { repeats: 10, n_boot: 500, cluster: null, nested_cv: false, cut_point: null, fold_order: null };
-  const drawn = (id: string, seq: number, holdout: number) =>
-    record({ id, seq, note: null, decision: { kind: "set_split", holdout, seed: 0, folds: 5, validation: "kfold", ...SPLIT_RECORD } as Decision });
-  const bootstrap = (id: string, seq: number, note: string) =>
-    record({ id, seq, note, decision: { kind: "set_validation", folds: 5, validation: "bootstrap", ...SPLIT_RECORD, acknowledged: false } as Decision });
-  const withdrawn = (id: string, seq: number, of: string) =>
-    record({ id, seq, note: null, decision: { kind: "revert", decision_id: of } as Decision });
-  const folded = (holdout: number, validation: string) => ({ holdout, seed: 0, folds: 5, validation, ...SPLIT_RECORD });
-  const DRAW = drawn("r1", 1, 0.2);
-  const SCHEME = bootstrap("r2", 2, WHY_BOOT);
-  // The holdout caution's way forward, "Cross-validation only" (core/row_previews.py): a new draw.
-  const CV_ONLY = drawn("r3", 3, 0.0);
-  const mountScheme = (decisions: DecisionRecord[], split: Record<string, unknown>, named: string) =>
-    mount("set_validation", {
-      recorded: { split },
-      answered: true,
-      line: { decision_id: named },
-      decisions,
-      quest: [lineOf("set_validation", { status: "answered", decision_id: named })],
-    });
-
-  it("on record is not shown beside a scheme a later draw wrote, though the line still names the scheme's record", () => {
-    mountScheme([DRAW, SCHEME, CV_ONLY], folded(0.0, "kfold"), "r2");
-    expect(marked()).toEqual(["option-validation:kfold"]);
-    expect(screen.queryByTestId("reason-on-record")).toBeNull();
-    expect(document.body).not.toHaveTextContent(WHY_BOOT);
-  });
-
-  it.each([
-    ["no draw follows it", [DRAW, SCHEME], folded(0.2, "bootstrap"), "r2", WHY_BOOT],
-    ["the later draw is withdrawn", [DRAW, SCHEME, CV_ONLY, withdrawn("r4", 4, "r3")], folded(0.2, "bootstrap"), "r2", WHY_BOOT],
-    ["it is recorded again after the draw", [DRAW, SCHEME, CV_ONLY, bootstrap("r4", 4, WHY_AGAIN)], folded(0.0, "bootstrap"), "r4", WHY_AGAIN],
-  ])("on record beside the scheme is its record's own while that record wrote the split last: %s", (_, decisions, split, named, note) => {
-    mountScheme(decisions, split, named);
-    expect(marked()).toEqual(["option-validation:bootstrap"]);
-    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(note);
+    open();
+    expect(screen.getByTestId("reason-input")).toHaveValue("");
   });
 
   // The refusal as the server serves it for a note past its limit (core/decisions.py `check_note`,

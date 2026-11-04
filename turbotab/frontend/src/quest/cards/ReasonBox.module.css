@@ -59,20 +59,10 @@
   outline-offset: 1px;
 }
 
-.hint,
-.onRecord {
+.hint {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.45;
   color: var(--muted);
   max-width: 62ch;
-}
-
-.onRecord {
-  margin: 0 0 6px;
-  overflow-wrap: anywhere;
-}
-
-.onRecordLabel {
-  font-weight: 600;
 }

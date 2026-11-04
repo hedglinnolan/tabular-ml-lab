@@ -8,9 +8,11 @@
  * decision's note, the server's word for it. What is typed goes with the next decision the card
  * records (cards/predict/card.tsx `useCard`), and the box is collapsed and empty again once that
  * decision is recorded; a refused press keeps it, and a note the server refuses as too long is
- * answered here, under the text to shorten. It never starts at the reason on record, since a new
- * answer's reason is its own. The reason on the record that answers what the card shows as
- * recorded is shown above it, in the person's own words, as recorded.
+ * answered here, under the text to shorten. A refusal's exit records without it and leaves it as it
+ * is, since the exit's decision is the engine's, not the press it was written for. The box shows no
+ * reason on record: the quest log names one record for a line, and that is not always the record
+ * behind the answer the card marks (a later estimand writes the multiplicity, a later draw the
+ * scheme), so a note is read where it is kept, in the decision log and the export.
  */
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import c from "./ReasonBox.module.css";
@@ -33,13 +35,10 @@ export function noteOf(reason: Reason): string | null {
 export function ReasonBox({
   reason,
   onChange,
-  onRecord,
   answer = null,
 }: {
   reason: Reason;
   onChange: (reason: Reason) => void;
-  /** The note on the record that answers what the card shows as recorded, or null. */
-  onRecord: string | null;
   /** The server's refusal of the note sent, in its words, or nothing. */
   answer?: ReactNode;
 }) {
@@ -52,11 +51,6 @@ export function ReasonBox({
   }, [reason.open]);
   return (
     <div className={c.box} data-testid="reason-box">
-      {onRecord !== null ? (
-        <p className={c.onRecord} data-testid="reason-on-record">
-          <span className={c.onRecordLabel}>Reason on record:</span> {onRecord}
-        </p>
-      ) : null}
       {reason.open ? (
         <div className={c.field}>
           <label className={c.label} htmlFor={id}>
