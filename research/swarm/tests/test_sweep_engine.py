@@ -25,8 +25,10 @@ resumed crash sweep on a report finished before, fitting only the new options, e
 written by the server three seconds late and each fit still read as scored; and, under Estimate,
 the adjustment set of one's own as the covariates the plan's roles name, and each column the
 adjustment question offers toggled in or out with the plan's other answers fixed, each fitted
-or refused in words, the two the default roles call exposures among them. On the small table,
-the grain's revisit, refused while the folds are drawn, taken by withdrawing the split as the
+or refused in words, the two the default roles call exposures among them; and the plan's own
+missing answer there deduplicated by the plan's digest, read before its press as each refit's is,
+though each press there records the open noticings' triage. On the small table, the grain's
+revisit, refused while the folds are drawn, taken by withdrawing the split as the
 refusal names and drawing it again: the grain visited and no defect met.
 
 A refit's wait and the estimate stages after a fitted refit (the panel audit's F1 and N2), under
@@ -1025,6 +1027,37 @@ def test_each_column_the_adjustment_question_offers_is_toggled_and_fitted(adjust
         if r["kind"] == "refused":
             assert r["refused"]["code"] and r["refused"]["message"]
     assert report["defects"] == [] and report["complete"] is True
+
+
+@pytest.mark.slow
+def test_under_estimate_the_plans_own_answer_is_the_plan_though_fit_confirms_the_triage(tmp_path):
+    """Under Estimate a press of Fit waits for the open noticings' triage before the lock, and
+    every press of the sweep takes its "Keep the recommended dispositions", which records the
+    triage on the copy (``arms.Local.fit``), a part of the plan's digest (``plan_lock.plan_of``).
+    The walking table's template holds open noticings at that gate, so each press records it. The
+    plan's digest is read before its press, as each refit's is: it is the template's (its copy's),
+    and the plan's own missing answer, which leaves the plan as it was, is the plan's duplicate,
+    not fitted again."""
+    walking_table(tmp_path / "walking.csv")
+    question = arms.Question(target="sbp_mmhg", purpose="inference", exposure="walks_daily",
+                             meaning="systolic blood pressure (mmHg)")
+    report = W.crash("walking", tmp_path / "out", data=tmp_path / "walking.csv",
+                     question=question, only=["question:missing"])
+    with W.arms.Local(tmp_path / "out" / "home") as session:
+        session.use(report["template"]["project"])
+        triage = session.read("triage")
+    # The gate the press waits for: open noticings with no disposition recorded on the template.
+    assert triage["stage"] == "models" and not triage["passed"], triage
+    assert [i for i in triage["items"] if i["recorded"] is None], triage
+    assert report["baseline"]["kind"] == "scored"
+    own = next(p for p in report["points"] if p["id"] == "question:missing")["decision"]
+    (r,) = [r for r in report["refits"] if r["id"] == f"question:missing={own['strategy']}"]
+    assert r["kind"] == "duplicate" and r["duplicate_of"] == W.PLAN, r
+    assert r["digest"] == report["baseline"]["digest"] == report["template"]["digest"]
+    others = [o for o in report["refits"] if o["point"] == "question:missing"
+              and o["option"] != own["strategy"]]
+    assert others and all(o["digest"] != report["baseline"]["digest"] for o in others)
+    assert report["defects"] == []
 
 
 # ── a revisit refused because the split is drawn (F1), on the engine ─────────

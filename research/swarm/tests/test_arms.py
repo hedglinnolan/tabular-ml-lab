@@ -8,9 +8,12 @@ driver's ``fit`` meets (:class:`Server`): Fit pressed once, and the press kept, 
 press and what the arm says those of the driver's own ``fit`` whose wait outlasts the fit,
 however the fit ends; each path through a driver modeled here, its Fit the driver's own on that
 server, waited out to the export or stopped at the run's time budget, and a fit blocked, held,
-refused or failed stopping the arm as before; and, slow, each path through the driver's own
-commands on a small dataset that is not one of the pilot's (``clinical_readmission_predict``, 480
-rows) to a record that validates.
+refused or failed stopping the arm as before; under Estimate, a press the open noticings' triage
+holds taking its way forward "Keep the recommended dispositions" and pressed again, by either path
+(on the server's refusal built from a triage written here) and by a local session on the walking
+table walked to Fit, while a blocking noticing's refusal, and any other, is the answer as it came;
+and, slow, each path through the driver's own commands on a small dataset that is not one of the
+pilot's (``clinical_readmission_predict``, 480 rows) to a record that validates.
 
 Known truth: the event level from the card's own words; each default from what the ask offers in
 its order and the app's own guess and detection, built here; each random draw from numpy's
@@ -991,3 +994,160 @@ def test_the_fit_the_seal_waits_for_is_waited_out_as_the_first_is(tmp_path, monk
     seal = commands.index("seal")
     assert commands[seal:] == ["seal", "fit", "seal", "results", "export", "stop"]
     assert len(s.posts) == 2 and [r["fit_key"] for r in s.records] == ["k1", "k2"]
+
+
+# ── a press of Fit the open noticings' triage holds (under Estimate) ────────
+
+QE = arms.Question(target="sbp_mmhg", purpose="inference", exposure="walks_daily",
+                   meaning="systolic blood pressure (mmHg)")
+# The way forward "Keep the recommended dispositions" records, written out by hand: the triage's
+# Confirm all at the gate before the lock (the server fills in each noticing's disposition).
+KEEP = {"kind": "confirm_sweep", "stage": "models", "sweep": "noticings", "lines": []}
+
+
+def triage_held(tmp_path, *, blocking):
+    """A press of Fit as the driver says the server's refusal of it while the open noticings'
+    triage is not confirmed (``fit_press.triage_refusal`` over a triage written here, one noticing
+    open, blocking or not; served as the server serves a refusal, ``Refusal.to_dict``; read by
+    ``driver.refused``, each way forward with its id), classed (``arms.said_of``)."""
+    from research.swarm import driver
+    from turbotab.core import fit_press
+    from turbotab.core.sweep import Triage, TriageItem
+
+    item = TriageItem(id="shared-collinear-predictors", line="noticing:shared-collinear-predictors",
+                      stage="models", summary="`age` and `height_cm` move almost in step",
+                      severity="noticing", recommended="no_change",
+                      label="Doesn't change your numbers here", reason="the reason",
+                      blocker=blocking)
+    refusal = fit_press.triage_refusal(Triage(stage="models", gate="gate", items=[item],
+                                              blockers=int(blocking), confirmable=not blocking))
+    served = driver.Response(409, json.dumps(refusal.to_dict()).encode("utf-8"), {})
+    run = driver.Run(tmp_path / "run", {"project": PID})
+    run.folder.mkdir(parents=True, exist_ok=True)
+    return arms.said_of(1, driver.refused(served, run, "fit"))
+
+
+class Presses:
+    """A session whose presses of Fit say each of ``said`` in turn, and whose answers are each
+    recorded; every press and answer kept."""
+
+    def __init__(self, *said):
+        self.left, self.presses, self.answers = list(said), 0, []
+
+    def fit(self):
+        self.presses += 1
+        return self.left.pop(0)
+
+    def answer(self, ids, sets, reason, marker=arms.DEFAULT_MARKER):
+        self.answers.append((list(ids), list(sets), reason))
+        return arms.Said("ok", {"answer": {"recorded": {"decision": {"kind": "confirm_sweep"}}}})
+
+
+FITTED = arms.Said("ok", {"pressed": {"locked": True}, "fit": {"status": "fresh"}})
+
+
+def policy_of(path):
+    return arms.Default(QE) if path == "default" else arms.Random(QE, 3)
+
+
+@pytest.mark.parametrize("path", ARMS)
+def test_a_press_the_open_noticings_triage_holds_keeps_the_recommended_and_presses_again(
+        tmp_path, path):
+    """V2 (the mechanical arm stopped at Fit): under Estimate the server refuses a press of Fit
+    while the open noticings' triage is unconfirmed; the arm takes the refusal's way forward "Keep
+    the recommended dispositions" (its ``confirm_sweep``, by the id the driver gave it), as a
+    person pressing Confirm all does, whichever path it walks, and presses Fit again: that press
+    is the answer."""
+    held = triage_held(tmp_path, blocking=False)
+    assert (held.kind, held.by, held.code) == ("refused", "server", "triage_open")
+    (way,) = [w for w in held.exits if w.get("decision")]
+    assert (way["label"], way["decision"]) == ("Keep the recommended dispositions", KEEP)
+    assert way["id"]
+    session, steps = Presses(held, FITTED), []
+    said = arms.fit_through(session, policy_of(path), steps)
+    assert said is FITTED and session.presses == 2
+    name = policy_of(path).name
+    assert session.answers == [
+        ([way["id"]], [], f"{name}: the fit's way forward, Keep the recommended dispositions.")]
+    assert [(s.at, s.key, s.chosen, s.said, s.code) for s in steps] == [
+        ("fit", "fit", [way["id"]], "refused", "triage_open")]
+
+
+@pytest.mark.parametrize("path", ARMS)
+def test_a_press_a_blocking_noticing_or_another_refusal_holds_is_the_answer_unchanged(
+        tmp_path, path):
+    """Both ways: a blocking noticing's refusal offers no way that records the triage (each is
+    decided on its own), and a server refusal of another kind, even one with a way that records
+    something (``fit_not_yet``), is not the triage's: either is the answer as it came, Fit pressed
+    once and nothing answered."""
+    from research.swarm import driver
+
+    blocked = triage_held(tmp_path / "blocked", blocking=True)
+    assert (blocked.kind, blocked.by, blocked.code) == ("refused", "server", "triage_open")
+    assert [w.get("decision") for w in blocked.exits] == [None]
+    other = arms.said_of(1, {"refused": {
+        "by": "server", "status": 409, "code": "fit_not_yet", "message": "Fit waits.",
+        "exits": [{"id": "x-1", "label": "Keep every row",
+                   "decision": {"kind": "set_exclusions", "rules": []}}]}})
+    for held in (blocked, other):
+        session, steps = Presses(held), []
+        assert arms.fit_through(session, policy_of(path), steps) is held
+        assert session.presses == 1 and session.answers == [] and steps == []
+    assert driver.Run(tmp_path / "blocked" / "run", {}).kept_exits() == blocked.exits
+
+
+def test_under_estimate_a_local_press_the_triage_holds_records_the_triage_and_then_the_lock(
+        tmp_path, monkeypatch):
+    """V2 (the crash sweep stopped at the plan's own refit): a :class:`arms.Local` press of Fit,
+    as the sweep presses each refit's (``Sweep._fit``), on the walking table under Estimate, walked
+    by the default path. The premise as the server serves it: one noticing open, none blocking.
+    Made to block (the triage served with that noticing a blocker, written here), the press is the
+    server's refusal unchanged, no way forward taken and nothing recorded; as served, the press
+    takes "Keep the recommended dispositions" and Fit is pressed again: the triage recorded, each
+    noticing at its recommended disposition, and then the lock, the fit fresh."""
+    from research.swarm.tests.test_sweep_engine import walking_table
+    from turbotab.server.service import ProjectService
+
+    walking_table(tmp_path / "walking.csv")
+    with arms.Local(tmp_path / "home") as session:
+        session.open(tmp_path / "walking.csv")
+        arms.walk(session, arms.Default(QE))
+        t = session.client.get(f"/projects/{session.pid}/triage").json()
+        open_items = [i for i in t["items"] if i["recorded"] is None]
+        assert t["stage"] == "models" and t["blockers"] == 0 and open_items
+        before = [r["decision"]["kind"] for r in session.view()["decisions"]]
+        assert "lock_plan" not in before and "confirm_sweep" not in before
+
+        real = ProjectService.triage
+
+        def blocking(self, pid):
+            served = real(self, pid)
+            return served.model_copy(update={
+                "items": [i.model_copy(update={"blocker": True}) for i in served.items],
+                "blockers": len(served.items), "confirmable": False})
+
+        monkeypatch.setattr(ProjectService, "triage", blocking)
+        raw = session.client.post(f"/projects/{session.pid}/fit")  # the server's own answer
+        assert raw.status == 409 and raw.error()["code"] == "triage_open"
+        held = session.fit(600.0)
+        assert (held.kind, held.by, held.code) == ("refused", "server", "triage_open")
+        assert held.message == raw.error()["message"]
+        assert [{k: w.get(k) for k in ("label", "decision")} for w in held.exits] == \
+            raw.error()["exits"] == [{"label": f"Decide: {i['summary']}", "decision": None}
+                                     for i in open_items]
+        assert [r["decision"]["kind"] for r in session.view()["decisions"]] == before
+        monkeypatch.undo()
+
+        said = session.fit(600.0)
+        assert said.ok, (said.kind, said.code, said.message)
+        assert said.payload["fit"]["status"] == "fresh"
+        view = session.view()
+        records = view["decisions"]
+        assert [r["decision"]["kind"] for r in records] == [*before, "confirm_sweep", "lock_plan"]
+        confirm = records[-2]["decision"]
+        assert {k: confirm[k] for k in ("stage", "sweep")} == {"stage": "models",
+                                                              "sweep": "noticings"}
+        assert {line["key"]: line["value"] for line in confirm["lines"]} == {
+            i["id"]: i["recommended"] for i in open_items}
+        assert view["state"]["plan_locked"] is True
+        assert records[-1]["decision"]["plan"]["triage"] == confirm["lines"]

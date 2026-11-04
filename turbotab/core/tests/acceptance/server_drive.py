@@ -18,16 +18,40 @@ from turbotab.core.graph import artifact_dir
 from turbotab.core.tests.truths import Truth, answer_refusal, asked  # noqa: F401 - re-exported
 
 
-def press_fit(client: Any, pid: str) -> bool:
+def press_fit(client: Any, pid: str,
+              taking: Callable[[dict[str, Any]], None] | None = None) -> bool:
     """Fit, pressed as the user does on the analysis flowchart (SIZING P0.8): no estimate stage is
     served before it (under Estimate and Describe it locks the plan). True when it was taken; False
     when it was refused because there is nothing to fit yet or a question the estimates rest on is
-    open, so the estimates stay withheld, as WP17 withholds them."""
-    r = client.post(f"/api/projects/{pid}/fit")
+    open, so the estimates stay withheld, as WP17 withholds them. Under Estimate and Describe a
+    press the open noticings' triage holds is pressed again once the triage is confirmed as the
+    user confirms it (:func:`fit_response`, which tells ``taking`` the way forward it takes)."""
+    r = fit_response(client, pid, taking=taking)
     if r.status_code == 409 and r.json()["error"]["code"] == "fit_not_yet":
         return False
     assert r.status_code == 200, r.text[:600]
     return True
+
+
+def fit_response(client: Any, pid: str,
+                 taking: Callable[[dict[str, Any]], None] | None = None) -> Any:
+    """The response to a press of Fit. Under Estimate and Describe the press waits for the open
+    noticings' triage (``triage_open``): the refusal's way forward "Keep the recommended
+    dispositions" (the triage's "Confirm all", each noticing as recommended) is taken, as the user
+    pressing it does, and Fit is pressed again; ``taking`` is told that way forward (its label and
+    decision) before it is taken. A blocking noticing has no such way forward: it is decided on its
+    own, and the refusal is returned."""
+    r = client.post(f"/api/projects/{pid}/fit")
+    if r.status_code != 409 or r.json()["error"]["code"] != "triage_open":
+        return r
+    way = next((e for e in r.json()["error"]["exits"] if e.get("decision")), None)
+    if way is None:
+        return r
+    if taking is not None:
+        taking(way)
+    confirmed = client.post(f"/api/projects/{pid}/decisions", json=way["decision"])
+    assert confirmed.status_code == 200, confirmed.text[:600]
+    return client.post(f"/api/projects/{pid}/fit")
 
 
 def estimate_stage(stage: str) -> bool:

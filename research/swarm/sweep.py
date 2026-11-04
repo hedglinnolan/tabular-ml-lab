@@ -98,8 +98,10 @@ refusal's way, and the default path's policy answers it. A way the walk answered
 role, a finding's act, a refusal's way) and the engine refused is not answered again until the
 walk records an answer: nothing recorded, the same answer meets the same refusal. The revisit's own walk, to the question
 it opens again, takes a refusal's way under the same rule. Refits are deduplicated by the
-plan's digest (``plan_lock.digest`` of the log as served, folded: the digest every fit record
-carries), so an option that leaves a plan already fitted is not fitted again (``duplicate_of``);
+plan's digest (``plan_lock.digest`` of the log as served, folded: the digest a fit record
+carries), each read before Fit is pressed, the plan's own among them, since under Estimate the
+press records the open noticings' triage, which the digest covers (``arms.Local.fit``); so an
+option that leaves a plan already fitted is not fitted again (``duplicate_of``);
 then Fit is pressed and the refit read: under Predict each family's cross-validated scores from
 its fit record, under Estimate the estimate the app reports (``assemble.result_of`` over the log,
 the fit records and ``GET …/results``), each beside the q-value its locked fit's exposure row
@@ -1713,21 +1715,23 @@ class Sweep:
         return out
 
     def plan_refit(self, session: Any) -> Refit:
-        """The plan's own refit, on a copy of the template: Fit pressed and read as every refit's
-        is (:meth:`_fit`). A plan not scored stops the sweep, in words; one that failed is first
-        reported as an engine defect with its reproduction."""
+        """The plan's own refit, on a copy of the template: its digest read before Fit is pressed,
+        as each refit's is (:meth:`_refit`), since under Estimate the press records the open
+        noticings' triage on the copy (``arms.Local.fit``), and Fit pressed and read as every
+        refit's is (:meth:`_fit`). A plan not scored stops the sweep, in words; one that failed is
+        first reported as an engine defect with its reproduction."""
         if PLAN in self.done:
             return self.done[PLAN]  # its fit record kept with it (``Refit.record``)
         plan = Refit(PLAN, None, None)
         copy = self._copy(session)
         plan.project = copy
+        plan.digest = plan_digest(session.view())
         self._fit(session, plan)
         if plan.kind != "scored":
             if plan.kind == "failed":
                 self._defect(session, plan, [])
             raise arms.Stuck(f"The plan itself was not scored: {plan.kind}: "
                              f"{json.dumps(plan.refused or plan.failed or plan.why)[:600]}")
-        plan.digest = plan_digest(session.view())
         self.done[PLAN] = plan
         self._write({"refit": plan.json()})
         return plan
