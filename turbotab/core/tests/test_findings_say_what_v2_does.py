@@ -19,8 +19,10 @@ does not have:
   has no distance-based family (``turbotab.core.models``), and under Estimate the feature-wise
   tests rank first. What holds under both purposes is that every unregularized fit ranks below the
   regularized ones (``models.base.rank``);
-* the boolean-as-text reason quoted an error v2 never raises ("Unknown label type") from modeling,
-  correlation and feature selection refusing the column (``ml/import_doctor.py``);
+* the boolean-as-text reason said the column "is neither a number nor a label" and quoted the
+  error ("Unknown label type") modeling, correlation and feature selection raise refusing it
+  (``ml/import_doctor.py``): v2's ingest reads True/False with blanks as a yes/no column and its
+  design reads that predictor as a number, so none of the reason is served;
 * the temporal-plausibility reason said the app "has never done" temporal plausibility, on the
   finding that does it (``turbotab/clinical.py``).
 
@@ -45,7 +47,7 @@ from turbotab.core.tests.stage_harness import SAMPLES, Ingested
 # What v2 does not have, as the legacy reasons named it. None may be served.
 UNTRUE = ("Preprocess", "PCA scores", "PCA overlay", "overlay", "recovers all three",
           "distance-based", "log-ratios", "independent predictors", "Unknown label type",
-          "refuse it", "has never done")
+          "refuse it", "neither a number nor a label", "has never done")
 
 
 def _artifact(tmp: Path, source: Path, lens: list[str], target: str | None = None) -> dict:
@@ -79,9 +81,9 @@ def two_level_table() -> pd.DataFrame:
 
 
 @pytest.fixture(scope="module")
-def two_level(tmp_path_factory) -> tuple[pd.DataFrame, dict, dict[str, str]]:
-    """The construction, its served findings, and the legacy reasons as the legacy engine writes
-    them (``turbotab.engine.diagnose``, the stream the findings stage speaks for)."""
+def two_level(tmp_path_factory) -> tuple[pd.DataFrame, dict, dict[str, str], Ingested]:
+    """The construction, its served findings, the legacy reasons as the legacy engine writes them
+    (``turbotab.engine.diagnose``, the stream the findings stage speaks for), and the ingest."""
     from turbotab import engine
 
     tmp = tmp_path_factory.mktemp("two_level")
@@ -94,7 +96,7 @@ def two_level(tmp_path_factory) -> tuple[pd.DataFrame, dict, dict[str, str]]:
     legacy = {f["id"]: f["why_it_matters"] for f in
               (structural_finding(engine.shape_finding_to_dict(s))
                for s in engine.diagnose(written, None))}
-    return frame, read.run(findings_stage, ProjectState(lens=[])), legacy
+    return frame, read.run(findings_stage, ProjectState(lens=[])), legacy, read
 
 
 def test_the_blanks_are_asked_where_v2_asks_them(two_level):
@@ -104,7 +106,7 @@ def test_the_blanks_are_asked_where_v2_asks_them(two_level):
     from turbotab.core.quest import QUESTIONS, STAGE_NAMES
     from turbotab.core.voice import question_name
 
-    frame, artifact, legacy = two_level
+    frame, artifact, legacy, _ = two_level
     assert int(frame["sex"].isna().sum()) == N_BLANK
     why = {f["id"]: f for f in artifact["findings"]}["binary_text__sex"]["why_it_matters"]
     stage = STAGE_NAMES[QUESTIONS["missing"].stage]
@@ -122,25 +124,40 @@ def test_the_blanks_are_asked_where_v2_asks_them(two_level):
 def test_a_two_level_column_with_no_blanks_keeps_its_reason_whole(two_level):
     """The guard's silent side: `smoker` has no blank, so its reason has no blanks clause and is
     the legacy reason, word for word."""
-    frame, artifact, legacy = two_level
+    frame, artifact, legacy, _ = two_level
     assert int(frame["smoker"].isna().sum()) == 0
     why = {f["id"]: f for f in artifact["findings"]}["binary_text__smoker"]["why_it_matters"]
     assert why == legacy["binary_text__smoker"]
     assert "blank" not in why
 
 
-def test_text_booleans_name_no_error_v2_never_raises(two_level):
-    """`screened` is True on 48 rows and blank on 72: text booleans with one level, which the
-    two-level reading does not claim. Its reason quoted an error from modeling, correlation and
-    feature selection refusing it; v2 reads text as categories and raises no such error. The
-    reason's first sentence stays."""
-    frame, artifact, legacy = two_level
-    assert int((frame["screened"] == "True").sum()) == 48
+def test_text_booleans_serve_no_reason_v2_does_not_bear_out(two_level):
+    """`screened` is True on 48 rows and blank on 72 by construction: text booleans with one level,
+    which the two-level reading does not claim. The legacy reason said the column "is neither a
+    number nor a label" and quoted an error from modeling, correlation and feature selection
+    refusing it. v2 reads it as a yes/no column at the ingest, and its design reads it as a number,
+    1 where the construction wrote True and blank where it left a blank, so no sentence of that
+    reason is true of v2 and none is served."""
+    from turbotab.core.models.pipeline import design_spec, modeling_frame
+
+    frame, artifact, legacy, read = two_level
+    true_rows = np.arange(N) % 5 < 2
+    assert (frame["screened"] == "True").tolist() == true_rows.tolist() and true_rows.sum() == 48
+    info = {c["name"]: c for c in read.info["columns"]}
+    assert info["screened"]["dtype"] == "boolean"
+    predictors = ["age", "sbp", "smoker", "screened"]
+    with read.store() as store:
+        X = modeling_frame(store, predictors, np.arange(N))
+    np.testing.assert_array_equal(X["screened"].to_numpy(dtype=float),
+                                  np.where(true_rows, 1.0, np.nan))
+    spec = design_spec(ProjectState(lens=[], target="sex"), X, predictors, column_info=info)
+    assert "screened" in spec.numeric and "screened" not in spec.categorical
     served = _one(artifact, "boolean_as_text")
     assert served["affected_columns"] == ["screened"]
     before = legacy["boolean_as_text__screened"]
+    assert before.startswith("Stored this way the column is neither a number nor a label.")
     assert "Unknown label type" in before
-    assert served["why_it_matters"] == "Stored this way the column is neither a number nor a label."
+    assert served["why_it_matters"] is None
 
 
 # ── metabolomics: what an injection order is read by ─────────────────────────

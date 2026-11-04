@@ -16,7 +16,8 @@ The legacy detectors keep their ids, details and badges; this module only speaks
 legacy sentence is untrue of the table (``pack::dietary::energy_adjustment`` counts every numeric
 column as a candidate nutrient), the detail is restated from the data; where a legacy reason names a
 stage, a view or a diagnostic v2 does not have, that clause is restated or dropped
-(:data:`UNTRUE_CLAUSES`).
+(:data:`UNTRUE_CLAUSES`), and a reason none of whose sentences holds in v2 is not served
+(:data:`UNTRUE_REASONS`).
 
 The app's own findings (``voice::*``) cover what the drive rubric says NHANES users were never told
 (DRIVE_RUBRIC §4): the respondent identifier, the ``imputed_*`` flags and the columns they mark,
@@ -1052,20 +1053,23 @@ def _blanks_asked(m: re.Match[str]) -> str:
 
 #: The clauses of legacy reasons that name a stage, a view or a diagnostic v2 does not have, by
 #: family, each with what is served in its place: the two-level reason put a column's blanks at a
-#: Preprocess stage (``ml/binary_text.py``); the text-booleans reason quoted the error modeling,
-#: correlation and feature selection raise refusing the column (``ml/import_doctor.py``), where v2
-#: reads text as categories and raises none; the temporal reason said the app "has never done" the
+#: Preprocess stage (``ml/binary_text.py``); the temporal reason said the app "has never done" the
 #: temporal check it is making (``turbotab/clinical.py``).
 UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...]] = {
     "binary_text": ((re.compile(r"(?<=are a separate question, )asked at Preprocess(?=: )"),
                      _blanks_asked),),
-    "boolean_as_text": ((re.compile(r" Modeling, correlation and feature selection all refuse it, "
-                                    r"and the error they raise reads .+? how it is stored\."),
-                         lambda m: ""),),
     "pack::clinical::temporal_implausibility": (
         (re.compile(r" The app already does the first, at every value, and has never done the "
                     r"second\."), lambda m: ""),),
 }
+
+#: The families whose legacy reason holds no sentence true of v2, served with none. The
+#: text-booleans reason (``ml/import_doctor.py``) said the column "is neither a number nor a label"
+#: and that modeling, correlation and feature selection refuse it with an "Unknown label type"
+#: error. The legacy detector claims only a column of real True/False values, which v2's ingest has
+#: read as a yes/no column, and v2's design reads such a predictor as a number, True 1 and False 0
+#: (``models.pipeline.normalize_frame``).
+UNTRUE_REASONS: frozenset[str] = frozenset({"boolean_as_text"})
 
 
 def speak(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: FindingContext) -> dict[str, Any]:
@@ -1080,6 +1084,8 @@ def speak(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: FindingCon
     for key in ("title", "detail", "why_it_matters"):
         if finding.get(key):
             finding[key] = quote_columns(finding[key], columns)
+    if fam in UNTRUE_REASONS:
+        finding["why_it_matters"] = None
     for clause, said in UNTRUE_CLAUSES.get(fam, ()):
         if finding.get("why_it_matters"):
             finding["why_it_matters"] = clause.sub(said, finding["why_it_matters"])
