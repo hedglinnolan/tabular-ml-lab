@@ -127,9 +127,9 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
         except StructureError as exc:
             ctx.read["note"] = str(exc)
             return None
-        candidates = con.execute(
-            f"SELECT CAST({q} AS VARCHAR) AS u, count(*) AS n FROM read_parquet({_lit(source)}) "
-            f"WHERE {q} IS NOT NULL GROUP BY u HAVING count(*) > 1 ORDER BY min({ROW_ID}) "
+        candidates = con.execute(  # by position: GROUP BY u would read a column named u first
+            f"SELECT CAST({q} AS VARCHAR), count(*) FROM read_parquet({_lit(source)}) "
+            f"WHERE {q} IS NOT NULL GROUP BY 1 HAVING count(*) > 1 ORDER BY min({ROW_ID}) "
             f"LIMIT {RESHAPE_UNITS}").fetchall()
         picked, rows_shown = [], 0
         for u, n in candidates:
