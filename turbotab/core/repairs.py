@@ -280,6 +280,12 @@ def _outside(values: pd.Series, lo: float | None, hi: float | None) -> pd.Series
     return out
 
 
+def _apart(n_other: int, n_qc: int) -> str:
+    """```2`` non-QC and ``10`` pooled-QC``, or ```10`` pooled-QC`` where the other rows hold none."""
+    return (f"{_count(n_other)} non-QC and {_count(n_qc)} pooled-QC" if n_other
+            else f"{_count(n_qc)} pooled-QC")
+
+
 def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
     entries = [e for e in p.get("columns") or [] if isinstance(e, Mapping)
                and oc.has(e.get("column")) and e.get("impossible_band")]
@@ -291,7 +297,16 @@ def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferConte
     cols = list(bands)
     outside = {c: _outside(oc.frame[c], *bands[c]) for c in cols}
     n_values = int(sum(int(m.sum()) for m in outside.values()))
-    n_rows = int(pd.concat(outside.values(), axis=1).any(axis=1).sum())
+    held = pd.concat(outside.values(), axis=1).any(axis=1)
+    n_rows = int(held.sum())
+    # Both repairs act on every row, the pooled-QC rows (:attr:`OfferContext.reference_rows`)
+    # too, so where those hold any impossible value each consequence says the non-QC and the QC
+    # rows' counts apart, as the card's detail does (``detectors._superseding``) and in the
+    # shorter wording that keeps both counts within CONSEQUENCE_WORDS.
+    qc = np.zeros(len(oc.frame), dtype=bool)
+    qc[sorted(oc.reference_rows)] = True
+    qc_values = int(sum(int((m.to_numpy() & qc).sum()) for m in outside.values()))
+    qc_rows = int((held.to_numpy() & qc).sum())
     n_abnormal = int(sum(int(e.get("n_abnormal_but_possible") or 0) for e in entries))
     params = {"bands": bands, **({"units": units} if units else {})}
     named = _names(cols)
@@ -299,15 +314,24 @@ def _offer_impossible(finding: dict[str, Any], p: dict[str, Any], oc: OfferConte
             else "every possible value stays")
     holding = (f"an impossible {named.replace(' and ', ' or ')} value" if len(cols) <= 2
                else f"an impossible value in {_count(len(cols))} columns")
+    blanked = (f"{_count(n_values)} impossible {_plural(n_values, 'value')} in {named} become "
+               f"blank; {real}.")
+    leaving = (f"{_count(n_rows)} {_plural(n_rows, 'row')} holding {holding} leave the analysis "
+               f"before the seal.")
+    if qc_values:
+        where = named if len(cols) <= 2 else f"{_count(len(cols))} columns"
+        blanked = (f"{_apart(n_values - qc_values, qc_values)} impossible "
+                   f"{_plural(n_values, 'value')} in {where} {_plural(n_values, 'becomes', 'become')} "
+                   f"blank; the rest stay.")
+        leaving = (f"{_apart(n_rows - qc_rows, qc_rows)} {_plural(n_rows, 'row')} holding an "
+                   f"impossible value {_plural(n_rows, 'leaves', 'leave')} the analysis before the "
+                   f"seal.")
     options = [
-        _option(finding, "set_missing", "Set to missing",
-                f"{_count(n_values)} impossible {_plural(n_values, 'value')} in {named} become blank; {real}.",
+        _option(finding, "set_missing", "Set to missing", blanked,
                 f"{_count(n_values)} physiologically impossible {_plural(n_values, 'value')} in {named} "
                 f"{_plural(n_values, 'was', 'were')} set to missing.",
                 "values", params),
-        _option(finding, "exclude_rows", "Exclude those rows",
-                f"{_count(n_rows)} {_plural(n_rows, 'row')} holding {holding} leave the analysis "
-                f"before the seal.",
+        _option(finding, "exclude_rows", "Exclude those rows", leaving,
                 f"{_count(n_rows)} {_plural(n_rows, 'row')} with a physiologically impossible value in "
                 f"{named} {_plural(n_rows, 'was', 'were')} excluded.",
                 "rows", params),

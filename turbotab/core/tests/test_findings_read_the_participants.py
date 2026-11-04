@@ -31,9 +31,11 @@ reading does not name:
   correlation count the participants, and say so.
 
 The lens contradiction the page serves (``detectors.own_findings``) still reads every numeric
-column over every row, the outcome and the QC rows among them, and the impossible-value card
-(``plausibility.impossible_vs_extreme_finding``) every row, the rows its repairs act on: when
-either should read the participants is a later package's.
+column over every row, the outcome and the QC rows among them: when it should read the
+participants is a later package's. The impossible-value card
+(``plausibility.impossible_vs_extreme_finding``) counts every row, the rows its repairs act on,
+and beside the pooled QCs its detail counts the values on the non-QC rows and on the QC rows
+apart, as its repairs' consequences do.
 
 Each truth is by construction on a plasma-like table (60 participants, 10 QC injections, 40
 features censored below a detection limit, the features being the `mz_` columns it builds),
@@ -1371,47 +1373,203 @@ def test_every_intake_question_names_the_rows_its_counts_are_out_of(monkeypatch,
     assert f"{n:,} of 120{who} rows" in f["detail"]
 
 
-def glucose_panel(impossible: tuple[float, ...]) -> pd.DataFrame:
+def glucose_panel(impossible: tuple[float, ...], on_qc: float = 0.0) -> pd.DataFrame:
     """The plasma-like panel with a fasting `glucose` by construction: each participant's drawn
     uniform on 90–110 mg/dL, inside the adult central 98% (NHANES 2017–2018: 79–285), the first
-    participants' set to ``impossible``, and 0 on every QC row (an export writes a pooled QC's
-    missing glucose as 0)."""
+    participants' set to ``impossible``, and ``on_qc`` on every QC row (by default 0: an export
+    writes a pooled QC's missing glucose as 0)."""
     df = panel()
     qc = df["sample_type"].eq("pooled_qc").to_numpy()
     glucose = np.round(np.random.default_rng(5).uniform(90.0, 110.0, len(df)), 0)
     glucose[np.flatnonzero(~qc)[:len(impossible)]] = impossible
-    glucose[qc] = 0.0
+    glucose[qc] = on_qc
     df["glucose"] = glucose
     return df
 
 
-@pytest.mark.parametrize("impossible", [(5.0, 2500.0), ()], ids=["two_participants", "qc_only"])
-@pytest.mark.parametrize("lens", [["metabolomics", "clinical"], ["clinical"]],
-                         ids=["qc_rows_served", "no_qc_reading"])
-def test_the_impossible_value_card_counts_the_values_its_repairs_act_on(tmp_path, lens, impossible):
-    """The impossible-value card and its repair options count the same values, every row's, as the
-    repairs act on every row. `glucose` is 0 on the 10 QC rows and impossible (outside 10–2,000
-    mg/dL) on ``impossible`` participants, by construction, so pandas counts 12 (or 10) on as many
-    rows, whether or not the pooled-QC finding is served. Read on the participants beside the QC
-    rows, the card said 2 while its options said 12; which rows both should count is a later
-    package's."""
-    frame = glucose_panel(impossible)
-    g = read_back(tmp_path, frame)["glucose"]
-    n = int(((g < 10) | (g > 2000)).sum())
-    unusual = int(((g >= 10) & (g <= 2000) & ((g < 79) | (g > 285))).sum())
-    assert (n, unusual) == (N_QC + len(impossible), 0)
+BOTH = ["metabolomics", "clinical"]  # the metabolomics pack serves the pooled-QC finding
+
+#: name -> (lens, the participants' impossible glucose values, the QC rows' glucose).
+IMPOSSIBLE_TABLES = {
+    "qc_rows_served": (BOTH, (5.0, 2500.0), 0.0),
+    "qc_rows_served_qc_only": (BOTH, (), 0.0),
+    "qc_rows_served_none_on_them": (BOTH, (5.0, 2500.0), 100.0),
+    "no_qc_reading": (["clinical"], (5.0, 2500.0), 0.0),
+    "no_qc_reading_qc_only": (["clinical"], (), 0.0),
+}
+
+
+@pytest.mark.parametrize("name", list(IMPOSSIBLE_TABLES))
+def test_the_impossible_value_card_counts_the_qc_rows_apart_and_its_repairs_the_count_they_act_on(
+        tmp_path, name):
+    """The impossible-value card counts every row, the rows its repairs act on, and where the
+    pooled-QC finding is served and its rows hold impossible values, its detail counts those on
+    the non-QC rows and those on the QC rows apart, right after the count it states, and the
+    set-to-missing and exclude-rows consequences say both counts, which sum to what each acts on,
+    within the consequence budget. `glucose` is ``on_qc`` on the 10 QC rows and impossible
+    (outside 10–2,000 mg/dL) on the participants given, by construction, and pandas counts each
+    set of rows. Where no row is named (the clinical lens alone serves no pooled-QC finding) or
+    the QC rows hold no impossible value, the card and its repairs read as before. Before this,
+    the detail said 12 values no living adult is expected to show where 10 were the QC rows'."""
+    lens, impossible, on_qc = IMPOSSIBLE_TABLES[name]
+    frame = glucose_panel(impossible, on_qc)
+    df = read_back(tmp_path, frame)
+    out = (df["glucose"] < 10) | (df["glucose"] > 2000)
+    qc = df["sample_type"].eq("pooled_qc")
+    served = "metabolomics" in lens
+    n, on_participants, on_the_qc = int(out.sum()), int((out & ~qc).sum()), int((out & qc).sum())
+    unusual = int(((df["glucose"] >= 10) & (df["glucose"] <= 2000)
+                   & ((df["glucose"] < 79) | (df["glucose"] > 285))).sum())
+    assert (on_participants, unusual) == (len(impossible), 0)
+    assert on_the_qc == (N_QC if on_qc == 0.0 else 0)
     found = findings_of(tmp_path, frame, lens)
-    assert ("pack::metabolomics::pooled_qc" in found) == ("metabolomics" in lens)
+    assert ("pack::metabolomics::pooled_qc" in found) is served
     f = found["pack::clinical::impossible_vs_extreme"]
     assert f["summary"] == (f"`glucose` has `{n}` impossible values outside `10`–`2000`; "
                             f"`{unusual}` more are unusual but real.")
-    assert f["detail"].startswith(f"{n} values in `glucose` are outside 10–2000 mg/dL, limits no "
-                                  f"living adult is expected to show")
+    stated, rest = f["detail"].split(").", 1)
+    assert stated.startswith(f"{n} values in `glucose` are outside 10–2000 mg/dL, limits no "
+                             f"living adult is expected to show (a convention: ")
     options = {o["key"]: o["consequence"] for o in f["repairs"]}
-    assert options["set_missing"] == (f"`{n}` impossible values in `glucose` become blank; every "
-                                      f"possible value stays.")
-    assert options["exclude_rows"] == (f"`{n}` rows holding an impossible `glucose` value leave "
-                                       f"the analysis before the seal.")
+    apart = served and on_the_qc > 0
+    if not apart:
+        assert rest.startswith(" Recording errors are the usual reason")
+        assert "QC" not in f["detail"]
+        assert options["set_missing"] == (f"`{n}` impossible values in `glucose` become blank; "
+                                          f"every possible value stays.")
+        assert options["exclude_rows"] == (f"`{n}` rows holding an impossible `glucose` value "
+                                           f"leave the analysis before the seal.")
+        return
+    n_participants = int((~qc).sum())
+    if on_participants:
+        split = (f"{on_participants} of them are on the {n_participants} non-QC rows and "
+                 f"{on_the_qc} on the {N_QC} pooled-QC rows.")
+        counts = f"`{on_participants}` non-QC and `{on_the_qc}` pooled-QC"
+    else:
+        split = f"All {on_the_qc} are on the {N_QC} pooled-QC rows, none on the {n_participants} non-QC rows."
+        counts = f"`{on_the_qc}` pooled-QC"
+    assert rest.startswith(f" {split} Recording errors are the usual reason")
+    assert options["set_missing"] == (f"{counts} impossible values in `glucose` become blank; the "
+                                      f"rest stay.")
+    assert options["exclude_rows"] == (f"{counts} rows holding an impossible value leave the "
+                                       f"analysis before the seal.")
+    assert all(voice.words(c) <= repairs.CONSEQUENCE_WORDS for c in options.values())
+
+
+#: column -> (band, the participants' values by construction: drawn inside the adult central 98%,
+#: then the impossible and the unusual-but-real ones), each 0 on every QC row.
+LABS = {"glucose": ((10.0, 2000.0), (90.0, 110.0), (5.0, 2500.0), (300.0, 320.0, 330.0)),
+        "triglyceride": ((5.0, 10000.0), (80.0, 150.0), (2.0, 3.0), (600.0, 700.0)),
+        "sbp": ((30.0, 300.0), (100.0, 140.0), (400.0,), (190.0, 195.0))}
+
+
+def labs_with_qc(columns: list[str]) -> pd.DataFrame:
+    """The plasma-like panel with the :data:`LABS` named, by construction."""
+    df = panel()
+    qc = df["sample_type"].eq("pooled_qc").to_numpy()
+    rng = np.random.default_rng(17)
+    for col in columns:
+        _, (lo, hi), impossible, unusual = LABS[col]
+        values = np.round(rng.uniform(lo, hi, len(df)), 0)
+        at = np.flatnonzero(~qc)
+        values[at[:len(impossible)]] = impossible
+        values[at[len(impossible):len(impossible) + len(unusual)]] = unusual
+        values[qc] = 0.0
+        df[col] = values
+    return df
+
+
+@pytest.mark.parametrize("served", [True, False], ids=["qc_rows_served", "no_qc_reading"])
+@pytest.mark.parametrize("n_columns", [1, 2, 3])
+def test_both_counts_fit_the_consequence_budget_on_three_columns_with_unusual_values(
+        tmp_path, n_columns, served):
+    """With up to three columns holding impossible values on the participants and on every QC row,
+    and unusual-but-real values beside them, each consequence says the counts it acts on (pandas,
+    every row: the values outside each column's band, and the rows holding any) within
+    CONSEQUENCE_WORDS: beside the served QC rows, the participants' and the QC rows' counts apart,
+    the columns named up to two and counted beyond; without them, as before."""
+    columns = list(LABS)[:n_columns]
+    frame = labs_with_qc(columns)
+    df = read_back(tmp_path, frame)
+    qc = df["sample_type"].eq("pooled_qc").to_numpy()
+    out = {c: ((df[c] < LABS[c][0][0]) | (df[c] > LABS[c][0][1])).to_numpy() for c in columns}
+    rows = np.any(np.column_stack(list(out.values())), axis=1)
+    n_values = sum(int(m.sum()) for m in out.values())
+    lens = BOTH if served else ["clinical"]
+    f = findings_of(tmp_path, frame, lens)["pack::clinical::impossible_vs_extreme"]
+    assert f["affected_columns"] == columns
+    options = {o["key"]: o["consequence"] for o in f["repairs"]}
+    for said in options.values():
+        assert voice.words(said) <= repairs.CONSEQUENCE_WORDS, said
+    if served:
+        where = {1: "`glucose`", 2: "`glucose` and `triglyceride`", 3: "`3` columns"}[n_columns]
+        values = (f"`{sum(int(m[~qc].sum()) for m in out.values())}` non-QC and "
+                  f"`{sum(int(m[qc].sum()) for m in out.values())}` pooled-QC")
+        assert options["set_missing"] == (f"{values} impossible values in {where} become blank; "
+                                          f"the rest stay.")
+        assert options["exclude_rows"] == (f"`{int(rows[~qc].sum())}` non-QC and "
+                                           f"`{int(rows[qc].sum())}` pooled-QC rows holding an "
+                                           f"impossible value leave the analysis before the seal.")
+    else:
+        unusual = sum(len(LABS[c][3]) for c in columns)
+        where = {1: "`glucose`", 2: "`glucose` and `triglyceride`",
+                 3: "`glucose` and 2 more"}[n_columns]
+        assert options["set_missing"] == (f"`{n_values}` impossible values in {where} become "
+                                          f"blank; `{unusual}` abnormal but real ones stay.")
+        assert options["exclude_rows"].startswith(f"`{int(rows.sum())}` rows holding an impossible")
+
+
+@pytest.mark.parametrize("served", [True, False], ids=["qc_rows_served", "no_qc_reading"])
+def test_the_age_unit_card_counts_the_qc_rows_apart_after_the_count_it_states(tmp_path, served):
+    """Where the age's unit is in question the card states each impossible count "whatever the
+    age", and beside the served QC rows it counts them apart there too. By construction a bare
+    `age` holds toddlers' ages in months (12–59; read in years, their `weight` of 8–20 kg flags
+    most rows), and `glucose` is impossible on two participants and 0 on the 10 QC rows, where
+    `age` and `weight` are blank; pandas counts each set of rows."""
+    df = panel().drop(columns=["bmi"])
+    qc = df["sample_type"].eq("pooled_qc").to_numpy()
+    rng = np.random.default_rng(3)
+    df["age"] = np.where(qc, np.nan, rng.integers(12, 60, len(df)).astype(float))
+    df["weight"] = np.where(qc, np.nan, np.round(rng.uniform(8.0, 20.0, len(df)), 1))
+    glucose = np.round(rng.uniform(80.0, 110.0, len(df)), 0)
+    glucose[np.flatnonzero(~qc)[:2]] = (5.0, 2500.0)
+    glucose[qc] = 0.0
+    df["glucose"] = glucose
+    g = read_back(tmp_path, df)["glucose"]
+    out = ((g < 10) | (g > 2000)).to_numpy()
+    n, on_qc = int(out.sum()), int((out & qc).sum())
+    assert (n, on_qc) == (2 + N_QC, N_QC)
+    f = findings_of(tmp_path, df, BOTH if served else ["clinical"])[
+        "pack::clinical::impossible_vs_extreme"]
+    assert f["title"] == "The unit of `age` is in question."
+    stated = (f"Whatever the age, {n} of `glucose`'s values are outside 10–2000 mg/dL, limits no "
+              f"living person is expected to show (a convention: ")
+    assert stated in f["detail"]
+    split = (f"{n - on_qc} of them are on the {int((~qc).sum())} non-QC rows and {on_qc} on the "
+             f"{N_QC} pooled-QC rows.")
+    assert f["detail"].endswith(f"). {split}") is served
+    assert ("QC" in f["detail"]) is served
+
+
+def test_the_detail_states_no_split_its_own_count_does_not_hold(tmp_path):
+    """The detail's split is the repairs' count (a value outside its column's band as written);
+    the card counts the values after its unit's conversion. A `cholesterol` in mg/dL (150–250
+    on the participants, one at 2,000, 0 on every QC row, by construction) is read against
+    0.3–40 mmol/L after conversion (× 0.0259): the card counts the participant at 51.8 mmol/L
+    and the 10 QC zeros, 11, while every value as written is outside the band. Where the two
+    differ, no split is said rather than one that does not sum to the card's count."""
+    df = panel()
+    qc = df["sample_type"].eq("pooled_qc").to_numpy()
+    chol = np.round(np.random.default_rng(23).uniform(150.0, 250.0, len(df)), 0)
+    chol[np.flatnonzero(~qc)[0]] = 2000.0
+    chol[qc] = 0.0
+    df["cholesterol"] = chol
+    f = findings_of(tmp_path, df, BOTH)["pack::clinical::impossible_vs_extreme"]
+    converted = read_back(tmp_path, df)["cholesterol"] * 0.0259
+    n = int(((converted < 0.3) | (converted > 40.0)).sum())
+    assert n == N_QC + 1
+    assert f["detail"].startswith(f"{n} values in `cholesterol` are outside 0.3–40 mmol/L")
+    assert "non-QC" not in f["detail"] and "pooled-QC" not in f["detail"]
 
 
 @pytest.mark.parametrize("form", ["kcal_a_day_qc", "kcal_two_days", "kj_qc", "kj"])
