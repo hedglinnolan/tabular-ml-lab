@@ -96,7 +96,7 @@ export interface CardWiring {
    *  card marks no option (`marked` null); for a keyed kind, the record of the entry its marked
    *  option's decision writes; for a kind that keeps one answer, the kind's record in force, the
    *  one the line names, where the card marks an option or draws its button over several choices
-   *  (`marked` left out). */
+   *  (`marked` left out), and none once a later record of another kind has rewritten its slot. */
   reasonOnRecord: (marked?: Marked) => string | null;
 }
 
@@ -145,6 +145,15 @@ function live(records: readonly DecisionRecord[]): DecisionRecord[] {
   return ordered.filter((r) => !cancelled.has(r.id));
 }
 
+/** The other kinds whose later live record writes a card's kind's slot whole, so that the answer
+ *  the card marks is that record's, not the kind's own (core/decisions.py `register_kind`): the
+ *  split holds `set_validation`'s scheme written onto the draw, and `set_split`, a new draw (the
+ *  holdout caution's "Cross-validation only" among them, core/row_previews.py), writes the split
+ *  with a scheme of its own. */
+const REWRITTEN_BY: Partial<Record<Decision["kind"], readonly Decision["kind"][]>> = {
+  set_validation: ["set_split"],
+};
+
 /** The note on the record that answers what the card shows as recorded, or null. A record answers
  *  only while the quest log names one for the declaration of `kind` (core/quest.py: a declaration's
  *  line is keyed by its kind, and names a record once answered); the log is the one the shell
@@ -154,9 +163,12 @@ function live(records: readonly DecisionRecord[]): DecisionRecord[] {
  *  of the record it replaced, which the log names until the shell refetches it. None answers where
  *  the card marks no option (`marked` null). For a kind that keeps one answer, that record is the
  *  answer to the option marked, or to the several choices a card draws one button over (`marked`
- *  left out). For a keyed kind it is the last entry written, whatever entry the card shows, so the
- *  record that answers is the last live one of the entry the marked option's decision writes, and
- *  there is none where that decision is not known. */
+ *  left out), while it is the last live record to write its slot: none answers once a later record
+ *  of another kind has written the slot whole (`REWRITTEN_BY`), since what the card marks is then
+ *  that record's answer, though the log goes on naming the kind's own record. For a keyed kind it
+ *  is the last entry written, whatever entry the card shows, so the record that answers is the last
+ *  live one of the entry the marked option's decision writes, and there is none where that decision
+ *  is not known. */
 function noteOnRecord(
   view: ProjectView | undefined,
   log: QuestLog | undefined,
@@ -165,12 +177,15 @@ function noteOnRecord(
 ): string | null {
   const line = log?.stages.flatMap((s) => s.lines).find((l) => l.source === "declaration" && l.key === kind);
   if (!view || !line?.decision_id || marked === null) return null;
-  const kept = live(view.decisions)
-    .reverse()
-    .filter((r) => r.decision.kind === kind);
+  const records = live(view.decisions);
+  const kept = [...records].reverse().filter((r) => r.decision.kind === kind);
   const last = kept[0];
   if (!last) return null;
-  if (entryOf(last.decision) === undefined) return last.note ?? null;
+  if (entryOf(last.decision) === undefined) {
+    const others = REWRITTEN_BY[kind] ?? [];
+    const rewritten = records.some((r) => r.seq > last.seq && others.includes(r.decision.kind));
+    return rewritten ? null : (last.note ?? null);
+  }
   const entry = marked?.decision ? entryOf(marked.decision) : undefined;
   if (entry === undefined) return null;
   return kept.find((r) => entryOf(r.decision) === entry)?.note ?? null;

@@ -1229,6 +1229,27 @@ describe("the reason for an answer (G14)", () => {
     expect(decide.mock.calls[2]).toEqual([PID, shrinkage.payload]);
   });
 
+  it("keeps what is written while the press is pending, which goes with the next press", async () => {
+    const LATER = `${REASON} And the slope is near one.`;
+    const { decide, qc } = mount("set_updating");
+    const served = qc.getQueryData<ProjectView>(keys.view(PID))!;
+    let answer!: (view: ProjectView) => void;
+    decide.mockImplementationOnce(() => new Promise<ProjectView>((resolve) => (answer = resolve)));
+    open();
+    type("reason-input", REASON);
+    press(shrinkage.press);
+    await waitFor(() => expect(screen.getByTestId("card-record")).toBeDisabled());
+    expect(decide.mock.calls[0]).toEqual([PID, shrinkage.payload, { note: REASON }]);
+    // Written on while the first press is in flight: not what that press sent.
+    type("reason-input", LATER);
+    answer(served);
+    await waitFor(() => expect(screen.getByTestId("card-record")).not.toBeDisabled());
+    expect(screen.getByTestId("reason-input")).toHaveValue(LATER);
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
+    expect(decide.mock.calls[1]).toEqual([PID, shrinkage.payload, { note: LATER }]);
+  });
+
   it("goes with a refusal's exit, the card's other way to record", async () => {
     const exit: Decision = { kind: "set_updating", method: "none" };
     const refusal: Refusal = {
@@ -1326,11 +1347,16 @@ describe("the reason for an answer (G14)", () => {
   });
 
   it("on record is not shown where the line names no record, whatever the log's last record says", () => {
+    // The card marks the answer (its own line says answered), so what keeps the note off is the
+    // quest log the shell holds, whose line names no record, not a card that marks nothing.
     mount("set_updating", {
       recorded: { updating: { method: "shrinkage" } },
+      answered: true,
+      line: { decision_id: "r2" },
       decisions: [first(), replacing(REASON)],
       quest: [lineOf("set_updating")],
     });
+    expect(marked()).toEqual([`option-${shrinkage.press}`]);
     expect(screen.queryByTestId("reason-on-record")).toBeNull();
     expect(document.body).not.toHaveTextContent(REASON);
     expect(document.body).not.toHaveTextContent(OLD);
@@ -1376,6 +1402,51 @@ describe("the reason for an answer (G14)", () => {
     expect(screen.getByTestId("blocked")).toBeInTheDocument();
     expect(marked()).toEqual(["option-use:decision_support"]);
     expect(screen.getByTestId("reason-on-record")).toHaveTextContent(WHY_DS);
+  });
+
+  // The scheme and the draw share the split: `set_validation` writes its scheme onto the draw, and
+  // `set_split` writes the whole split, a scheme with it (core/decisions.py `register_kind`), while
+  // the scheme's line goes on naming the last `set_validation` record (core/quest.py `own_record`).
+  // The records as the view serves them, and each split below as the engine's fold leaves it for its
+  // log (decisions.fold over these records).
+  const WHY_BOOT = "Too few events to spare a holdout, so bootstrap optimism correction.";
+  const WHY_AGAIN = "Back to the bootstrap: cross-validation alone is too noisy here.";
+  const SPLIT_RECORD = { repeats: 10, n_boot: 500, cluster: null, nested_cv: false, cut_point: null, fold_order: null };
+  const drawn = (id: string, seq: number, holdout: number) =>
+    record({ id, seq, note: null, decision: { kind: "set_split", holdout, seed: 0, folds: 5, validation: "kfold", ...SPLIT_RECORD } as Decision });
+  const bootstrap = (id: string, seq: number, note: string) =>
+    record({ id, seq, note, decision: { kind: "set_validation", folds: 5, validation: "bootstrap", ...SPLIT_RECORD, acknowledged: false } as Decision });
+  const withdrawn = (id: string, seq: number, of: string) =>
+    record({ id, seq, note: null, decision: { kind: "revert", decision_id: of } as Decision });
+  const folded = (holdout: number, validation: string) => ({ holdout, seed: 0, folds: 5, validation, ...SPLIT_RECORD });
+  const DRAW = drawn("r1", 1, 0.2);
+  const SCHEME = bootstrap("r2", 2, WHY_BOOT);
+  // The holdout caution's way forward, "Cross-validation only" (core/row_previews.py): a new draw.
+  const CV_ONLY = drawn("r3", 3, 0.0);
+  const mountScheme = (decisions: DecisionRecord[], split: Record<string, unknown>, named: string) =>
+    mount("set_validation", {
+      recorded: { split },
+      answered: true,
+      line: { decision_id: named },
+      decisions,
+      quest: [lineOf("set_validation", { status: "answered", decision_id: named })],
+    });
+
+  it("on record is not shown beside a scheme a later draw wrote, though the line still names the scheme's record", () => {
+    mountScheme([DRAW, SCHEME, CV_ONLY], folded(0.0, "kfold"), "r2");
+    expect(marked()).toEqual(["option-validation:kfold"]);
+    expect(screen.queryByTestId("reason-on-record")).toBeNull();
+    expect(document.body).not.toHaveTextContent(WHY_BOOT);
+  });
+
+  it.each([
+    ["no draw follows it", [DRAW, SCHEME], folded(0.2, "bootstrap"), "r2", WHY_BOOT],
+    ["the later draw is withdrawn", [DRAW, SCHEME, CV_ONLY, withdrawn("r4", 4, "r3")], folded(0.2, "bootstrap"), "r2", WHY_BOOT],
+    ["it is recorded again after the draw", [DRAW, SCHEME, CV_ONLY, bootstrap("r4", 4, WHY_AGAIN)], folded(0.0, "bootstrap"), "r4", WHY_AGAIN],
+  ])("on record beside the scheme is its record's own while that record wrote the split last: %s", (_, decisions, split, named, note) => {
+    mountScheme(decisions, split, named);
+    expect(marked()).toEqual(["option-validation:bootstrap"]);
+    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(note);
   });
 
   // The refusal as the server serves it for a note past its limit (core/decisions.py `check_note`,
