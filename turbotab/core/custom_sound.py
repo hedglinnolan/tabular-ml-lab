@@ -171,8 +171,11 @@ def energy(purpose: str | None, applicable: Sequence[str] | None = None) -> Labe
 # ── missing values (methods/missing.py; AUDIT_REPORT §3.3) ───────────────────
 
 
-def missing(purpose: str | None) -> LabeledQuestion:
-    from turbotab.core.methods.missing import METHODS
+def missing(purpose: str | None, energy: Sequence[str] | None = None) -> LabeledQuestion:
+    """``energy``: the columns declared total energy that the primary model holds, which multiple
+    imputation's sound sentence names (``methods.missing.sound_for``); None where the caller does
+    not know the plan."""
+    from turbotab.core.methods.missing import METHODS, sound_for
 
     fields = {
         "multiple_imputation": ("epidemiology", STERNE),
@@ -194,7 +197,7 @@ def missing(purpose: str | None) -> LabeledQuestion:
     for key, m in METHODS.items():
         field, source = fields[key]
         rows.append((key, m.label, field, m.customary, source,
-                     {p: (verdicts[p][key], m.sound[p]) for p in PURPOSES},
+                     {p: (verdicts[p][key], sound_for(key, p, energy)) for p in PURPOSES},
                      {p: m.order[p] for p in PURPOSES}))
     tensions = {
         "inference": ("Complete cases are the field's habit; when the blanks depend on measured "

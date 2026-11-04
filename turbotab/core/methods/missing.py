@@ -62,6 +62,7 @@ from sklearn.impute import SimpleImputer
 
 from turbotab.core.methods.exposure_form import ExposureForms
 from turbotab.core.exit_target import toward
+from turbotab.core.methods.imputation import M_DEFAULT
 
 # ── the rule and the sentences every surface shares ─────────────────────────
 
@@ -112,10 +113,57 @@ class MissingMethod:
 
 
 METHODS: dict[str, MissingMethod] = {}
-# m follows White, Royston & Wood's rule (``imputation.m_rule``): never a fixed 20 in a label.
-M_WORDS = "m at least 20, more when more rows are incomplete"
+# m follows White, Royston & Wood's rule (``imputation.m_rule``), stated as the rule: the number
+# the answer asks (``imputation.M_DEFAULT`` where it asks none; the contract accepts none fewer),
+# or the percentage of rows the imputation model fills, rounded up, where that is larger. Each
+# path counts the rows its own model fills: the joint imputation's (:func:`imputation_plan`,
+# ``pipeline.imputation_count``) and, for the feature-wise tests, which impute each study factor
+# in a model of its own, the model that fills the most (``featurewise_mi.imputation_count``). A
+# label sits beside the researcher's own m on the card, so it states no count of its own ("m at
+# least 20, more when more rows are incomplete" was false from an m of 100, where no share is
+# larger).
+M_WORDS = (f"m = the number asked, {M_DEFAULT} by default, or the percentage of rows the "
+           f"imputation model fills, rounded up, if that is larger; for feature-wise tests, "
+           f"counted in whichever study factor's model fills the most rows")
 MI_LABEL = f"Multiple imputation ({M_WORDS})"
-MI_EXIT_LABEL = f"Multiple imputation with the outcome and energy ({M_WORDS})"
+# The exit of the refusals that offer multiple imputation in place of a single fill or a missing
+# indicator (``decisions._missing_fits_the_purpose``, :func:`missing_block`), which read no plan:
+# it names the outcome, which every imputation model holds (``imputation.outcome_terms``), and
+# no energy, which one holds only where the analysis model holds a column declared it (it said
+# "with the outcome and energy" on every project, one with no energy column among them).
+MI_EXIT_LABEL = f"Multiple imputation with the outcome ({M_WORDS})"
+
+
+def mi_sound(energy: Sequence[str] | None = None) -> str:
+    """Multiple imputation's sound sentence under inference, saying only what the plan's fit does.
+
+    ``energy``: the columns declared total energy (role ``energy``) that the primary model holds,
+    which its imputation model holds as it holds every input of the analysis
+    (:func:`imputation_frame`); empty where none is, so none is named (none declared, none settled,
+    a repair marked each unusable, or the adjustment answers leave each out:
+    ``decisions.left_out``); None where the caller does not know the plan, and the sentence says
+    where energy is held. The missing-values answer can leave a named column out too
+    (``drop_columns``), and the card that names it is served without that answer (the proposals
+    stage does not read it), so the sentence states that condition beside the names. A column only
+    the "further adjusted for" model holds is in that model's own imputation model
+    (``stages.secondary``), not the primary's of which the sentence speaks, so it is not among them.
+    Interval uncertainty is claimed for a family whose coefficient table pools the imputations
+    (``stages.modeling._missing_for_table``: every family with an ``inference`` table); one without
+    a table (elastic net, boosted trees) draws no copy and is fit on the single fill
+    (``pipeline.impute_detail``). The card is served before the families are chosen, so the sentence
+    states that condition rather than read the choice."""
+    if energy is None:
+        held = "the outcome (and total energy, where the analysis model holds a column declared it)"
+    elif energy:
+        held = (f"the outcome and total energy ({_named(energy)}, unless the missing-values answer "
+                f"leaves {'it' if len(energy) == 1 else 'them'} out)")
+    else:
+        held = "the outcome"
+    return (f"Sound: with {held} in the imputation model it is unbiased under missing at random "
+            f"(Moons et al. 2006), and a model family with a coefficient table pools its "
+            f"estimates over the imputations, so its intervals carry the imputation's "
+            f"uncertainty; a family without one is fit on a single fill learned without the "
+            f"outcome.")
 
 
 def register_method(method: MissingMethod) -> MissingMethod:
@@ -126,9 +174,7 @@ def register_method(method: MissingMethod) -> MissingMethod:
 register_method(MissingMethod(
     key="multiple_imputation", label=MI_LABEL,
     customary="Customary in epidemiology (Sterne et al. 2009, BMJ 338:b2393)",
-    sound={"inference": "Sound: with the outcome and energy in the imputation model it is unbiased "
-                        "under missing at random and its intervals carry the imputation's "
-                        "uncertainty (Moons et al. 2006).",
+    sound={"inference": mi_sound(),
            "prediction": "Not here: it uses the outcome, which a new row does not have; impute in "
                          "each fold without it (Sisk et al. 2023)."},
     rung={"inference": "recommended", "prediction": "refused"},
@@ -171,8 +217,18 @@ register_method(MissingMethod(
     decision={"strategy": "impute", "categorical": "missing_category"}))
 
 
-def methods_for(purpose: str | None, not_asked: Sequence[str] = (), *, only: bool = False
-                ) -> list[dict[str, Any]]:
+def sound_for(key: str, purpose: str | None, energy: Sequence[str] | None = None) -> str:
+    """A method's sound sentence for ``purpose`` (prediction when undeclared), as the plan holds
+    it: multiple imputation's under inference names the columns declared total energy that the
+    primary model holds (``energy``; :func:`mi_sound`), every other one is the method's own."""
+    p = purpose if purpose in ("prediction", "inference") else "prediction"
+    if key == "multiple_imputation" and p == "inference":
+        return mi_sound(energy)
+    return METHODS[key].sound[p]
+
+
+def methods_for(purpose: str | None, not_asked: Sequence[str] = (), *, only: bool = False,
+                energy: Sequence[str] | None = None) -> list[dict[str, Any]]:
     """The missing-data methods, soundest first for ``purpose`` (prediction when undeclared).
 
     ``not_asked``: the predictors whose blanks mean "not asked" (:func:`not_asked_columns`); they
@@ -181,9 +237,12 @@ def methods_for(purpose: str | None, not_asked: Sequence[str] = (), *, only: boo
     among the people who were asked (:data:`NOT_ASKED_CAUTION`). Under inference it is first only
     when ``only`` (they are the only predictors with blanks): one answer covers every column, and
     elsewhere multiple imputation stays the sound fill for the other blanks. Without them the
-    ranking is the purpose's own, unchanged."""
+    ranking is the purpose's own, unchanged. ``energy``: the columns declared total energy that
+    the primary model holds, which multiple imputation's sentence names (:func:`sound_for`); None
+    where the caller does not know the plan."""
     p = purpose if purpose in ("prediction", "inference") else "prediction"
-    ranked = [m.for_purpose(p) for m in sorted(METHODS.values(), key=lambda m: m.order[p])]
+    ranked = [{**m.for_purpose(p), "sound": sound_for(m.key, p, energy)}
+              for m in sorted(METHODS.values(), key=lambda m: m.order[p])]
     if not not_asked:
         return ranked
     return _with_not_asked(ranked, list(dict.fromkeys(not_asked)), p, only)
@@ -2304,7 +2363,8 @@ __all__ = [
     "energy_identity", "fixed_forms", "imputation_plan", "logged_columns", "mi_sentence",
     "per_feature", "PER_FEATURE_VARIABLE",
     "nonlinear_terms", "supplied_copies", "carry_within_units", "time_invariance_ask",
-    "time_invariant_columns", "MI_EXIT_LABEL", "MI_LABEL", "M_WORDS", "engine_substantive",
+    "time_invariant_columns", "MI_EXIT_LABEL", "MI_LABEL", "M_WORDS", "mi_sound", "sound_for",
+    "engine_substantive",
     "DesignWords", "design_term_words", "sample_way", "WITHOUT_THE_DESIGN",
     "BELOW_DETECTION_LABELS", "BelowDetection", "BelowDetectionFill", "COMPLETE_CASE_ASSUMPTION",
     "EnergyAwareImputer", "INDICATOR_CAUTION", "LEFT_CENSORED", "METHODS", "MI_ASSUMPTION",
