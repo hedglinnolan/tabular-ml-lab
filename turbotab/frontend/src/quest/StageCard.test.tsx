@@ -10,8 +10,9 @@
  * (fixtures/quest-contract.json), with the Results lines' statuses set for each moment.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
+import { api, RefusalError } from "../api/client";
 import { keys } from "../api/queries";
 import type {
   ChecklistReport,
@@ -21,13 +22,16 @@ import type {
   QuestLine,
   QuestLog,
   QuestStage,
+  Refusal,
   Triage,
 } from "../api/schema";
+import { OpenCard, triageTarget } from "../components/record/target";
+import { plain } from "../kit";
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { StageFocusProvider } from "../state/focus";
 import { DECLARATION_CARDS } from "./cards/predict";
 import { CONTRACT } from "./fixtures/contract";
-import { type FitPosition, fitPosition } from "./log";
+import { type FitPosition, fitPosition, openLine } from "./log";
 import { QuestScreen } from "./QuestScreen";
 import REVERTS from "./fixtures/reopened-by-revert.json";
 import CAPTURE from "./results/fixtures/nhanes-predict.json";
@@ -754,6 +758,81 @@ describe("the foot's refusal, one role at a time (ruling R-b)", () => {
 });
 
 /**
+ * DE3 (b1-decision-exits; G12, the owner's Q3: no dead end): Write-up's Download is refused by the
+ * export gate with ways forward in the served shape (core/export/gate.py): an unanswered question's
+ * "Answer …" names that question's card, the open plan's "Press Fit…" names Models, and "Compute …
+ * again" names none. In the quest shell (QuestScreen's OpenCard) one that names its card is a press
+ * that opens it and closes the refusal; one that names none closes it, as before.
+ */
+describe("the export gate's refusal at Write-up's foot (DE3)", () => {
+  const log = patched(REACHED, {}, { writeup: { reached: true } });
+  const AT_MISSING = { stage: "whos_in", key: "missing" };
+  const AT_MODELS = { stage: "models", key: null };
+  const ANSWER = "Answer the missing-values question";
+  const PRESS = "Press Fit on the analysis flowchart; it locks the plan";
+  const AGAIN = "Compute the effects again";
+  const REFUSED = new RefusalError({
+    error: {
+      code: "export_not_ready",
+      message: "The export is not ready.",
+      exits: [
+        { label: ANSWER, decision: null, target: AT_MISSING },
+        { label: PRESS, decision: null, target: AT_MODELS },
+        { label: AGAIN, decision: null },
+      ],
+    },
+  });
+
+  function downloadRefused(open: ((t: unknown) => void) | null) {
+    vi.spyOn(api, "exportBundle").mockRejectedValue(REFUSED);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.quest(PID), log);
+    qc.setQueryData(keys.view(PID), VIEW);
+    qc.setQueryData(keys.record(PID), RECORD);
+    const card = (
+      <StageFocusProvider>
+        <StageCard pid={PID} log={log} stage={stageIn(log, "writeup")} answers={new Map()} fit={{ kind: "none" }} onOpenStage={() => {}} arrival={null} onOpenManuscript={() => {}} />
+      </StageFocusProvider>
+    );
+    render(<QueryClientProvider client={qc}>{open ? <OpenCard.Provider value={open}>{card}</OpenCard.Provider> : card}</QueryClientProvider>);
+    fireEvent.click(within(screen.getByTestId("card-writeup")).getByTestId("primary"));
+  }
+  afterEach(() => vi.restoreAllMocks());
+
+  it("opens the card each way forward names, and closes the refusal, where the shell opens cards", async () => {
+    const open = vi.fn();
+    downloadRefused(open);
+    const refusal = await screen.findByTestId("primary-refusal");
+    expect(within(refusal).getAllByTestId("primary-refusal-exit").map((b) => [b.textContent, b.dataset.target])).toEqual([
+      [ANSWER, "whos_in:missing"],
+      [PRESS, "models"],
+      [AGAIN, undefined],
+    ]);
+    fireEvent.click(within(refusal).getByRole("button", { name: ANSWER }));
+    expect(open).toHaveBeenCalledWith(AT_MISSING);
+    await waitFor(() => expect(screen.queryByTestId("primary-refusal")).toBeNull());
+  });
+
+  it("only closes the refusal from a way forward that names no card, as before", async () => {
+    const open = vi.fn();
+    const decide = vi.spyOn(api, "decide");
+    downloadRefused(open);
+    fireEvent.click(within(await screen.findByTestId("primary-refusal")).getByRole("button", { name: AGAIN }));
+    await waitFor(() => expect(screen.queryByTestId("primary-refusal")).toBeNull());
+    expect(open).not.toHaveBeenCalled();
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("names no card on its presses where no shell opens cards, each closing the refusal as before", async () => {
+    downloadRefused(null);
+    const refusal = await screen.findByTestId("primary-refusal");
+    expect(within(refusal).getAllByTestId("primary-refusal-exit").map((b) => b.dataset.target)).toEqual([undefined, undefined, undefined]);
+    fireEvent.click(within(refusal).getByRole("button", { name: ANSWER }));
+    await waitFor(() => expect(screen.queryByTestId("primary-refusal")).toBeNull());
+  });
+});
+
+/**
  * The triage of the open noticings under Estimate (G05; FOUNDATION §7): the engine's gate is the
  * plan's lock, in Models (core/sweep.py `gate_stage`), so the card draws GET /triage at Models' end,
  * after its Confirm sweep and before For the record and the foot (the analysis flowchart, with Fit,
@@ -907,6 +986,112 @@ describe("the triage of the open noticings under Estimate (G05)", () => {
     const { card } = cardOf(early, "models", { seed: seed(served("models")) });
     expect(within(card).getByText("May change as you answer")).toBeInTheDocument();
     expect(within(card).queryByTestId("results-triage")).toBeNull();
+  });
+
+  /**
+   * A press that opens the triage (b1-decision-exits, round 2's V1): Fit's "Record as a limitation"
+   * names the triage on its noticing (record/target.ts `triageTarget`), and "Triage the open
+   * noticings in Models" names Models alone. The card brings the noticing's line of the triage into
+   * view and focuses it; on a request of Models alone, the triage, while it waits for a disposition
+   * (one open, or one kept to act on) and no counted line of Models is open; otherwise the open line
+   * or the heading, as before. By construction: the READY log, every Models line answered, and the
+   * triage above with its noticing recorded "act on it", as core/sweep.py `triage` lists one until
+   * it is acted on; and the engine's refusal of the press then (core/fit_press.py `triage_refusal`).
+   */
+  describe("a request that opens the triage (V1, round 2)", () => {
+    let scroll: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      // Every element far below the window, as at a long Models card's end: bringing one into view scrolls.
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: 2165, bottom: 2400, left: 0, right: 400, width: 400, height: 235, x: 0, y: 2165, toJSON: () => ({}) });
+      scroll = vi.fn();
+      Element.prototype.scrollIntoView = scroll as unknown as Element["scrollIntoView"];
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
+    const kept: Triage = {
+      ...served("models"),
+      answered: true,
+      confirmable: false,
+      confirmed_by: "r-9",
+      items: served("models").items.map((i) => ({ ...i, recorded: "act_on_it" as const })),
+    };
+    const itemOf = (card: HTMLElement) => card.querySelector<HTMLElement>(`[data-testid="results-triage"] [data-item="${CSS.escape(noticing.key)}"]`)!;
+    const fit = () => fitPosition(READY, undefined);
+
+    it("focuses the noticing a request names on the triage, and brings it into view", () => {
+      const { card, ask } = cardOf(READY, "models", { seed: seed(kept), fit: fit() });
+      expect(itemOf(card)).not.toBeNull();
+      ask({ line: triageTarget("models", noticing.key).key, n: 1 });
+      expect(document.activeElement).toBe(itemOf(card));
+      expect(scroll.mock.contexts.at(-1)).toBe(itemOf(card));
+    });
+
+    it("focuses the triage on a request of Models alone while it waits, with no counted line of Models open", () => {
+      expect(openLine(stageIn(READY, "models"))).toBeNull();
+      for (const triage of [kept, served("models")]) {
+        const { card, ask, unmount } = cardOf(READY, "models", { seed: seed(triage), fit: fit() });
+        ask({ line: null, n: 1 });
+        expect(document.activeElement).toBe(within(card).getByTestId("results-triage"));
+        unmount();
+      }
+    });
+
+    it("focuses the counted line open in Models, not the triage, where one is", () => {
+      const open = patched(READY, { models: (l) => (l.key === "set_selection" ? { ...l, status: "open", decision_id: null } : l) });
+      const line = openLine(stageIn(open, "models"))!;
+      expect(line.counted).toBe(true);
+      const { card, ask } = cardOf(open, "models", { seed: seed(kept), fit: fit() });
+      ask({ line: null, n: 1 });
+      expect(document.activeElement).toBe(card.querySelector(`[data-line="${line.source}:${line.key}"]`));
+    });
+
+    it("focuses Models' heading, as before, once the triage waits for nothing", () => {
+      const settled: Triage = { ...kept, items: kept.items.map((i) => ({ ...i, recorded: i.recommended })) };
+      const { card, ask } = cardOf(READY, "models", { seed: seed(settled), fit: fit() });
+      ask({ line: null, n: 1 });
+      expect(document.activeElement).toBe(within(card).getByRole("heading", { level: 2 }));
+    });
+
+    it("lands on the noticing's line of the triage from Fit's refused press, through the shell", async () => {
+      // The press's refusal as core/fit_press.py `triage_refusal` builds it for this triage: the
+      // noticing kept to act on, a finding in Who's in, so "Act on it in Who's in" opens its own line
+      // there, and "Record as a limitation" the triage's card, by the stage its decision is recorded in.
+      const item = kept.items[0]!;
+      const limit = `Record as a limitation: ${item.summary}`;
+      const refusal = {
+        error: {
+          code: "triage_open",
+          message: "Fit waits: pressing it locks the analysis plan, and 1 noticing marked \"act on it\" is not acted on yet.",
+          exits: [
+            { label: `Act on it in Who's in: ${item.summary}`, decision: null, target: { stage: "whos_in", key: item.id } },
+            {
+              label: limit,
+              decision: { kind: "confirm_sweep", stage: "models", sweep: "noticings", lines: [{ id: item.line, key: item.id, value: "could_bias", basis: null }] },
+              target: { stage: "models", key: null },
+            },
+          ],
+        },
+      } as Refusal;
+      vi.spyOn(api, "pressFit").mockRejectedValue(new RefusalError(refusal));
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+      qc.setQueryData(keys.quest(PID), READY);
+      qc.setQueryData(keys.view(PID), VIEW);
+      seed(kept)(qc);
+      render(
+        <QueryClientProvider client={qc}>
+          <QuestScreen pid={PID} stream="open" />
+        </QueryClientProvider>,
+      );
+      fireEvent.click(screen.getByTestId("stage-models"));
+      fireEvent.click(screen.getByTestId("fit"));
+      const press = await waitFor(() => screen.getAllByTestId("fit-to").find((b) => b.textContent === plain(limit))!);
+      fireEvent.click(press);
+      const card = screen.getByTestId("card-models");
+      expect(document.activeElement).toBe(itemOf(card));
+      expect(within(itemOf(card)).getByTestId("triage-as-limitation")).toBeEnabled();
+    });
   });
 });
 

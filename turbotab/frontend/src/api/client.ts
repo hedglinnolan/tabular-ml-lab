@@ -73,7 +73,19 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** Narrow an unknown 409 body to a `Refusal`, or null if it is not one. */
+type ExitTarget = NonNullable<Refusal["error"]["exits"][number]["target"]>;
+
+/** A way forward's `target` in the served shape (`ExitTarget`: a stage, and a line's key or null
+ *  for its open line), or null where it is absent or not in that shape. */
+function exitTarget(v: unknown): ExitTarget | null {
+  if (!isObject(v) || typeof v.stage !== "string") return null;
+  if (v.key !== null && v.key !== undefined && typeof v.key !== "string") return null;
+  return { stage: v.stage, key: v.key ?? null };
+}
+
+/** Narrow an unknown 409 body to a `Refusal`, or null if it is not one. A way forward keeps the
+ *  card it names (`target`, G12) where that is in the served shape; one not in it is dropped, and
+ *  its way forward kept, said in words. */
 export function parseRefusal(body: unknown): Refusal | null {
   if (!isObject(body) || !isObject(body.error)) return null;
   const { code, message, exits } = body.error;
@@ -86,9 +98,11 @@ export function parseRefusal(body: unknown): Refusal | null {
     if (decision !== null && decision !== undefined) {
       if (!isObject(decision) || typeof decision.kind !== "string") return null;
     }
+    const target = exitTarget(exit.target);
     parsedExits.push({
       label: exit.label,
       decision: (decision ?? null) as Decision | null,
+      ...(target ? { target } : {}),
     });
   }
   return { error: { code, message, exits: parsedExits } };

@@ -191,7 +191,10 @@ CONTINUES = "continues past an empty triage, at the stage's own next act: no oth
 # forbids any other field, and these reach it (a table's refusal, a survey or missing-values block,
 # a grouping's floor): a target there needs the artifact models to carry one (an open issue).
 ARTIFACT = "reaches a fit table's ``InferenceExit``, which carries no target"
-HELD = "in core/fit_press.py, held by pp3-act-on-hold: targeted there"
+# The press's triage refusal (``fit_press.triage_refusal``) names its cards (b1-decision-exits;
+# test_fit_press_triage.py); these two are the served gate's, read beside a withheld estimate.
+HELD = ("in core/fit_press.py's served gate (``serving_gate``), not a press's refusal: not "
+        "targeted yet")
 
 # (path under turbotab/, the label's source) -> why it names no card.
 UNTARGETED: dict[tuple[str, str], str] = {
@@ -214,9 +217,6 @@ UNTARGETED: dict[tuple[str, str], str] = {
     ("core/export/gate.py", "'Export again once it is done'"): WAITS,
     ("core/fit_press.py", "PRESS_FIT"): HELD,
     ("core/fit_press.py", "'Choose the goal'"): HELD,
-    ("core/fit_press.py", "f'Triage the open noticings in {where}'"): HELD,
-    ("core/fit_press.py", "f'Decide: {i.summary}'"): HELD,
-    ("core/fit_press.py", "f'Act on it {_acted_at(i)}: {i.summary}'"): HELD,
     ("core/methods/exposure_form.py", "last"): ROWS,
     ("core/methods/qc_drift.py", "'Run it in each training fold'"): ENGINE_GUARD,
     ("core/methods/survey.py",

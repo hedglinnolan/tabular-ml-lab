@@ -191,6 +191,42 @@ describe("parseRefusal", () => {
       parseRefusal({ error: { code: "c", message: "m", exits: [{ label: "x", decision: 3 }] } }),
     ).toBeNull();
   });
+
+  /** G12: a way forward names the card it opens, `target` {stage, key} with a null key for a
+   *  stage's open line (openapi.json `ExitTarget`; core/exit_target.py `toward`), as the server's
+   *  409 serves it (server/tests/test_fit_press_holds_api.py pins Fit's). */
+  const ACT = { label: "Act on it in Your data: `sas_zeros`", decision: null, target: { stage: "data", key: "sas_zeros" } };
+  const TRIAGE = { label: "Triage the open noticings in Models", decision: null, target: { stage: "models", key: null } };
+  const LIMIT = {
+    label: "Record as a limitation: `sas_zeros`",
+    decision: { kind: "confirm_sweep", stage: "models", sweep: "noticings", lines: [{ id: "finding:sas_zeros", key: "sas_zeros", value: "could_bias" }] },
+    target: { stage: "models", key: null },
+  };
+
+  it("keeps each way forward's target, a decision's included", () => {
+    const parsed = parseRefusal({ error: { code: "triage_open", message: "m", exits: [ACT, TRIAGE, LIMIT] } });
+    expect(parsed?.error.exits).toEqual([ACT, TRIAGE, LIMIT]);
+  });
+
+  it("drops a target not in the served shape, keeping its way forward, and adds none where none is served", () => {
+    const bad = [
+      { label: "a", decision: null, target: { stage: 3, key: null } },
+      { label: "b", decision: null, target: { stage: "data", key: 4 } },
+      { label: "c", decision: null, target: "data" },
+      { label: "d", decision: null, target: null },
+      { label: "e", decision: null, target: { key: "x" } },
+      { label: "f", decision: null },
+    ];
+    const parsed = parseRefusal({ error: { code: "c", message: "m", exits: bad } });
+    expect(parsed?.error.exits).toEqual(bad.map(({ label }) => ({ label, decision: null })));
+  });
+
+  it("reaches a press's RefusalError with its targets, as fetch answers the 409", async () => {
+    respond(409, { error: { code: "triage_open", message: "Fit waits.", exits: [ACT, LIMIT] } });
+    const err = (await api.pressFit("p1").catch((e) => e)) as RefusalError;
+    expect(isRefusalError(err)).toBe(true);
+    expect(err.refusal.error.exits.map((x) => x.target)).toEqual([ACT.target, LIMIT.target]);
+  });
 });
 
 describe("a request without a session (server mode, 401)", () => {

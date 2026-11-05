@@ -17,6 +17,8 @@ import { api, RefusalError } from "../api/client";
 import { keys } from "../api/queries";
 import type { DecisionRecord, FitLock, ProjectView, QuestLog, Refusal, StageStatus } from "../api/schema";
 import { SERVED } from "../components/fixtures/stages";
+import { OpenCard, targetName, triageTarget, type ExitTarget } from "../components/record/target";
+import type { StageRefused } from "../components/StageRefusal";
 import { plain } from "../kit";
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { FitControl } from "./Fit";
@@ -190,6 +192,119 @@ describe("Fit, over a fit the engine refused", () => {
     wrap(<FitControl pid="p" log={logWith(notHeld)} fit={fitStatus("fresh", 1)} />);
     expect(screen.queryByTestId("fit-refusal")).toBeNull();
   });
+
+  /**
+   * b1-decision-exits, round 2 (V3): a stage refusal the fit serves, beneath Fit beside Models, whose
+   * ways forward are decisions recorded on another card name no card (target), so in the shell each
+   * is a press that opens the card the quest log places its kind on, on the line a record of that
+   * kind answers there, and records nothing; one whose kind Models records is Models' to offer, the
+   * card Fit is drawn beside. The first two are in the served shape from real engine calls
+   * (core/models/pipeline.py `warnings_for` on 30 rows with three blanks in `b` and no missing-values
+   * answer; core/stages/rows.py `cohort_stage` on 80 rows with the rule `bmi` within 40-41); the
+   * other two are built as core/stages/modeling.py raises them (`_small_groups_typed`, whose words
+   * here stand in for the design's; the follow-up time among the predictors, in its own words). The
+   * log is the engine's (logWith), whose Who's in serves
+   * the exclusions question answered by record `r6`, and its missing-values question open here.
+   */
+  describe("where its ways forward are decisions another card records (V3)", () => {
+    const AS_FIT = (refusal: Omit<StageRefused, "stage">, stage: string): StageStatus => ({ ...SERVED.AR, stage: "fit", refusal: { ...refusal, stage } });
+    const MULTIPLE = "Multiple imputation (m = the number asked, 20 by default, or the percentage of rows the imputation model fills, rounded up, if that is larger; for feature-wise tests, counted in whichever study factor's model fills the most rows)";
+    const missingAs = (strategy: string) => ({ kind: "set_missing", strategy, drop_columns: [], categorical: "impute", indicators: false, m: 20, below_detection: null, censored_columns: [], acknowledged: false, reason: null, imputation_model: null, imputation_levels: null });
+    const NO_STRATEGY = {
+      code: "no_missing_strategy",
+      message: "3 participants have a missing predictor value and no missing-values strategy was chosen; Linear model cannot use them. Choose complete cases or imputation first.",
+      exits: [
+        { label: MULTIPLE, decision: missingAs("multiple_imputation") },
+        { label: "Complete cases", decision: missingAs("complete_case") },
+      ],
+    };
+    const DROP = "Drop the rule: `bmi` within `40`–`41`";
+    const TOO_FEW = {
+      code: "too_few_rows",
+      message: "The answers recorded leave 3 of the 80 rows in the table to analyze, and the design needs at least 6. “`bmi` within `40`–`41`” removes 77 rows. Drop or widen the rule that removes them (the eligibility question).",
+      exits: [{ label: DROP, decision: { kind: "set_exclusions", rules: [] } }],
+    };
+    const GROUPS = {
+      code: "incidental_parameters",
+      message: "Each `school` has too few rows for an intercept of its own.",
+      exits: [{ label: "Cluster the intervals by `school` only", decision: { kind: "set_clusters", column: "school", adjust: "cluster_only" } }],
+    };
+    const FOLLOW_UP = {
+      code: "follow_up_is_a_predictor",
+      message: "`fu_days` is the outcome's follow-up time, so it cannot also be a predictor: give it the role time.",
+      exits: [{ label: "Give `fu_days` the role time", decision: { kind: "confirm_role", column: "fu_days", role: "time" } }],
+    };
+    const base = logWith(notHeld);
+    const LOG: QuestLog = {
+      ...base,
+      stages: base.stages.map((s) =>
+        s.key === "whos_in" ? { ...s, lines: s.lines.map((l) => (l.key === "missing" ? { ...l, status: "open" as const, decision_id: null } : l)) } : s,
+      ),
+    };
+    const exclusionsBy = LOG.stages.find((s) => s.key === "whos_in")!.lines.find((l) => l.key === "exclusions")!.decision_id!;
+    const withRule = (): QueryClient => {
+      const qc = client();
+      const rule = { id: exclusionsBy, seq: 99, decision: { kind: "set_exclusions", rules: [{ column: "bmi", low: 40, high: 41, reason: "obese band" }] } } as unknown as DecisionRecord;
+      qc.setQueryData(keys.view(PID), { ...VIEW, decisions: [...VIEW.decisions, rule] });
+      return qc;
+    };
+    const presses = () => screen.queryAllByTestId("fit-to").map((b) => [b.textContent, b.dataset.target]);
+
+    it("opens the card each is recorded on, the line its record answers where one does, and records nothing", async () => {
+      expect([LOG.kinds.set_missing, LOG.kinds.set_exclusions, LOG.kinds.set_clusters, LOG.kinds.confirm_role]).toEqual(["whos_in", "whos_in", "whos_in", "data"]);
+      const decide = vi.spyOn(api, "decide");
+      const cases: [Omit<StageRefused, "stage">, string, string[][]][] = [
+        // No record answers the missing-values question: Who's in, on its open line.
+        [NO_STRATEGY, "design", [[plain(MULTIPLE), "whos_in"], ["Complete cases", "whos_in"]]],
+        // The exclusions question, answered by the rule's record.
+        [TOO_FEW, "cohort", [[plain(DROP), "whos_in:exclusions"]]],
+        [GROUPS, "design", [[plain(GROUPS.exits[0]!.label), "whos_in"]]],
+        [FOLLOW_UP, "design", [[plain(FOLLOW_UP.exits[0]!.label), "data"]]],
+      ];
+      for (const [refusal, stage, expected] of cases) {
+        const open = vi.fn();
+        wrap(
+          <OpenCard.Provider value={open}>
+            <FitControl pid={PID} log={LOG} fit={AS_FIT(refusal, stage)} />
+          </OpenCard.Provider>,
+          withRule(),
+        );
+        expect(presses()).toEqual(expected);
+        expect(screen.getByTestId("fit-refusal").textContent).toBe(`${plain(refusal.message)} ${expected.map(([label]) => label).join(" ")}`);
+        for (const b of screen.getAllByTestId("fit-to")) await userEvent.setup().click(b);
+        expect(open.mock.calls.map(([t]) => targetName(t as ExitTarget))).toEqual(expected.map(([, at]) => at));
+        cleanup();
+      }
+      expect(decide).not.toHaveBeenCalled();
+    });
+
+    it("is said in words alone where no shell opens cards, as before", () => {
+      for (const refusal of [NO_STRATEGY, TOO_FEW, GROUPS, FOLLOW_UP]) {
+        wrap(<FitControl pid={PID} log={LOG} fit={AS_FIT(refusal, "design")} />, withRule());
+        expect(screen.getByTestId("fit-refusal").textContent).toBe(plain(refusal.message));
+        expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+        cleanup();
+      }
+    });
+
+    it("draws no press for a decision Models records, the card Fit is drawn beside", () => {
+      // The effects stage's refusal for random forest alone (core/tests/
+      // test_no_coefficient_table_refusal.py `_run`): select_models, placed in Models.
+      expect(LOG.kinds.select_models).toBe("models");
+      const noTable = {
+        code: "no_coefficient_table",
+        message: "None of the chosen model families has a coefficient table, so there is no effect to report; choose the linear model.",
+        exits: [{ label: "Add Linear model, which has a coefficient table", decision: { kind: "select_models", models: ["random_forest", "linear"] } }],
+      };
+      wrap(
+        <OpenCard.Provider value={vi.fn()}>
+          <FitControl pid={PID} log={LOG} fit={AS_FIT(noTable, "effects")} />
+        </OpenCard.Provider>,
+      );
+      expect(screen.getByTestId("fit-refusal").textContent).toBe(noTable.message);
+      expect(presses()).toEqual([]);
+    });
+  });
 });
 
 describe("Fit, a press the engine refused", () => {
@@ -207,30 +322,59 @@ describe("Fit, a press the engine refused", () => {
   const said = (summary: string) => summary.trim().replace(/\.$/, "");
   const TRIAGE_IN_MODELS = "Triage the open noticings in Models";
   const KEEP = "Keep the recommended dispositions";
+  // Each way forward that names no decision names the card it opens (core/fit_press.py
+  // `triage_refusal`, G12): the triage's, Models on its open line; where a blocking noticing is
+  // decided (a finding's own line here; a measured one's question, test_fit_press_triage.py).
+  const AT_TRIAGE = { stage: "models", key: null };
   const OPEN: Refusal = {
     error: {
       code: "triage_open",
       message: `${LEAD} 1 noticing is still open: ${said(SUMMARY)}. Recommended: act on it. Triage it in Models first, so it is decided before any estimate is seen.`,
       exits: [
-        { label: TRIAGE_IN_MODELS, decision: null },
+        { label: TRIAGE_IN_MODELS, decision: null, target: AT_TRIAGE },
         { label: KEEP, decision: { kind: "confirm_sweep", stage: "models", sweep: "noticings", lines: [] } },
       ],
     },
   };
   const BLOCKING_SUMMARY = "`glucose` takes one value in every row.";
+  const AT_BLOCKER = { stage: "data", key: "outcome_constant" };
   const BLOCKING: Refusal = {
     error: {
       code: "triage_open",
       message: `${LEAD} 1 noticing must be resolved first: ${said(BLOCKING_SUMMARY)}.`,
-      exits: [{ label: `Decide: ${BLOCKING_SUMMARY}`, decision: null }],
+      exits: [{ label: `Decide: ${BLOCKING_SUMMARY}`, decision: null, target: AT_BLOCKER }],
+    },
+  };
+  // A noticing kept to act on and not acted on (the owner's Q8): where it is acted on, its own
+  // line in Your data (a finding's), and "Record as a limitation", a decision, which names the
+  // triage's stage, where that decision is recorded (cards/TriageCard.tsx): the shell opens the
+  // triage there on the noticing's line, the one its decision sets (record/target.ts `triageTarget`).
+  const KEPT_SUMMARY = "`152` cells in `9` columns hold `5.4e-79`: a zero in a SAS transport file, misread.";
+  const ACT = `Act on it in Your data: ${KEPT_SUMMARY}`;
+  const LIMIT = `Record as a limitation: ${KEPT_SUMMARY}`;
+  const AT_ACT = { stage: "data", key: "sas_zeros" };
+  const AT_ITS_TRIAGE_LINE = triageTarget("models", "sas_zeros");
+  const KEPT: Refusal = {
+    error: {
+      code: "triage_open",
+      message: `Fit waits: pressing it locks the analysis plan, and 1 noticing marked "act on it" is not acted on yet: ${KEPT_SUMMARY} Act on it where it is decided, or change its disposition by recording it as a limitation, before any estimate is seen.`,
+      exits: [
+        { label: ACT, decision: null, target: AT_ACT },
+        {
+          label: LIMIT,
+          decision: { kind: "confirm_sweep", stage: "models", sweep: "noticings", lines: [{ id: "finding:sas_zeros", key: "sas_zeros", value: "could_bias", basis: null }] },
+          target: AT_TRIAGE,
+        },
+      ],
     },
   };
   afterEach(() => vi.restoreAllMocks());
 
-  async function pressRefused(refusal: Refusal | Error) {
+  async function pressRefused(refusal: Refusal | Error, open?: (target: ExitTarget) => void) {
     const press = vi.spyOn(api, "pressFit").mockRejectedValue(refusal instanceof Error ? refusal : new RefusalError(refusal));
     const decide = vi.spyOn(api, "decide");
-    wrap(<FitControl pid="p" log={logWith(unlocked)} fit={fitStatus("fresh", 1)} />);
+    const fit = <FitControl pid="p" log={logWith(unlocked)} fit={fitStatus("fresh", 1)} />;
+    wrap(open ? <OpenCard.Provider value={open}>{fit}</OpenCard.Provider> : fit);
     await userEvent.setup().click(screen.getByTestId("fit"));
     const alert = await within(screen.getByTestId("fit-position")).findByRole("alert");
     expect(press).toHaveBeenCalledTimes(1);
@@ -262,6 +406,110 @@ describe("Fit, a press the engine refused", () => {
     const second = await pressRefused(new Error("The server stopped."));
     expect(second.alert.textContent).toBe("The server stopped.");
     expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+  });
+
+  it("says a noticing kept to act on with where it is acted on in words, and its decision not at all, where no shell opens cards", async () => {
+    const { alert, decide } = await pressRefused(KEPT);
+    expect(alert.textContent).toBe(`${plain(KEPT.error.message)} ${plain(ACT)}`);
+    expect(alert).not.toHaveTextContent("Record as a limitation");
+    expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  describe("where the shell opens cards (b1-decision-exits: no dead end)", () => {
+    // In the quest shell (QuestScreen's OpenCard) a way forward that names its card is a press that
+    // opens it, and records nothing: a decision's opens the card that records it.
+    const presses = () => screen.getAllByTestId("fit-to").map((b) => [b.textContent, b.dataset.target]);
+
+    it("opens the triage's card from the triage's way forward, and draws no press for its Confirm all, which names no card", async () => {
+      const open = vi.fn();
+      const { alert, decide } = await pressRefused(OPEN, open);
+      expect(presses()).toEqual([[TRIAGE_IN_MODELS, "models"]]);
+      expect(alert.textContent).toBe(`${plain(OPEN.error.message)} ${TRIAGE_IN_MODELS}`);
+      expect(alert).not.toHaveTextContent(KEEP);
+      await userEvent.setup().click(screen.getByTestId("fit-to"));
+      expect(open).toHaveBeenCalledWith(AT_TRIAGE);
+      expect(decide).not.toHaveBeenCalled();
+    });
+
+    it("opens the line a blocking noticing is decided on, a finding's own", async () => {
+      const open = vi.fn();
+      await pressRefused(BLOCKING, open);
+      expect(presses()).toEqual([[plain(BLOCKING.error.exits[0]!.label), "data:outcome_constant"]]);
+      await userEvent.setup().click(screen.getByTestId("fit-to"));
+      expect(open).toHaveBeenCalledWith(AT_BLOCKER);
+    });
+
+    it("opens, for a noticing kept to act on, where it is acted on and the triage on its line, which records it as a limitation, in the served order, recording nothing", async () => {
+      const open = vi.fn();
+      const { alert, decide } = await pressRefused(KEPT, open);
+      expect(presses()).toEqual([
+        [plain(ACT), "data:sas_zeros"],
+        [plain(LIMIT), "models:triage:sas_zeros"],
+      ]);
+      // The words are the refusal's alone: each way forward is its press.
+      expect(alert.textContent).toBe(`${plain(KEPT.error.message)} ${plain(ACT)} ${plain(LIMIT)}`);
+      const user = userEvent.setup();
+      const [act, limit] = screen.getAllByTestId("fit-to");
+      await user.click(act!);
+      await user.click(limit!);
+      expect(open.mock.calls).toEqual([[AT_ACT], [AT_ITS_TRIAGE_LINE]]);
+      expect(decide).not.toHaveBeenCalled();
+    });
+
+    it("opens the cards the server's 409 names, read through the client as fetch answers it", async () => {
+      // No RefusalError is made here: the press goes through api.pressFit to fetch, which answers
+      // the 409 as the server serves it (server/tests/test_fit_press_holds_api.py), so the targets
+      // reach the presses only as the client parses them (client.ts `parseRefusal`).
+      const posted: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if ((init?.method ?? "GET") !== "POST") return new Promise<Response>(() => {});
+          posted.push(url);
+          return new Response(JSON.stringify(KEPT), { status: 409, headers: { "Content-Type": "application/json" } });
+        }),
+      );
+      try {
+        const open = vi.fn();
+        wrap(
+          <OpenCard.Provider value={open}>
+            <FitControl pid="p" log={logWith(unlocked)} fit={fitStatus("fresh", 1)} />
+          </OpenCard.Provider>,
+        );
+        await userEvent.setup().click(screen.getByTestId("fit"));
+        await within(screen.getByTestId("fit-position")).findByRole("alert");
+        expect(posted).toEqual(["/api/projects/p/fit"]);
+        expect(presses()).toEqual([
+          [plain(ACT), "data:sas_zeros"],
+          [plain(LIMIT), "models:triage:sas_zeros"],
+        ]);
+        const [act, limit] = screen.getAllByTestId("fit-to");
+        await userEvent.setup().click(act!);
+        await userEvent.setup().click(limit!);
+        expect(open.mock.calls).toEqual([[AT_ACT], [AT_ITS_TRIAGE_LINE]]);
+        expect(posted).toHaveLength(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("opens the card a way forward of the fit's own refusal names, a decision's included, and says the one with no card in words", () => {
+      const open = vi.fn();
+      const target = { stage: "models", key: "set_selection" };
+      const own = SERVED.R.refusal!;
+      const fit: StageStatus = { ...SERVED.R, stage: "fit", refusal: { ...own, stage: "fit", exits: own.exits.map((x) => (x.decision ? { ...x, target } : x)) } };
+      const [take, told] = own.exits;
+      wrap(
+        <OpenCard.Provider value={open}>
+          <FitControl pid="p" log={logWith({ ...held, held: false })} fit={fit} />
+        </OpenCard.Provider>,
+      );
+      expect(presses()).toEqual([[String(take!.label), "models:set_selection"]]);
+      expect(screen.getByTestId("fit-refusal").textContent).toBe(`${own.message} ${String(told!.label)}. ${String(take!.label)}`);
+      screen.getByTestId("fit-to").click();
+      expect(open).toHaveBeenCalledWith(target);
+    });
   });
 
   const OPEN_SAID = `${plain(OPEN.error.message)} ${TRIAGE_IN_MODELS}.`;

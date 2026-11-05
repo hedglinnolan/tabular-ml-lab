@@ -377,6 +377,25 @@ def _acted_at(i: Any) -> str:
     return f"in {stage}" if stage else "where it is decided"
 
 
+def _decided_target(i: Any) -> dict[str, Any] | None:
+    """The card where noticing ``i`` is decided or acted on, as :func:`_acted_at` names it, for its
+    way forward's target (G12), a blocker's included: the question it routes to; else its own line
+    in its stage, where the quest log serves it one (a finding's line, ``finding:<id>``, keyed by
+    its id; a measured noticing's is no line of the log, ``sweep._noticing_item``), else that stage
+    on its open line; None where its stage is none the log serves."""
+    from turbotab.core.exit_target import toward
+    from turbotab.core.quest import QUESTIONS, STAGE_NAMES
+
+    question = _get(i, "question")
+    if question in QUESTIONS:
+        return toward(question)
+    stage = str(_get(i, "stage"))
+    if stage not in STAGE_NAMES:
+        return None
+    own = str(_get(i, "line", "")).startswith("finding:")
+    return toward(stage=stage, key=str(_get(i, "id"))) if own else toward(stage=stage)
+
+
 def triage_refusal(t: Any) -> Any:
     """Under Estimate and Describe the open noticings are triaged before the plan's lock
     (calm/FOUNDATION §7), and pressing Fit records the lock, so a press waits while ``t``, the
@@ -394,8 +413,19 @@ def triage_refusal(t: Any) -> Any:
     of the triage's own confirmation), as the held-out rows' gate under Predict offers
     (``seal._the_opening_waits_for_the_triage``). Silent once every disposition is recorded and
     none listed is "act on it", with nothing to triage, and once the gate has passed (the plan is
-    locked)."""
+    locked).
+
+    Each way forward names the card it opens (``target``, G12; the owner's Q3, 2026-11-04: no dead
+    end), since Fit sits in the tapestry, which records nothing (calm/FOUNDATION §1): the triage's
+    stage, which the shell opens on the triage while it waits and no counted line there is open
+    (the quest log serves the triage as no line); where a blocking noticing is decided, and where a
+    noticing kept to act on is acted on (:func:`_decided_target`: the question it routes to, else
+    its own line where the quest log serves one, else its stage); and "Record as a limitation", a
+    decision, the triage's stage, where the shell opens the triage on that noticing's line, which
+    offers that same decision. "Keep the recommended dispositions" names none: the triage's way
+    forward beside it opens the same card."""
     from turbotab.core.decisions import Refusal
+    from turbotab.core.exit_target import toward
     from turbotab.core.quest import STAGE_NAMES
 
     if t is None or _get(t, "passed") or not _get(t, "items"):
@@ -408,7 +438,8 @@ def triage_refusal(t: Any) -> Any:
             "triage_open",
             f"{PRESS_WAITS_FOR_TRIAGE} {_noticings(len(blocking))} must be resolved first"
             f"{_named(blocking)}",
-            exits=[{"label": f"Decide: {i.summary}", "decision": None} for i in blocking])
+            exits=[{"label": f"Decide: {i.summary}", "decision": None,
+                    "target": _decided_target(i)} for i in blocking])
     waiting = [i for i in items if i.recorded is None]
     if not waiting:
         unacted = [i for i in items if i.recorded == "act_on_it"]
@@ -417,10 +448,12 @@ def triage_refusal(t: Any) -> Any:
         n = len(unacted)
         exits: list[dict[str, Any]] = []
         for i in unacted:
-            exits.append({"label": f"Act on it {_acted_at(i)}: {i.summary}", "decision": None})
+            exits.append({"label": f"Act on it {_acted_at(i)}: {i.summary}", "decision": None,
+                          "target": _decided_target(i)})
             exits.append({"label": f"Record as a limitation: {i.summary}", "decision": {
                 "kind": "confirm_sweep", "stage": stage, "sweep": "noticings",
-                "lines": [{"id": i.line, "key": i.id, "value": "could_bias"}]}})
+                "lines": [{"id": i.line, "key": i.id, "value": "could_bias"}]},
+                "target": toward(stage=stage)})
         return Refusal(
             "triage_open",
             f"Fit waits: pressing it locks the analysis plan, and {_noticings(n)} marked "
@@ -434,7 +467,8 @@ def triage_refusal(t: Any) -> Any:
         f"{PRESS_WAITS_FOR_TRIAGE} {_noticings(n)} {'is' if n == 1 else 'are'} still open"
         f"{_named(waiting, recommended=True)} Triage {'it' if n == 1 else 'them'} in {where} "
         f"first, so {'it is' if n == 1 else 'each is'} decided before any estimate is seen.",
-        exits=[{"label": f"Triage the open noticings in {where}", "decision": None},
+        exits=[{"label": f"Triage the open noticings in {where}", "decision": None,
+                "target": toward(stage=stage)},
                {"label": "Keep the recommended dispositions",
                 "decision": {"kind": "confirm_sweep", "stage": stage, "sweep": "noticings",
                              "lines": []}}])
