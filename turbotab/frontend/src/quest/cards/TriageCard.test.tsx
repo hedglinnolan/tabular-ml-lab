@@ -200,7 +200,9 @@ describe("the triage before the plan's lock, under Estimate (G05)", () => {
   it("offers no Confirm all once confirmed, each noticing reading as recorded", () => {
     serve();
     const card = mount(confirmed(ESTIMATE));
-    expect(within(card).queryByRole("button")).toBeNull();
+    expect(within(card).queryByTestId("triage-confirm")).toBeNull();
+    // The one press left is the line recorded "act on it": its change of disposition (below).
+    expect(within(card).getAllByRole("button")).toEqual([within(itemEl(card, ACT.id)).getByRole("button")]);
     for (const i of ESTIMATE.items) expect(itemEl(card, i.id).textContent).toContain(`${i.label} · recorded`);
     expect(heading(card)).toBe(`${ESTIMATE.items.length} noticings before the plan is fixed`);
   });
@@ -270,6 +272,92 @@ describe("a noticing marked to act on, not acted on when the gate passed (B1)", 
     const settled = mount({ ...locked(confirmed(ACTED)), stage: "results", gate: "gate:open-noticings-before-seal" });
     expect(heading(settled)).toBe(`${ACTED.items.length} noticings, settled before the held-out rows were opened`);
     expect(within(settled).getByTestId("triage-settled")).toBeTruthy();
+  });
+});
+
+/**
+ * DE1 (b1-decision-exits; the owner's Q3 and Q8, 2026-11-04): while the gate has not passed, a
+ * noticing recorded "act on it" and not acted on holds it, and the gate's refusal offers changing
+ * its disposition, "Record as a limitation: …", the decision `{kind: confirm_sweep, stage: <the
+ * gate's>, sweep: noticings, lines: [{id: <its line>, key: <its id>, value: could_bias}]}`
+ * (core/fit_press.py `triage_refusal`; core/tests/test_fit_press_triage.py pins it). In the shell
+ * that way forward opens this card (FOUNDATION §1), so the card offers that same decision on the
+ * noticing's own line, and nowhere else.
+ */
+describe("a noticing recorded to act on, before the gate passes (DE1)", () => {
+  const LIMIT = "Record as a limitation";
+  /** Confirmed before the gate, as core/sweep.py `triage` serves it: `confirmable` is "items, no
+   *  blocker, the gate not passed", whatever is answered, so a confirmed triage stays confirmable
+   *  (the file's `confirmed` leaves it false, which no rule of the engine's serves). */
+  const kept = (t: Triage): Triage => {
+    const c = confirmed(t);
+    return { ...c, confirmable: c.items.length > 0 && c.blockers === 0 && !c.passed };
+  };
+  /** The decision the gate's refusal carries for `i`, written out as core/fit_press.py writes it. */
+  const exitDecision = (t: Triage, i: TriageItem) => ({
+    kind: "confirm_sweep",
+    stage: t.stage,
+    sweep: "noticings",
+    lines: [{ id: i.line, key: i.id, value: "could_bias" }],
+  });
+
+  it("offers Record as a limitation on the line recorded act on it, and on no other", () => {
+    serve();
+    const t = kept(ESTIMATE);
+    expect(t.items.filter((i) => i.recorded === "act_on_it").map((i) => i.id)).toEqual([ACT.id]);
+    const card = mount(t);
+    expect(within(itemEl(card, ACT.id)).getByRole("button", { name: LIMIT })).toBeEnabled();
+    for (const i of [OWED, DONE, NOTE]) expect(within(itemEl(card, i.id)).queryByRole("button"), i.id).toBeNull();
+  });
+
+  it("records exactly the decision the gate's refusal carries for that line", async () => {
+    const calls = serve();
+    const t = kept(ESTIMATE);
+    const card = mount(t);
+    await userEvent.click(within(itemEl(card, ACT.id)).getByRole("button", { name: LIMIT }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.filter((c) => c.method === "POST")).toEqual([
+      { method: "POST", path: "/decisions", body: exitDecision(t, ACT) },
+    ]);
+    expect(exitDecision(t, ACT)).toEqual({
+      kind: "confirm_sweep",
+      stage: "models",
+      sweep: "noticings",
+      lines: [{ id: "finding:sas_zeros", key: "sas_zeros", value: "could_bias" }],
+    });
+  });
+
+  it("records it at the gate's own stage under Predict, before the held-out rows open", async () => {
+    const calls = serve();
+    const t: Triage = { ...kept(ESTIMATE), stage: "results", gate: "gate:open-noticings-before-seal" };
+    const card = mount(t);
+    await userEvent.click(within(itemEl(card, ACT.id)).getByRole("button", { name: LIMIT }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual(exitDecision(t, ACT));
+  });
+
+  it("reads as recorded as a limitation once recorded so, with no press left", () => {
+    serve();
+    // As core/sweep.py `triage` serves it after the decision: recorded could bias, recommended act on it.
+    const t = triageWith((i) => ({ ...i, recorded: i.id === ACT.id ? "could_bias" : i.recommended }), { answered: true });
+    const card = mount(t);
+    expect(itemEl(card, ACT.id).textContent).toContain(`Recommended: ${ACT.label} · recorded as a limitation`);
+    expect(within(card).queryByRole("button")).toBeNull();
+  });
+
+  it("is offered on no line before the triage is confirmed: a noticing recommended to act on is not recorded so yet", () => {
+    serve();
+    expect(ESTIMATE.items.find((i) => i.id === ACT.id)!.recorded).toBeNull();
+    const card = mount(ESTIMATE);
+    expect(within(card).queryByRole("button", { name: LIMIT })).toBeNull();
+  });
+
+  it("waits, disabled, while a noticing blocks the triage, as Confirm all does", () => {
+    serve();
+    const blocker = item("outcome_constant", { blocker: true, severity: "critical" });
+    const t: Triage = { ...kept(ESTIMATE), items: [blocker, ...kept(ESTIMATE).items], blockers: 1, confirmable: false, answered: false };
+    const card = mount(t);
+    expect(within(itemEl(card, ACT.id)).getByRole("button", { name: LIMIT })).toBeDisabled();
   });
 });
 

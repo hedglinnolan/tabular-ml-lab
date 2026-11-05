@@ -55,6 +55,7 @@ import type {
 import { Foot, Plain, foot as f, kit as k, plain } from "../kit";
 import { listJoin } from "../util/format";
 import { oneRoleAtATime } from "../components/record/besideAsk";
+import { targetName, targetOf as exitTarget, useOpenTarget } from "../components/record/target";
 import { CardFor } from "./cards/CardFor";
 import { DECLARATION_CARDS, DECLARATION_DEFAULTS } from "./cards/predict";
 import { columnOf, recordable } from "./cards/renderers";
@@ -626,6 +627,7 @@ function Primary({
   const confirm = useConfirmSweep(pid);
   const decide = useDecide(pid);
   const bundle = useExport(pid);
+  const opener = useOpenTarget();
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   // Models' foot beside Fit reads the triage at its end, where the shell draws it (log.ts
   // `triageBeforeFit`); no other foot reads it.
@@ -718,19 +720,28 @@ function Primary({
           <Plain text={refusal.error.message} />
           {refusal.error.exits.length ? (
             <span className={q.exits}>
-              {refusal.error.exits.map((exit) => (
-                <button
-                  key={exit.label}
-                  type="button"
-                  className={k.linkish}
-                  onClick={() => {
-                    setRefusal(null);
-                    if (exit.decision) decide.mutate(exit.decision as Decision, { onError: onRefused });
-                  }}
-                >
-                  {exit.label}
-                </button>
-              ))}
+              {refusal.error.exits.map((exit) => {
+                // A way forward that names no decision but the card it opens opens that card (G12;
+                // the export gate's "Answer …" and "Press Fit…"); any other is recorded, or closes.
+                const open = opener(exit);
+                const to = open ? exitTarget(exit) : null;
+                return (
+                  <button
+                    key={exit.label}
+                    type="button"
+                    className={k.linkish}
+                    onClick={() => {
+                      setRefusal(null);
+                      if (open) open();
+                      else if (exit.decision) decide.mutate(exit.decision as Decision, { onError: onRefused });
+                    }}
+                    data-testid="primary-refusal-exit"
+                    data-target={to ? targetName(to) : undefined}
+                  >
+                    {exit.label}
+                  </button>
+                );
+              })}
             </span>
           ) : null}
         </div>

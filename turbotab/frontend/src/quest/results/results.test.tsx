@@ -15,7 +15,9 @@ import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FitArtifact, SplitArtifact } from "../../api/m1-stage-types";
 import type { EvaluationArtifact, ExplainArtifact, VersusBaseline } from "../../api/m3-types";
-import type { ProjectView } from "../../api/schema";
+import { api, RefusalError } from "../../api/client";
+import type { ProjectView, Refusal } from "../../api/schema";
+import { OpenCard } from "../../components/record/target";
 import PAYLOADS from "../cards/predict/payloads.fixture.json";
 import { FootSlot } from "../contracts";
 import { SealCard } from "./cards";
@@ -1247,6 +1249,64 @@ describe("the opening's chain of refusals", () => {
     const done = await screen.findByTestId("results-opened");
     expect(done.textContent).toContain("with Linear model as the final model");
     expect(screen.queryByTestId("results-open-refused")).toBeNull();
+  });
+});
+
+/**
+ * DE3 (b1-decision-exits; G12, the owner's Q3: no dead end): a way forward of the opening's refusal
+ * that names no decision but the card it opens is, in the quest shell (QuestScreen's OpenCard), a
+ * press that opens that card and closes the refusal; one that names none says where to act, as
+ * before; and where no shell opens cards, each is said. The refusal is in the shape core/seal.py
+ * serves while a noticing kept to act on is not acted on (`_the_opening_waits_for_the_triage`: its
+ * "Decide: …" names its own line), beside a way forward that names no card ("Wait for the checks",
+ * as `fit_not_fresh`'s kind does).
+ */
+describe("the opening's ways forward that name their card (DE3)", () => {
+  const SUMMARY = "Cells hold 5.4e-79: a zero in a SAS transport file, misread.";
+  const AT = { stage: "data", key: "sas_zeros" };
+  const DECIDE = `Decide: ${SUMMARY}`;
+  const LIMIT = `Record as a limitation: ${SUMMARY}`;
+  const WAIT = "Wait for the checks";
+  const REFUSAL = {
+    error: {
+      code: "triage_open",
+      message: `The held-out rows open once, after every open noticing is settled: 1 marked "act on it" is not acted on yet: ${SUMMARY}`,
+      exits: [
+        { label: DECIDE, decision: null, target: AT },
+        { label: LIMIT, decision: { kind: "confirm_sweep", stage: "results", sweep: "noticings", lines: [{ id: "finding:sas_zeros", key: "sas_zeros", value: "could_bias", basis: null }] } },
+        { label: WAIT, decision: null },
+      ],
+    },
+  };
+
+  /** The capture's server, whose opening is refused with `REFUSAL` as a press's refusal reaches the
+   *  card (api.decide's RefusalError); the card under `open`, if any. */
+  async function refused(open: ((t: unknown) => void) | null) {
+    serve("sealed", readyToOpen);
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(REFUSAL as Refusal));
+    mount(open ? <OpenCard.Provider value={open}><ResultsCards pid={PID} /></OpenCard.Provider> : <ResultsCards pid={PID} />);
+    const press = await screen.findByTestId("results-open-press");
+    await waitFor(() => expect(press).toBeEnabled());
+    await userEvent.setup().click(press);
+    return screen.findByTestId("results-open-refused");
+  }
+  afterEach(() => vi.restoreAllMocks());
+
+  it("opens the card a way forward names and closes the refusal, says the one with no card, and records the decision as before", async () => {
+    const open = vi.fn();
+    const alert = await refused(open);
+    expect(within(alert).getAllByTestId("results-open-to").map((b) => [b.textContent, b.dataset.target])).toEqual([[DECIDE, "data:sas_zeros"]]);
+    expect(within(alert).getAllByTestId("results-open-where").map((x) => x.textContent)).toEqual([WAIT]);
+    expect(within(alert).getAllByTestId("results-open-exit").map((b) => b.textContent)).toEqual([LIMIT]);
+    await userEvent.setup().click(within(alert).getByTestId("results-open-to"));
+    expect(open).toHaveBeenCalledWith(AT);
+    await waitFor(() => expect(screen.queryByTestId("results-open-refused")).toBeNull());
+  });
+
+  it("says each way forward that names no decision where no shell opens cards, as before", async () => {
+    const alert = await refused(null);
+    expect(within(alert).queryAllByTestId("results-open-to")).toEqual([]);
+    expect(within(alert).getAllByTestId("results-open-where").map((x) => x.textContent)).toEqual([DECIDE, WAIT]);
   });
 });
 

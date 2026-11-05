@@ -10,8 +10,9 @@
  * (fixtures/quest-contract.json), with the Results lines' statuses set for each moment.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
+import { api, RefusalError } from "../api/client";
 import { keys } from "../api/queries";
 import type {
   DecisionRecord,
@@ -22,6 +23,7 @@ import type {
   QuestStage,
   Triage,
 } from "../api/schema";
+import { OpenCard } from "../components/record/target";
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { StageFocusProvider } from "../state/focus";
 import { DECLARATION_CARDS } from "./cards/predict";
@@ -749,6 +751,81 @@ describe("the foot's refusal, one role at a time (ruling R-b)", () => {
       exit("Choose the models", null),
     ]);
     expect(labels).toEqual(["Confirm the 2 as amounts", "Confirm `bp_sys` as a predictor", "Choose the models"]);
+  });
+});
+
+/**
+ * DE3 (b1-decision-exits; G12, the owner's Q3: no dead end): Write-up's Download is refused by the
+ * export gate with ways forward in the served shape (core/export/gate.py): an unanswered question's
+ * "Answer …" names that question's card, the open plan's "Press Fit…" names Models, and "Compute …
+ * again" names none. In the quest shell (QuestScreen's OpenCard) one that names its card is a press
+ * that opens it and closes the refusal; one that names none closes it, as before.
+ */
+describe("the export gate's refusal at Write-up's foot (DE3)", () => {
+  const log = patched(REACHED, {}, { writeup: { reached: true } });
+  const AT_MISSING = { stage: "whos_in", key: "missing" };
+  const AT_MODELS = { stage: "models", key: null };
+  const ANSWER = "Answer the missing-values question";
+  const PRESS = "Press Fit on the analysis flowchart; it locks the plan";
+  const AGAIN = "Compute the effects again";
+  const REFUSED = new RefusalError({
+    error: {
+      code: "export_not_ready",
+      message: "The export is not ready.",
+      exits: [
+        { label: ANSWER, decision: null, target: AT_MISSING },
+        { label: PRESS, decision: null, target: AT_MODELS },
+        { label: AGAIN, decision: null },
+      ],
+    },
+  });
+
+  function downloadRefused(open: ((t: unknown) => void) | null) {
+    vi.spyOn(api, "exportBundle").mockRejectedValue(REFUSED);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.quest(PID), log);
+    qc.setQueryData(keys.view(PID), VIEW);
+    qc.setQueryData(keys.record(PID), RECORD);
+    const card = (
+      <StageFocusProvider>
+        <StageCard pid={PID} log={log} stage={stageIn(log, "writeup")} answers={new Map()} fit={{ kind: "none" }} onOpenStage={() => {}} arrival={null} onOpenManuscript={() => {}} />
+      </StageFocusProvider>
+    );
+    render(<QueryClientProvider client={qc}>{open ? <OpenCard.Provider value={open}>{card}</OpenCard.Provider> : card}</QueryClientProvider>);
+    fireEvent.click(within(screen.getByTestId("card-writeup")).getByTestId("primary"));
+  }
+  afterEach(() => vi.restoreAllMocks());
+
+  it("opens the card each way forward names, and closes the refusal, where the shell opens cards", async () => {
+    const open = vi.fn();
+    downloadRefused(open);
+    const refusal = await screen.findByTestId("primary-refusal");
+    expect(within(refusal).getAllByTestId("primary-refusal-exit").map((b) => [b.textContent, b.dataset.target])).toEqual([
+      [ANSWER, "whos_in:missing"],
+      [PRESS, "models"],
+      [AGAIN, undefined],
+    ]);
+    fireEvent.click(within(refusal).getByRole("button", { name: ANSWER }));
+    expect(open).toHaveBeenCalledWith(AT_MISSING);
+    await waitFor(() => expect(screen.queryByTestId("primary-refusal")).toBeNull());
+  });
+
+  it("only closes the refusal from a way forward that names no card, as before", async () => {
+    const open = vi.fn();
+    const decide = vi.spyOn(api, "decide");
+    downloadRefused(open);
+    fireEvent.click(within(await screen.findByTestId("primary-refusal")).getByRole("button", { name: AGAIN }));
+    await waitFor(() => expect(screen.queryByTestId("primary-refusal")).toBeNull());
+    expect(open).not.toHaveBeenCalled();
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("names no card on its presses where no shell opens cards, each closing the refusal as before", async () => {
+    downloadRefused(null);
+    const refusal = await screen.findByTestId("primary-refusal");
+    expect(within(refusal).getAllByTestId("primary-refusal-exit").map((b) => b.dataset.target)).toEqual([undefined, undefined, undefined]);
+    fireEvent.click(within(refusal).getByRole("button", { name: ANSWER }));
+    await waitFor(() => expect(screen.queryByTestId("primary-refusal")).toBeNull());
   });
 });
 

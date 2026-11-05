@@ -28,7 +28,8 @@
  * weekend column's values, the survey question unanswered) the stage serves as a refused analysis,
  * kept before the lock since it asks for an answer (core/estimand.py `withhold`). The card says each
  * in the engine's words (the analysis's methods sentence, which names the component and the
- * refusal), then each way forward that names no decision in words, and offers each that is a
+ * refusal), then each way forward that names no decision in words (or, where it names the card it
+ * opens and the shell opens cards, as a press that opens it: G12), and offers each that is a
  * decision as a press that records it as served. It shows no analysis that applies, and so no
  * number. A press the engine refuses (under prediction, a column the table lacks) is answered in its
  * own words, with its exits.
@@ -43,6 +44,7 @@ import type { UsualIntakeArtifact } from "../../../api/m3-types";
 import type { Decision, ProjectState, ProjectView, QuestLine } from "../../../api/schema";
 import { StageFailure, rootFailure } from "../../../components/Failure";
 import { Pending } from "../../../components/record/blocks";
+import { targetName, targetOf, useOpenTarget, type ExitTarget } from "../../../components/record/target";
 import { Prose } from "../../../components/Prose";
 import { StageRetry } from "../../../components/StageRetry";
 import r from "../../../components/record/Refusal.module.css";
@@ -164,19 +166,22 @@ function nameOf(comp: Component): string {
   return comp.nutrient === comp.days[0] ? days : `${comp.nutrient} (${days})`;
 }
 
-/** A way forward from a refused analysis, as the stage serves it: a label, and a decision or none
- *  (a question to answer). */
+/** A way forward from a refused analysis, as the stage serves it: a label, a decision or none (a
+ *  question to answer), and the card one that names no decision opens, where it names one (G12;
+ *  record/target.ts). */
 interface Way {
   label: string;
   decision: Decision | null;
+  target: ExitTarget | null;
 }
 
 function waysOf(analysis: Analysis): Way[] {
   const ways: Way[] = [];
-  for (const { label, decision } of analysis.exits) {
+  for (const served of analysis.exits) {
+    const { label, decision } = served;
     if (typeof label !== "string") continue;
     const decided = typeof decision === "object" && decision !== null && typeof (decision as { kind?: unknown }).kind === "string";
-    ways.push({ label, decision: decided ? (decision as Decision) : null });
+    ways.push({ label, decision: decided ? (decision as Decision) : null, target: targetOf(served) });
   }
   return ways;
 }
@@ -185,10 +190,13 @@ function waysOf(analysis: Analysis): Way[] {
 const finish = (text: string) => (/[.!?]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`);
 
 /** An analysis the stage refused: the engine's sentence of it, each way forward that names no
- *  decision in words after it, and a press for each that is a decision. A press the server does not
- *  record is answered here, in its words. */
+ *  decision in words after it, and a press for each that is a decision. One that names no decision
+ *  but the card it opens (the survey question's, core/stages/usual_intake.py) is, where the shell
+ *  opens cards, a press that opens it instead of a sentence. A press the server does not record is
+ *  answered here, in its words. */
 function Refused({ card, analysis }: { card: CardWiring; analysis: Analysis }) {
-  const ways = waysOf(analysis);
+  const opener = useOpenTarget();
+  const ways = waysOf(analysis).map((x) => ({ ...x, open: opener(x) }));
   const at = (i: number) => `refused:${analysis.nutrient}:${i}`;
   const answer = card.answerAt && ways.some((_, i) => card.answerAt!.key === at(i)) ? card.answerAt.node : null;
   return (
@@ -196,7 +204,7 @@ function Refused({ card, analysis }: { card: CardWiring; analysis: Analysis }) {
       <p className={r.text}>
         <Prose text={finish(analysis.methods || analysis.refused || "")} />
         {ways
-          .filter((x) => !x.decision)
+          .filter((x) => !x.decision && !x.open)
           .map((x) => (
             <Fragment key={x.label}>
               {" "}
@@ -204,7 +212,7 @@ function Refused({ card, analysis }: { card: CardWiring; analysis: Analysis }) {
             </Fragment>
           ))}
       </p>
-      {ways.some((x) => x.decision) ? (
+      {ways.some((x) => x.decision || x.open) ? (
         <div className={r.exits}>
           {ways.map((x, i) =>
             x.decision ? (
@@ -215,6 +223,17 @@ function Refused({ card, analysis }: { card: CardWiring; analysis: Analysis }) {
                 disabled={card.pending}
                 onClick={() => card.record(x.decision!, at(i))}
                 data-testid="usual-intake-refused-exit"
+              >
+                <Prose text={x.label} />
+              </button>
+            ) : x.open && x.target ? (
+              <button
+                key={x.label}
+                type="button"
+                className={r.ghost}
+                onClick={x.open}
+                data-testid="usual-intake-refused-to"
+                data-target={targetName(x.target)}
               >
                 <Prose text={x.label} />
               </button>

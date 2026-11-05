@@ -17,6 +17,7 @@ import { api, RefusalError } from "../api/client";
 import { keys } from "../api/queries";
 import type { DecisionRecord, FitLock, ProjectView, QuestLog, Refusal, StageStatus } from "../api/schema";
 import { SERVED } from "../components/fixtures/stages";
+import { OpenCard, type ExitTarget } from "../components/record/target";
 import { plain } from "../kit";
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { FitControl } from "./Fit";
@@ -207,30 +208,56 @@ describe("Fit, a press the engine refused", () => {
   const said = (summary: string) => summary.trim().replace(/\.$/, "");
   const TRIAGE_IN_MODELS = "Triage the open noticings in Models";
   const KEEP = "Keep the recommended dispositions";
+  // Each way forward that names no decision names the card it opens (core/fit_press.py
+  // `triage_refusal`, G12): the triage's, Models on its open line; a blocking noticing's own line.
+  const AT_TRIAGE = { stage: "models", key: null };
   const OPEN: Refusal = {
     error: {
       code: "triage_open",
       message: `${LEAD} 1 noticing is still open: ${said(SUMMARY)}. Recommended: act on it. Triage it in Models first, so it is decided before any estimate is seen.`,
       exits: [
-        { label: TRIAGE_IN_MODELS, decision: null },
+        { label: TRIAGE_IN_MODELS, decision: null, target: AT_TRIAGE },
         { label: KEEP, decision: { kind: "confirm_sweep", stage: "models", sweep: "noticings", lines: [] } },
       ],
     },
   };
   const BLOCKING_SUMMARY = "`glucose` takes one value in every row.";
+  const AT_BLOCKER = { stage: "data", key: "outcome_constant" };
   const BLOCKING: Refusal = {
     error: {
       code: "triage_open",
       message: `${LEAD} 1 noticing must be resolved first: ${said(BLOCKING_SUMMARY)}.`,
-      exits: [{ label: `Decide: ${BLOCKING_SUMMARY}`, decision: null }],
+      exits: [{ label: `Decide: ${BLOCKING_SUMMARY}`, decision: null, target: AT_BLOCKER }],
+    },
+  };
+  // A noticing kept to act on and not acted on (the owner's Q8): where it is acted on, its own
+  // line in Your data (a finding's), and "Record as a limitation", a decision, which names the
+  // triage's card, where that decision is recorded (cards/TriageCard.tsx).
+  const KEPT_SUMMARY = "`152` cells in `9` columns hold `5.4e-79`: a zero in a SAS transport file, misread.";
+  const ACT = `Act on it in Your data: ${KEPT_SUMMARY}`;
+  const LIMIT = `Record as a limitation: ${KEPT_SUMMARY}`;
+  const AT_ACT = { stage: "data", key: "sas_zeros" };
+  const KEPT: Refusal = {
+    error: {
+      code: "triage_open",
+      message: `Fit waits: pressing it locks the analysis plan, and 1 noticing marked "act on it" is not acted on yet: ${KEPT_SUMMARY} Act on it where it is decided, or change its disposition by recording it as a limitation, before any estimate is seen.`,
+      exits: [
+        { label: ACT, decision: null, target: AT_ACT },
+        {
+          label: LIMIT,
+          decision: { kind: "confirm_sweep", stage: "models", sweep: "noticings", lines: [{ id: "finding:sas_zeros", key: "sas_zeros", value: "could_bias", basis: null }] },
+          target: AT_TRIAGE,
+        },
+      ],
     },
   };
   afterEach(() => vi.restoreAllMocks());
 
-  async function pressRefused(refusal: Refusal | Error) {
+  async function pressRefused(refusal: Refusal | Error, open?: (target: ExitTarget) => void) {
     const press = vi.spyOn(api, "pressFit").mockRejectedValue(refusal instanceof Error ? refusal : new RefusalError(refusal));
     const decide = vi.spyOn(api, "decide");
-    wrap(<FitControl pid="p" log={logWith(unlocked)} fit={fitStatus("fresh", 1)} />);
+    const fit = <FitControl pid="p" log={logWith(unlocked)} fit={fitStatus("fresh", 1)} />;
+    wrap(open ? <OpenCard.Provider value={open}>{fit}</OpenCard.Provider> : fit);
     await userEvent.setup().click(screen.getByTestId("fit"));
     const alert = await within(screen.getByTestId("fit-position")).findByRole("alert");
     expect(press).toHaveBeenCalledTimes(1);
@@ -262,6 +289,73 @@ describe("Fit, a press the engine refused", () => {
     const second = await pressRefused(new Error("The server stopped."));
     expect(second.alert.textContent).toBe("The server stopped.");
     expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+  });
+
+  it("says a noticing kept to act on with where it is acted on in words, and its decision not at all, where no shell opens cards", async () => {
+    const { alert, decide } = await pressRefused(KEPT);
+    expect(alert.textContent).toBe(`${plain(KEPT.error.message)} ${plain(ACT)}`);
+    expect(alert).not.toHaveTextContent("Record as a limitation");
+    expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  describe("where the shell opens cards (b1-decision-exits: no dead end)", () => {
+    // In the quest shell (QuestScreen's OpenCard) a way forward that names its card is a press that
+    // opens it, and records nothing: a decision's opens the card that records it.
+    const presses = () => screen.getAllByTestId("fit-to").map((b) => [b.textContent, b.dataset.target]);
+
+    it("opens the triage's card from the triage's way forward, and draws no press for its Confirm all, which names no card", async () => {
+      const open = vi.fn();
+      const { alert, decide } = await pressRefused(OPEN, open);
+      expect(presses()).toEqual([[TRIAGE_IN_MODELS, "models"]]);
+      expect(alert.textContent).toBe(`${plain(OPEN.error.message)} ${TRIAGE_IN_MODELS}`);
+      expect(alert).not.toHaveTextContent(KEEP);
+      await userEvent.setup().click(screen.getByTestId("fit-to"));
+      expect(open).toHaveBeenCalledWith(AT_TRIAGE);
+      expect(decide).not.toHaveBeenCalled();
+    });
+
+    it("opens a blocking noticing's own line", async () => {
+      const open = vi.fn();
+      await pressRefused(BLOCKING, open);
+      expect(presses()).toEqual([[plain(BLOCKING.error.exits[0]!.label), "data:outcome_constant"]]);
+      await userEvent.setup().click(screen.getByTestId("fit-to"));
+      expect(open).toHaveBeenCalledWith(AT_BLOCKER);
+    });
+
+    it("opens, for a noticing kept to act on, where it is acted on and the triage's card that records it as a limitation, in the served order, recording nothing", async () => {
+      const open = vi.fn();
+      const { alert, decide } = await pressRefused(KEPT, open);
+      expect(presses()).toEqual([
+        [plain(ACT), "data:sas_zeros"],
+        [plain(LIMIT), "models"],
+      ]);
+      // The words are the refusal's alone: each way forward is its press.
+      expect(alert.textContent).toBe(`${plain(KEPT.error.message)} ${plain(ACT)} ${plain(LIMIT)}`);
+      const user = userEvent.setup();
+      const [act, limit] = screen.getAllByTestId("fit-to");
+      await user.click(act!);
+      await user.click(limit!);
+      expect(open.mock.calls).toEqual([[AT_ACT], [AT_TRIAGE]]);
+      expect(decide).not.toHaveBeenCalled();
+    });
+
+    it("opens the card a way forward of the fit's own refusal names, a decision's included, and says the one with no card in words", () => {
+      const open = vi.fn();
+      const target = { stage: "models", key: "set_selection" };
+      const own = SERVED.R.refusal!;
+      const fit: StageStatus = { ...SERVED.R, stage: "fit", refusal: { ...own, stage: "fit", exits: own.exits.map((x) => (x.decision ? { ...x, target } : x)) } };
+      const [take, told] = own.exits;
+      wrap(
+        <OpenCard.Provider value={open}>
+          <FitControl pid="p" log={logWith({ ...held, held: false })} fit={fit} />
+        </OpenCard.Provider>,
+      );
+      expect(presses()).toEqual([[String(take!.label), "models:set_selection"]]);
+      expect(screen.getByTestId("fit-refusal").textContent).toBe(`${own.message} ${String(told!.label)}. ${String(take!.label)}`);
+      screen.getByTestId("fit-to").click();
+      expect(open).toHaveBeenCalledWith(target);
+    });
   });
 
   const OPEN_SAID = `${plain(OPEN.error.message)} ${TRIAGE_IN_MODELS}.`;

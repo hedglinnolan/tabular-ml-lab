@@ -221,3 +221,69 @@ describe("StageRefusal's ways forward that name their card", () => {
     expect(screen.queryAllByRole("button")).toEqual([]);
   });
 });
+
+/**
+ * b1-decision-exits (the owner's Q3: no dead end; FOUNDATION §1): where the card is the one place a
+ * choice is recorded, a way forward that is a decision records nothing here, but where it names the
+ * card that records it (`target`, as core/fit_press.py `triage_refusal` names the triage's card for
+ * "Record as a limitation"), it is a press that opens that card. R's decision is given a target in
+ * the served shape: its own line, where the card that records `set_selection` is.
+ */
+describe("StageRefusal's decisions that name the card that records them", () => {
+  const refusal = SERVED.R.refusal!;
+  const [take, told] = waysForward(refusal);
+  const target = { stage: "models", key: "set_selection" };
+  const named = { ...refusal, exits: refusal.exits.map((x) => (x.decision ? { ...x, target } : x)) };
+
+  it("is a press that opens that card, and records nothing, where the shell opens cards and the card records", () => {
+    const open = vi.fn();
+    const decide = vi.spyOn(api, "decide");
+    wrap(
+      <OpenCard.Provider value={open}>
+        <StageRefusal pid="p" refusal={named} recordHere={false} />
+      </OpenCard.Provider>,
+    );
+    const note = screen.getByTestId(`stage-refusal-${refusal.stage}`);
+    // The words are the refusal's and the way forward with no card; the decision is the press.
+    expect(note.querySelector("p")!.textContent).toBe(`${refusal.message} ${told!.label}.`);
+    const press = screen.getByRole("button", { name: take!.label });
+    expect(press).toHaveAttribute("data-testid", "stage-refusal-to");
+    expect(press).toHaveAttribute("data-target", "models:set_selection");
+    expect(screen.queryAllByTestId("stage-refusal-exit")).toEqual([]);
+    fireEvent.click(press);
+    expect(open).toHaveBeenCalledWith(target);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("is neither a press nor a sentence where no shell opens cards, as a decision there always was", () => {
+    wrap(<StageRefusal pid="p" refusal={named} recordHere={false} />);
+    const note = screen.getByTestId(`stage-refusal-${refusal.stage}`);
+    expect(note.textContent).toBe(`${refusal.message} ${told!.label}.`);
+    expect(screen.queryAllByRole("button")).toEqual([]);
+  });
+
+  it("is the press that records it where the stage records, its target aside", async () => {
+    const open = vi.fn();
+    const decide = vi.spyOn(api, "decide").mockReturnValue(new Promise<ProjectView>(() => {}));
+    wrap(
+      <OpenCard.Provider value={open}>
+        <StageRefusal pid="p" refusal={named} />
+      </OpenCard.Provider>,
+    );
+    fireEvent.click(screen.getByTestId("stage-refusal-exit"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]![1]).toEqual(take!.decision);
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId("stage-refusal-to")).toEqual([]);
+  });
+
+  it("is neither where it names no card, though the shell opens cards: the card it is drawn beside offers it", () => {
+    wrap(
+      <OpenCard.Provider value={vi.fn()}>
+        <StageRefusal pid="p" refusal={refusal} recordHere={false} />
+      </OpenCard.Provider>,
+    );
+    expect(screen.queryAllByRole("button")).toEqual([]);
+    expect(screen.getByTestId(`stage-refusal-${refusal.stage}`)).not.toHaveTextContent(take!.label);
+  });
+});

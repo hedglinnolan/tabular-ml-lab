@@ -10,12 +10,14 @@
  * is said as the stage says a preview's refusal there (`besideCard`): no way forward is a press
  * that records, and one that is a decision is not said either, since the card offers it and its
  * label names a choice ("`age` is an amount"), which said as a sentence would read as a fact; a
- * way forward that opens its card records nothing, so it is a press there too. No "Try again"
+ * way forward that opens its card records nothing, so it is a press there too, and so is one that
+ * is a decision and names the card that records it (`target`): a press that opens that card, which
+ * offers the same decision (`useBesideCard`; the owner's Q3: no dead end). No "Try again"
  * (StageRetry): the refusal is for the current answers, so running them again refuses again. No
  * way forward confirms a column's role with other readings in one press (BLUEPRINT §14 rule 2;
  * besideAsk.ts `confirmsRoleInBlock`).
  */
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useContext, useState, type ReactNode } from "react";
 import { isRefusalError } from "../api/client";
 import { useDecide } from "../api/queries";
 import type { Decision, Refusal, RefusalExit, StageStatus } from "../api/schema";
@@ -23,7 +25,7 @@ import { Prose } from "./Prose";
 import { besideAsk, confirmsRoleInBlock } from "./record/besideAsk";
 import { FailureNote, RefusalNote } from "./record/Refusal";
 import r from "./record/Refusal.module.css";
-import { targetName, targetOf, useOpenTarget } from "./record/target";
+import { OpenCard, targetName, targetOf, useOpenTarget, type ExitTarget } from "./record/target";
 
 /** A stage's refusal in words, as its status serves it. */
 export type StageRefused = NonNullable<StageStatus["refusal"]>;
@@ -65,6 +67,34 @@ export function besideCard(refusal: StageRefused): { message: string; told: Refu
   };
 }
 
+/** A way forward drawn as a press that opens the card it names. */
+export interface Opening {
+  x: RefusalExit;
+  target: ExitTarget;
+  open: () => void;
+}
+
+/** The refusal as drawn where the card is the one place a choice is recorded (`recordHere`
+ *  false): its words as the card leaves them (`besideCard`); the ways forward said in words after
+ *  them (`said`: each that names no decision, where it opens no card here); and, in the order
+ *  served, the presses that open a card (`to`), where the shell opens cards (record/target.ts
+ *  `OpenCard`). A way forward that names no decision opens the card it names (G12). One that is a
+ *  decision is no press that records here, but where it names the card that records it, which
+ *  offers that same decision, it is a press that opens that card: a press that opens a card records
+ *  nothing (FOUNDATION §1). One that is a decision and names no card is the card's to offer, and is
+ *  neither a press nor a sentence: its label names a choice, which said would read as a fact. */
+export function useBesideCard(refusal: StageRefused): { message: string; said: RefusalExit[]; to: Opening[] } {
+  const open = useContext(OpenCard);
+  const said: RefusalExit[] = [];
+  const to: Opening[] = [];
+  for (const x of waysForward(refusal)) {
+    const target = targetOf(x);
+    if (open && target) to.push({ x, target, open: () => open(target) });
+    else if (!x.decision) said.push(x);
+  }
+  return { message: besideCard(refusal).message, said, to };
+}
+
 /** What the server said when it did not record a way forward that was pressed. */
 type NotTaken = { refusal: Refusal } | { failure: string };
 
@@ -86,7 +116,8 @@ function useWayForward(pid: string) {
  *  for each way forward that is a decision; with `recordHere` false, the refusal's words as the
  *  card leaves them (`besideCard`) and no press that records. A way forward that is no decision
  *  but names the card it opens is, where the shell opens cards, a press that opens it instead of a
- *  sentence (G12): it records nothing, so it is a press with `recordHere` false too. */
+ *  sentence (G12): it records nothing, so it is a press with `recordHere` false too, as is one that
+ *  is a decision and names the card that records it (`useBesideCard`). */
 export function StageRefusal({
   pid,
   refusal,
@@ -107,14 +138,17 @@ export function StageRefusal({
 }) {
   const way = useWayForward(pid);
   const opener = useOpenTarget();
+  const beside = useBesideCard(refusal);
   const ways = waysForward(refusal);
   const presses = recordHere ? ways.filter((x) => x.decision) : [];
-  const { message, told } = recordHere
-    ? { message: refusal.message, told: ways.filter((x) => !x.decision) }
-    : besideCard(refusal);
-  const opens = told.map((x) => ({ x, open: opener(x) }));
-  const said = opens.filter((o) => !o.open).map((o) => o.x);
-  const to = opens.flatMap(({ x, open }) => (open ? [{ x, open, target: targetOf(x)! }] : []));
+  const opens = ways.filter((x) => !x.decision).map((x) => ({ x, open: opener(x) }));
+  const { message, said, to } = recordHere
+    ? {
+        message: refusal.message,
+        said: opens.filter((o) => !o.open).map((o) => o.x),
+        to: opens.flatMap(({ x, open }) => (open ? [{ x, open, target: targetOf(x)! }] : [])),
+      }
+    : beside;
   return (
     <div
       className={r.refusal}

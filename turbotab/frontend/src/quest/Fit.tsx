@@ -4,17 +4,21 @@
  * reason beneath; no Cancel, since nothing runs. While the fit job runs: its progress and a Cancel
  * where Fit was (POST /fit/cancel). Pressing is a job command, not a decision. A fit the engine
  * refused in words (StageStatus.refusal: its own, or the refusal of the stage it waits on) is said
- * beneath Fit as the shell's stage says a refusal (StageRefusal's `besideCard`), and so is a press
- * of Fit the engine refused (`refusedPress`): no way forward is a press, and one that is a decision
- * is not said either, since in the quest shell a choice is recorded on the card. A press's refusal
- * is said while what it answered stands (`PressedOn`), and not again where it is the fit's own.
+ * beneath Fit as the shell's stage says a refusal (StageRefusal's `useBesideCard`), and so is a
+ * press of Fit the engine refused (`refusedPress`): no way forward is a press that records, since
+ * in the quest shell a choice is recorded on the card. One that names the card it opens is a press
+ * that opens it, a decision's included, which opens the card that records it (the owner's Q3: no
+ * dead end); a decision that names no card is not said, and any other way forward is said in
+ * words. A press's refusal is said while what it answered stands (`PressedOn`), and not again where
+ * it is the fit's own.
  */
 import { Fragment, useState } from "react";
 import { isRefusalError } from "../api/client";
 import { useCancelFit, useJobs, usePressFit, useProjectView } from "../api/queries";
 import type { DecisionRecord, QuestLog, Refusal, StageStatus } from "../api/schema";
 import { stageLabel } from "../components/JobChips";
-import { besideCard, finish, refusalOf, type StageRefused } from "../components/StageRefusal";
+import { targetName } from "../components/record/target";
+import { finish, refusalOf, useBesideCard, type StageRefused } from "../components/StageRefusal";
 import { Plain, kit as k } from "../kit";
 import { fitPosition } from "./log";
 import q from "./quest.module.css";
@@ -36,16 +40,12 @@ export function FitControl({
   const pos = fitPosition(log, fit);
   const refused = refusalOf(fit);
   const stands = pressedOn !== null && pressedOn.decisions === decisions && pressedOn.refused === refused;
-  const pressSaid = press.error
-    ? isRefusalError(press.error)
-      ? stands
-        ? refusedPress(press.error.refusal, refused)
-        : null
-      : press.error.message
-    : null;
-  const said =
-    pressSaid ??
-    (cancel.error ? (isRefusalError(cancel.error) ? cancel.error.refusal.error.message : cancel.error.message) : null);
+  const pressRefused = press.error && isRefusalError(press.error) && stands ? refusedPress(press.error.refusal, refused) : null;
+  const pressSaid = press.error && !isRefusalError(press.error) ? press.error.message : null;
+  const said = pressRefused
+    ? null
+    : (pressSaid ??
+      (cancel.error ? (isRefusalError(cancel.error) ? cancel.error.refusal.error.message : cancel.error.message) : null));
 
   if (pos.kind === "press") {
     return (
@@ -68,6 +68,7 @@ export function FitControl({
           </p>
         ) : null}
         {refused ? <FitRefusal refusal={refused} /> : null}
+        {pressRefused ? <Beside refusal={pressRefused} /> : null}
         {said ? (
           <p className={q.fitReason} role="alert">
             <Plain text={said} />
@@ -107,6 +108,7 @@ export function FitControl({
         >
           Cancel
         </button>
+        {pressRefused ? <Beside refusal={pressRefused} /> : null}
         {said ? (
           <p className={q.fitReason} role="alert">
             <Plain text={said} />
@@ -133,40 +135,57 @@ interface PressedOn {
   refused: StageRefused | null;
 }
 
-/** A refused press of Fit, said beneath it as the fit's own refusal is (`FitRefusal`): its words
- *  and each way forward that names no decision, in sentences, none a press. Under Estimate and
- *  Describe the open noticings' triage holds the press until it is confirmed (core/fit_press.py
- *  `triage_refusal`): its way forward that names no decision says where the triage is (the shell
- *  draws it at Models' end), and its "Keep the recommended dispositions", a decision, is the
- *  triage card's Confirm all to record, not said here. A refusal with no way forward is its words
- *  alone. A press refused with the fit's own refusal, its code and words those of the refusal the
- *  fit's status serves (`shown`), is not said again: `FitRefusal` says it. */
-function refusedPress(refusal: Refusal, shown: StageRefused | null): string | null {
+/** A refused press of Fit, to be said beneath it as the fit's own refusal is (`Beside`), or null
+ *  where it is the fit's own: a press refused with the refusal the fit's status serves (`shown`),
+ *  its code and words the same, is not said again, since `FitRefusal` says it. Under Estimate and
+ *  Describe the open noticings' triage holds the press (core/fit_press.py `triage_refusal`): until
+ *  it is confirmed, its way forward to the triage opens the card it is drawn on (Models, at its
+ *  end), and its "Keep the recommended dispositions", a decision that names no card, is that
+ *  card's Confirm all, not said here; while a noticing kept to act on is not acted on, its way
+ *  forward to where it is acted on opens that card, and its "Record as a limitation", a decision,
+ *  opens the triage's card, which records it (TriageCard). */
+function refusedPress(refusal: Refusal, shown: StageRefused | null): StageRefused | null {
   if (shown && shown.code === refusal.error.code && shown.message === refusal.error.message) return null;
-  const { message, told } = besideCard({ stage: "fit", ...refusal.error });
-  return told.length ? [finish(message), ...told.map((x) => finish(x.label))].join(" ") : message;
+  return { stage: "fit", ...refusal.error };
 }
 
-/** The fit's refusal beneath Fit, as Fit's other lines are said there: "<the refusal's words>
- *  <each way forward that names no decision>." Fit sits in the tapestry, which records nothing
- *  (FOUNDATION §1: the card is the one place a choice is recorded; Stage's `recordHere`), so the
- *  refusal is said as the card leaves it (`besideCard`): a decision is the card's to offer, and its
- *  label names a choice, which said as a sentence would read as a fact. */
+/** The fit's refusal beneath Fit, as Fit's other lines are said there (`Beside`), its words always
+ *  ending with their stop. */
 function FitRefusal({ refusal }: { refusal: StageRefused }) {
-  const { message, told } = besideCard(refusal);
+  return <Beside refusal={refusal} testId="fit-refusal" finished />;
+}
+
+/** A refusal beneath Fit: "<the refusal's words> <each way forward said in words>", then a press
+ *  for each way forward that opens a card. Fit sits in the tapestry, which records nothing
+ *  (FOUNDATION §1: the card is the one place a choice is recorded; Stage's `recordHere`), so the
+ *  refusal is said as the card leaves it (StageRefusal's `useBesideCard`): no press records; one
+ *  that names the card it opens opens it where the shell opens cards, a decision's the card that
+ *  records it; a decision that names no card is the card's to offer, and its label names a choice,
+ *  which said as a sentence would read as a fact. The words end with their stop wherever something
+ *  follows them, and always with `finished`; otherwise they are the refusal's as served. */
+function Beside({ refusal, testId, finished = false }: { refusal: StageRefused; testId?: string; finished?: boolean }) {
+  const { message, said, to } = useBesideCard(refusal);
   return (
     <p
       className={q.fitReason}
       role="alert"
-      data-testid="fit-refusal"
+      data-testid={testId}
       data-stage={refusal.stage}
       data-code={refusal.code}
     >
-      <Plain text={finish(message)} />
-      {told.map((x) => (
+      <Plain text={finished || said.length || to.length ? finish(message) : message} />
+      {said.map((x) => (
         <Fragment key={x.label}>
           {" "}
           <Plain text={finish(x.label)} />
+        </Fragment>
+      ))}
+      {to.map(({ x, target, open }) => (
+        <Fragment key={x.label}>
+          {" "}
+          <button type="button" className={k.linkish} onClick={open} data-testid="fit-to" data-target={targetName(target)}>
+            <Plain text={x.label} />
+          </button>
         </Fragment>
       ))}
     </p>

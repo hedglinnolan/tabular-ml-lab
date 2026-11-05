@@ -22,6 +22,7 @@ import { isRefusalError } from "../../api/client";
 import type { FitArtifact, SplitArtifact } from "../../api/m1-stage-types";
 import { keys, useDecide, useQuest, useTriage } from "../../api/queries";
 import type { Decision, ProjectView, QuestLine, Refusal, Triage } from "../../api/schema";
+import { targetName, targetOf, useOpenTarget } from "../../components/record/target";
 import { useM1Stage } from "../../components/stage/data";
 import { fmtInt } from "../../components/stage/format";
 import { useRefetchOnOpening } from "../../components/stage/seal/OpenSeal";
@@ -141,8 +142,10 @@ export function openingWaits(lines: readonly QuestLine[], triage: Triage | null)
  * (`triage_open`) and, with several families, until the final model is named on cross-validation
  * (`final_model_needed`). Each refusal's exits are buttons: an exit that is itself the opening (one
  * naming a final model) is the next attempt; any other exit is recorded, and then the last attempt
- * is posted again, so the chain is walked press by press. An exit with no decision says where to
- * act and records nothing. Sealed again by a re-seal after an opening, the card says the engine's
+ * is posted again, so the chain is walked press by press. An exit with no decision records
+ * nothing: one that names the card it opens (`target`, record/target.ts) is, where the shell opens
+ * cards, a press that opens it (G12; a noticing kept to act on, its own line; the triage, Results);
+ * any other says where to act. Sealed again by a re-seal after an opening, the card says the engine's
  * note on the first opening's result in place of that opening's claims.
  *
  * The press itself is the card column's one primary action, "Open the held-out rows", drawn at the
@@ -169,6 +172,7 @@ export function SealCard({
   const decide = useDecide(pid);
   const qc = useQueryClient();
   const slot = useContext(FootSlot);
+  const opener = useOpenTarget();
   const [attempt, setAttempt] = useState<Decision>(OPEN);
   const [refused, setRefused] = useState<Refusal | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -274,15 +278,36 @@ export function SealCard({
             <Rich text={`Not opened: ${refused.error.message}`} />
           </p>
           <div className={seal.conExits}>
-            {refused.error.exits.map((x) =>
-              x.decision ? (
+            {refused.error.exits.map((x) => {
+              if (x.decision)
+                return (
+                  <button
+                    key={x.label}
+                    type="button"
+                    className={seal.conAttest}
+                    disabled={!!busy}
+                    onClick={() => void take(x.decision as Decision)}
+                    data-testid="results-open-exit"
+                  >
+                    <Rich text={x.label} />
+                  </button>
+                );
+              // One that names no decision but the card it opens opens it (G12), and the note
+              // closes; one that names none says where to act.
+              const open = opener(x);
+              const to = open ? targetOf(x) : null;
+              return open && to ? (
                 <button
                   key={x.label}
                   type="button"
-                  className={seal.conAttest}
-                  disabled={!!busy}
-                  onClick={() => void take(x.decision as Decision)}
-                  data-testid="results-open-exit"
+                  className={k.linkish}
+                  data-kit
+                  onClick={() => {
+                    setRefused(null);
+                    open();
+                  }}
+                  data-testid="results-open-to"
+                  data-target={targetName(to)}
                 >
                   <Rich text={x.label} />
                 </button>
@@ -290,8 +315,8 @@ export function SealCard({
                 <span key={x.label} className={s.exitNote} data-testid="results-open-where">
                   <Rich text={x.label} />
                 </span>
-              ),
-            )}
+              );
+            })}
           </div>
         </div>
       ) : failed ? (

@@ -25,6 +25,7 @@ import { api, RefusalError } from "../../../api/client";
 import type { UsualIntakeArtifact } from "../../../api/m3-types";
 import { keys } from "../../../api/queries";
 import type { Decision, ProjectView, QuestLine, Refusal } from "../../../api/schema";
+import { OpenCard, type ExitTarget } from "../../../components/record/target";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../../mocks/m3";
 import { StageFocusProvider } from "../../../state/focus";
 import { CONTRACT } from "../../fixtures/contract";
@@ -249,6 +250,8 @@ function mount(
     /** The view's records (the line's own among them, by its id). */
     decisions?: { id: string; decision: Decision }[];
     line?: Partial<QuestLine>;
+    /** The quest shell's card opener (QuestScreen's OpenCard), where the card is drawn in it. */
+    open?: (target: ExitTarget) => void;
   } = {},
 ) {
   const at = served();
@@ -270,11 +273,10 @@ function mount(
   vi.spyOn(api, "preview").mockImplementation(() => new Promise(() => {}));
   const Card = DECLARATION_CARDS[KIND];
   if (!Card) throw new Error(`no card for ${KIND}`);
+  const card = <Card pid={PID} line={lineOf(opts.line)} />;
   render(
     <QueryClientProvider client={qc}>
-      <StageFocusProvider>
-        <Card pid={PID} line={lineOf(opts.line)} />
-      </StageFocusProvider>
+      <StageFocusProvider>{opts.open ? <OpenCard.Provider value={opts.open}>{card}</OpenCard.Provider> : card}</StageFocusProvider>
     </QueryClientProvider>,
   );
   return { decide, qc, ...at };
@@ -733,6 +735,59 @@ describe("the usual-intake card, where the stage refuses the analysis of an answ
     const refused = screen.getByTestId("usual-intake-refused");
     expect(refused).toHaveTextContent(ask.label);
     expect(within(refused).getAllByTestId("usual-intake-refused-exit").map((e) => e.textContent)).toEqual([leaveOut.label]);
+  });
+
+  /**
+   * DE3 (b1-decision-exits; G12, the owner's Q3: no dead end): a way forward that names no decision
+   * but the card it opens, as core/stages/usual_intake.py serves the survey question's while it is
+   * unanswered (`{label, decision: None, target: toward("survey")}`, which the engine resolves to
+   * Who's in's survey line), is a press that opens that card in the quest shell, and words where it
+   * names no card or no shell opens cards.
+   */
+  describe("a way forward that names the card it opens (DE3)", () => {
+    const AT_SURVEY = { stage: "whos_in", key: "survey" };
+    function surveyUnanswered(open?: (target: ExitTarget) => void, target: typeof AT_SURVEY | null = AT_SURVEY) {
+      const at = served();
+      const nutrient = at.offer.candidates[0]!.column;
+      const ask = { label: "Answer the survey question: the surveyed population, or these participants", decision: null, ...(target ? { target } : {}) };
+      const sample = { label: "Estimate for these participants instead: record the sample-only attestation", decision: { kind: "set_survey", estimand: "sample" } };
+      const why = "Survey design columns are in this table, and whether the usual-intake distribution describes the surveyed population or these participants is not answered, so no distribution is estimated.";
+      mount({
+        artifact: {
+          ...at.artifact,
+          analyses: [
+            analysisOf({ nutrient, model: "amount_only", applies: false, refused: why, exits: [ask, sample], methods: `No usual-intake distribution was estimated for \`${nutrient}\`: ${why}` }),
+          ],
+        },
+        answers: { [nutrient]: { model: "amount_only" } },
+        decisions: [{ id: "r9", decision: { kind: KIND, nutrient, model: "amount_only" } as unknown as Decision }],
+        line: { status: "answered", decision_id: "r9" },
+        ...(open ? { open } : {}),
+      });
+      return { refused: screen.getByTestId("usual-intake-refused"), ask, sample };
+    }
+
+    it("is a press that opens that card, beside the decision's press, and not a sentence", () => {
+      const open = vi.fn();
+      const { refused, ask, sample } = surveyUnanswered(open);
+      const to = within(refused).getByTestId("usual-intake-refused-to");
+      expect(to).toHaveTextContent(ask.label);
+      expect(to).toHaveAttribute("data-target", "whos_in:survey");
+      expect(refused.querySelector("p")).not.toHaveTextContent(ask.label);
+      expect(within(refused).getAllByTestId("usual-intake-refused-exit").map((e) => e.textContent)).toEqual([sample.label]);
+      fireEvent.click(to);
+      expect(open).toHaveBeenCalledWith(AT_SURVEY);
+    });
+
+    it("is said in words where no shell opens cards, or where it names no card", () => {
+      const first = surveyUnanswered();
+      expect(within(first.refused).queryByTestId("usual-intake-refused-to")).toBeNull();
+      expect(first.refused.querySelector("p")).toHaveTextContent(first.ask.label);
+      cleanup();
+      const second = surveyUnanswered(vi.fn(), null);
+      expect(within(second.refused).queryByTestId("usual-intake-refused-to")).toBeNull();
+      expect(second.refused.querySelector("p")).toHaveTextContent(second.ask.label);
+    });
   });
 
   it("answers a way forward the engine refuses in its words, at the refusal", async () => {

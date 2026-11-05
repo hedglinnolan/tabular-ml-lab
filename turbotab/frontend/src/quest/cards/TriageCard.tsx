@@ -11,7 +11,7 @@
 import { useState } from "react";
 import { isRefusalError } from "../../api/client";
 import { useConfirmSweep } from "../../api/queries";
-import type { Refusal, SweepStage, Triage, TriageItem } from "../../api/schema";
+import type { ConfirmSweepInput, Refusal, SweepStage, Triage, TriageItem } from "../../api/schema";
 import r from "../../components/stage/results/results.module.css";
 import { Rich } from "../../components/stage/text";
 import s from "../results/results.module.css";
@@ -53,10 +53,26 @@ function saysLimitation(item: TriageItem): boolean {
 }
 
 /**
+ * The decision that records `item`, a noticing recorded "act on it", as a limitation instead: that
+ * one line of the triage's own confirmation set to "could bias the estimate", at the gate's stage,
+ * as the gate's refusal offers it while the noticing is not acted on ("Record as a limitation: …":
+ * core/fit_press.py `triage_refusal` under Estimate, core/seal.py under Predict). The engine
+ * confirms each other noticing as recorded while that stands (core/sweep.py `_confirm_the_triage`).
+ */
+function asLimitation(triage: Triage, item: TriageItem): Omit<ConfirmSweepInput, "kind"> {
+  return { stage: triage.stage as SweepStage, sweep: "noticings", lines: [{ id: item.line, key: item.id, value: "could_bias" }] };
+}
+
+/**
  * The noticings the gate waits for (`GET /triage`, ruling 4): each with the engine's recommended
  * disposition and its reason, and, where one is owed and the reason does not say so, that a
  * limitation sentence is; a blocker is decided on its own first. "Confirm all" records each as listed (`confirm_sweep`, the gate's
- * stage, sweep "noticings"). Once the gate has passed (`passed`: under Predict the held-out rows
+ * stage, sweep "noticings"). A noticing recorded "act on it" holds the gate until it is acted on
+ * where it is decided, or its disposition is changed (the owner's Q8): before the gate passes its
+ * line offers "Record as a limitation", which records that change (`asLimitation`), the decision
+ * the gate's refusal names, whose way forward opens this card (FOUNDATION §1: the card is the one
+ * place a choice is recorded); its line then reads as recorded so, and offers it no more.
+ * Once the gate has passed (`passed`: under Predict the held-out rows
  * are open, under Estimate the plan is fixed) the card is read, not confirmed, and its heading says
  * so in the past: settled only where no noticing is open and none recorded "act on it" is still
  * listed, since one acted on drops out (core/sweep.py `triage`); under Predict the opening refuses
@@ -84,13 +100,11 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
   const settled = triage.passed && open === 0 && toAct === 0;
   const unsettled = [open ? `${open} open` : "", toAct ? `${toAct} still to act on` : ""].filter(Boolean).join(" and ");
   const counted = items.length === 1 ? "1 noticing" : `${items.length} noticings`;
-  const press = () => {
+  /** Record the triage: every noticing as listed (Confirm all, no lines), or one line set. */
+  const press = (sweep: Omit<ConfirmSweepInput, "kind"> = { stage: triage.stage as SweepStage, sweep: "noticings", lines: [] }) => {
     setRefused(null);
     setFailed(null);
-    confirm.mutate(
-      { stage: triage.stage as SweepStage, sweep: "noticings", lines: [] },
-      { onError: (e) => (isRefusalError(e) ? setRefused(e.refusal) : setFailed(e.message)) },
-    );
+    confirm.mutate(sweep, { onError: (e) => (isRefusalError(e) ? setRefused(e.refusal) : setFailed(e.message)) });
   };
   return (
     <section className={r.section} id={id} tabIndex={-1} aria-labelledby={`${id}-h`} data-testid="results-triage" data-purpose="triage">
@@ -117,6 +131,17 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
               {i.blocker ? "Resolve first · " : ""}
               {i.recorded && i.recorded !== i.recommended ? `Recommended: ${i.label} · recorded ${RECORDED[i.recorded]}` : i.label}
               {i.recorded && i.recorded === i.recommended ? " · recorded" : ""}
+              {i.recorded === "act_on_it" && !triage.passed ? (
+                <button
+                  type="button"
+                  className={r.linkButton}
+                  onClick={() => press(asLimitation(triage, i))}
+                  disabled={confirm.isPending || !triage.confirmable}
+                  data-testid="triage-as-limitation"
+                >
+                  Record as a limitation
+                </button>
+              ) : null}
             </span>
             <span className={s.itemReason}>
               <Rich text={i.reason} />
@@ -135,7 +160,7 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
         </p>
       ) : !triage.passed && !triage.answered ? (
         <div className={r.bandRow}>
-          <button type="button" className={r.bandButton} onClick={press} disabled={confirm.isPending || !triage.confirmable} data-testid="triage-confirm">
+          <button type="button" className={r.bandButton} onClick={() => press()} disabled={confirm.isPending || !triage.confirmable} data-testid="triage-confirm">
             {confirm.isPending ? "Recording…" : `Confirm all ${items.length}`}
           </button>
           {blockers > 0 ? (
