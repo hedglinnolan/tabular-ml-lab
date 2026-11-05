@@ -21,6 +21,13 @@ recommended).
 * It names each noticing where no summary can be misread: one after a colon, several each in a
   numbered sentence of its own, with its recommended disposition in a sentence after it, so a
   summary's own semicolon and a label's own parentheses stay inside their noticing.
+* Each way forward names the card it opens (``target``, G12; the owner's Q3, 2026-11-04: no dead
+  end): the triage in its stage, a blocking noticing's own line, a noticing kept to act on at the
+  question it routes to, else at its own line where the quest log serves one (a finding's), else in
+  its stage; and "Record as a limitation", a decision, the triage's card, which records it (the
+  tapestry, where Fit sits, records nothing: FOUNDATION §1). "Keep the recommended dispositions"
+  names none: the triage's way forward beside it opens the same card. Built by the engine's own
+  triage, each target names a stage and a line the quest log serves.
 * The reference journeys' export, pressing Fit again where it waits for the lock, takes its way
   forward "Keep the recommended dispositions" as a person pressing Confirm all does, recorded as
   that way forward's, and presses again, and so on through each refusal that offers a way forward
@@ -42,6 +49,9 @@ CONFIRM = parse_decision({"kind": "confirm_sweep", "stage": "models", "sweep": "
                           "lines": []}).model_dump(mode="json")
 LEAD = ("Fit waits: pressing it locks the analysis plan, and the open noticings are triaged before "
         "the plan is locked.")
+# The card the triage is drawn on: its gate's stage (each triage here is Models', as the engine's
+# is under Estimate), on its open line, as the quest log keys a stage (``exit_target.toward``).
+AT_TRIAGE = {"stage": "models", "key": None}
 
 
 def item(fid: str, summary: str, recommended: str = "no_change", *, blocker: bool = False,
@@ -71,7 +81,8 @@ def test_one_noticing_with_no_recorded_disposition_holds_fit_with_the_triage_as_
         f"{LEAD} 1 noticing is still open: `gender` is two-level text (`female`, `male`). "
         f"Recommended: doesn't change your numbers here. Triage it in Models first, so it is "
         f"decided before any estimate is seen.")
-    assert refused.exits == [{"label": "Triage the open noticings in Models", "decision": None},
+    assert refused.exits == [{"label": "Triage the open noticings in Models", "decision": None,
+                              "target": AT_TRIAGE},
                              {"label": "Keep the recommended dispositions", "decision": CONFIRM}]
 
 
@@ -118,7 +129,9 @@ def test_a_blocking_noticing_is_decided_on_its_own_before_the_rest_are_triaged()
         item("binary_text__gender", "`gender` is two-level text")))
     assert refused is not None and refused.code == "triage_open"
     assert refused.message == f"{LEAD} 1 noticing must be resolved first: `glucose` takes one value."
-    assert refused.exits == [{"label": "Decide: `glucose` takes one value", "decision": None}]
+    # It is decided on its own line, in the stage that serves it (`item`'s stage, Models).
+    assert refused.exits == [{"label": "Decide: `glucose` takes one value", "decision": None,
+                              "target": {"stage": "models", "key": "outcome_constant"}}]
     two = fit_press.triage_refusal(triage(item("a", "A.", blocker=True),
                                           item("b", "B", blocker=True, recorded="no_change")))
     assert two.message == f"{LEAD} 2 noticings must be resolved first. (1) A. (2) B."
@@ -152,7 +165,9 @@ def test_a_noticing_kept_to_act_on_and_not_acted_on_holds_fit_with_where_and_a_c
     listed, so it is not acted on (a noticing acted on drops out of the triage: ``sweep.triage``).
     The refusal names it, says where it is acted on (its stage, Your data), and offers changing its
     disposition, recorded as a limitation (the triage's own confirmation of that one line, "could
-    bias the estimate"); the other noticing's disposition is untouched."""
+    bias the estimate"); the other noticing's disposition is untouched. Acting on it opens its own
+    line in Your data, a finding's, where its repair is chosen; recording it as a limitation opens
+    the triage's card, which records that decision."""
     refused = fit_press.triage_refusal(triage(
         item("binary_text__gender", "`gender` is two-level text", recorded="no_change"),
         item("sas_zeros", SAS, "act_on_it", recorded="act_on_it", stage="data")))
@@ -162,10 +177,12 @@ def test_a_noticing_kept_to_act_on_and_not_acted_on_holds_fit_with_where_and_a_c
         f"it is decided, or change its disposition by recording it as a limitation, before any "
         f"estimate is seen.")
     assert refused.exits == [
-        {"label": f"Act on it in Your data: {SAS}", "decision": None},
+        {"label": f"Act on it in Your data: {SAS}", "decision": None,
+         "target": {"stage": "data", "key": "sas_zeros"}},
         {"label": f"Record as a limitation: {SAS}",
          "decision": keeping({"id": "finding:sas_zeros", "key": "sas_zeros",
-                              "value": "could_bias"})}]
+                              "value": "could_bias"}),
+         "target": AT_TRIAGE}]
 
 
 def test_several_kept_to_act_on_are_each_named_with_the_question_or_stage_that_acts_on_it():
@@ -191,6 +208,31 @@ def test_several_kept_to_act_on_are_each_named_with_the_question_or_stage_that_a
         None, keeping({"id": "finding:sas_zeros", "key": "sas_zeros", "value": "could_bias"}),
         None, keeping({"id": "finding:pack::dietary::implausible_intake",
                        "key": "pack::dietary::implausible_intake", "value": "could_bias"})]
+    # The one routed to a question opens that question's line in its stage, as its label says;
+    # the other its own line; each "Record as a limitation" the triage's card.
+    assert [e["target"] for e in refused.exits] == [
+        {"stage": "data", "key": "sas_zeros"}, AT_TRIAGE,
+        {"stage": "whos_in", "key": "exclusions"}, AT_TRIAGE]
+
+
+def test_a_measured_noticing_kept_to_act_on_opens_its_stage_where_no_line_of_its_own_is_served():
+    """Both ways for where acting on it opens: a measured noticing (``sweep._noticing_item``: its
+    line ``noticing:<thread>``) is no line of the quest log, so with no question to route to its
+    way forward opens its stage on its open line, not a line the log does not serve; one whose
+    stage the log does not name opens nothing, and says so in words."""
+    measured = TriageItem(id="diet-day-to-day-variance", line="noticing:diet-day-to-day-variance",
+                          stage="models", summary="Part of `sugar`'s spread is day-to-day noise",
+                          severity="noticing", recommended="act_on_it", label=LABELS["act_on_it"],
+                          reason="the reason", blocker=False, recorded="act_on_it",
+                          family="K3")
+    act, change = fit_press.triage_refusal(triage(measured)).exits
+    assert act["label"] == f"Act on it in Models: {measured.summary}"
+    assert act["target"] == {"stage": "models", "key": None}
+    assert change["target"] == AT_TRIAGE
+    nowhere = item("sas_zeros", SAS, "act_on_it", recorded="act_on_it", stage="nowhere")
+    act, change = fit_press.triage_refusal(triage(nowhere)).exits
+    assert act == {"label": f"Act on it where it is decided: {SAS}", "decision": None}
+    assert change["target"] == AT_TRIAGE
 
 
 def test_a_noticing_still_open_speaks_before_one_kept_to_act_on():
@@ -257,7 +299,13 @@ def test_built_by_the_engine_a_kept_act_on_it_holds_fit_until_its_disposition_is
     assert "1 noticing marked \"act on it\" is not acted on yet: Age is written as text." \
         in refused.message
     act, change = refused.exits
-    assert act == {"label": "Act on it in Your data: Age is written as text", "decision": None}
+    assert act == {"label": "Act on it in Your data: Age is written as text", "decision": None,
+                   "target": {"stage": "data", "key": "binary_text__age"}}
+    # Each target names a card the engine's own quest log serves: the noticing's line in Your
+    # data, and the stage the triage is drawn in (its gate, Models, before the lock).
+    served = {s.key: {l.key for l in s.lines} for s in log.stages}
+    assert "binary_text__age" in served[act["target"]["stage"]]
+    assert change["target"] == {"stage": kept.stage, "key": None} and kept.stage in served
     records.append(confirmed(log, kept, change["decision"], 2))
     _log, changed = estimating(findings, records)
     assert {i.id: i.recorded for i in changed.items} == {

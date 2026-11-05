@@ -163,7 +163,10 @@ def test_under_estimate_fit_waits_for_the_open_noticings_triage_and_locks_once_i
         f"Fit waits: pressing it locks the analysis plan, and the open noticings are triaged "
         f"before the plan is locked. {listed} Triage {'it' if n == 1 else 'them'} in Models "
         f"first, so {'it is' if n == 1 else 'each is'} decided before any estimate is seen.")
-    assert error["exits"] == [{"label": "Triage the open noticings in Models", "decision": None},
+    # The triage's way forward opens the card it is drawn on, Models (G12); the decision beside it
+    # is that card's Confirm all.
+    assert error["exits"] == [{"label": "Triage the open noticings in Models", "decision": None,
+                               "target": {"stage": "models", "key": None}},
                               {"label": "Keep the recommended dispositions", "decision": CONFIRM}]
     nothing_pressed_or_locked(client, pid, before)
     assert client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]["withheld_for"] == "fit"
@@ -195,8 +198,17 @@ def test_under_estimate_fit_waits_for_the_open_noticings_triage_and_locks_once_i
     change = parse_decision({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings",
                              "lines": [{"id": to_act["line"], "key": "sas_zeros",
                                         "value": "could_bias"}]}).model_dump(mode="json")
-    assert error["exits"] == [{"label": f"Act on it in Your data: {summary}", "decision": None},
-                              {"label": f"Record as a limitation: {summary}", "decision": change}]
+    # Acting on it opens its own line in Your data, the finding's, as the quest log serves it;
+    # recording it as a limitation opens the triage's card, which records that same decision.
+    at = {"stage": to_act["stage"], "key": "sas_zeros"}
+    assert to_act["line"] == "finding:sas_zeros"
+    served = client.get(f"/api/projects/{pid}/quest").json()
+    assert "sas_zeros" in {l["key"] for s in served["stages"] if s["key"] == at["stage"]
+                           for l in s["lines"]}
+    assert error["exits"] == [{"label": f"Act on it in Your data: {summary}", "decision": None,
+                               "target": at},
+                              {"label": f"Record as a limitation: {summary}", "decision": change,
+                               "target": {"stage": "models", "key": None}}]
     nothing_pressed_or_locked(client, pid, before)
 
     # Its disposition changed by that way forward: recorded as could bias the estimate, every other
