@@ -1,0 +1,15 @@
+/*
+ * The plan's check of the exposure's shape beside Table 2 (check.tsx). Its caption reads as the
+ * diagnostics' readings beside it do (results.module.css `itemSummary`); the curve is the curve
+ * view's own (components/views/CurveView.tsx). Tokens only.
+ */
+
+.caption {
+  margin: 0 0 10px;
+  max-width: 72ch;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
