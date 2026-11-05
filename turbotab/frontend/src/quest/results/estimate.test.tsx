@@ -33,6 +33,7 @@ import diet from "../../mocks/fixtures/m3-dietary-recalls.json";
 import survey from "../../mocks/fixtures/m3-survey-design.json";
 import { lockOf } from "./estimate";
 import capture from "./fixtures/cox-estimate.json";
+import shapes from "./fixtures/estimate-check.json";
 import sequences from "./fixtures/estimate-sequences.json";
 import terms from "./fixtures/estimate-terms.json";
 import predict from "./fixtures/nhanes-predict.json";
@@ -392,6 +393,50 @@ describe("the diagnostics beside Table 2", () => {
     expect(within(item).getByText(unticked(d.reading))).toBeTruthy();
     expect(item.textContent).not.toContain("No response is recorded yet.");
     expect(item.querySelector("ul")).toBeNull();
+  });
+});
+
+// ── the plan's check of the exposure's shape beside Table 2 (b1-results-check) ──
+
+/** The engine's effects where the plan sets a check of the exposure's shape (fixtures/
+ *  estimate-check.json, written by fixtures/capture_check.py from the engine test's own
+ *  constructions; check.test.tsx reads each drawn number against statsmodels): a straight line
+ *  kept, a spline kept, the line's check refused under multiple imputation, and no form declared,
+ *  so no check. */
+const SHAPES = shapes as unknown as Record<"line" | "spline" | "refused" | "none", { artifact: EffectsArtifact }>;
+
+describe("the plan's check of the shape beside Table 2", () => {
+  it.each(["line", "spline", "refused"] as const)("draws the %s check after its family's Table 2 and before its diagnostics, in the engine's caption", async (name) => {
+    const art = SHAPES[name].artifact;
+    const check = art.families[0]!.check!;
+    const view = await estimateView(servedAt(art));
+    const section = within(view).getByTestId("results-form-check");
+    expect(section.dataset).toMatchObject({ family: art.families[0]!.family, shape: check.shape, kept: check.kept });
+    expect(within(section).getByTestId("results-form-check-caption").textContent).toBe(unticked(check.caption));
+    // Beside Table 2: the exhibit after it, the diagnostics after the check.
+    expect(within(view).getByTestId("results-table2").nextElementSibling).toBe(section);
+    expect(section.nextElementSibling).toBe(within(view).getByTestId("results-diagnostics"));
+    // A curve only where a straight line is kept and its check is made.
+    expect(!!section.querySelector("svg")).toBe(name === "line");
+  });
+
+  it("draws no check where the family has none: no form declared, or an artifact served before the check was", async () => {
+    for (const s of [servedAt(SHAPES.none.artifact), C.locked]) {
+      expect(effectsOf(s).families[0]!.check ?? null).toBeNull();
+      const view = await estimateView(s);
+      expect(within(view).getByTestId("results-table2")).toBeTruthy();
+      expect(within(view).queryByTestId("results-form-check")).toBeNull();
+      expect(view.textContent).not.toContain("The plan's check");
+      cleanup();
+    }
+  });
+
+  it("is gated with the estimate: before the lock, neither its caption nor its curve", async () => {
+    const view = await estimateView({ ...servedAt(SHAPES.line.artifact), quest: C.before.quest });
+    expect(within(view).queryByTestId("results-table2")).toBeNull();
+    expect(within(view).queryByTestId("results-form-check")).toBeNull();
+    expect(view.querySelector("svg")).toBeNull();
+    expect(view.textContent).not.toContain("The plan's check");
   });
 });
 

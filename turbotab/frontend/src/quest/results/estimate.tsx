@@ -25,7 +25,9 @@
  *      what every row it marks is adjusted for, the members beside a row's own as the other study
  *      factor, said last (`asTable2`, `footnoted`); where the rows carry Benjamini–Hochberg
  *      q-values beside the family's multiplicity sentence (each member tested in its own model),
- *      a q column follows P (`qsOf`, `withQ`);
+ *      a q column follows P (`qsOf`, `withQ`); after it, where the plan sets one, the plan's check
+ *      of the exposure's shape beside Model 2 as the effects stage serves it (check.tsx
+ *      `ShapeCheck`: the engine's caption, and the spline's curve against a straight line kept);
  *   3. beside it the primary model's diagnostics in the engine's words: a failed check's ways
  *      forward are named, never pressed, and a recorded response is said as its record words it,
  *      with the estimates the engine serves for it;
@@ -52,6 +54,7 @@ import { TableWithForest } from "../../components/views/Forest";
 import { fmtEstimate } from "../../components/views/format";
 import type { TableData } from "../../components/views/types";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
+import { ShapeCheck } from "./check";
 import { Mattered } from "./mattered";
 import s from "./results.module.css";
 
@@ -386,6 +389,7 @@ function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; 
           <OneLine view="table" title={table.number} text={<span className={s.items}>{said}</span>} />
         )}
       </section>
+      <ShapeCheck check={fam.check} family={fam.family} />
       {diagnostics}
     </div>
   );
