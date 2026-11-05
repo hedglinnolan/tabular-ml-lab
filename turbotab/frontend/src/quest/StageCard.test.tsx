@@ -1055,6 +1055,7 @@ describe("a line a change reopened says which change (G20)", () => {
           kind: "revert",
           questions: ["q:study-design"],
           results: [],
+          added: [],
           within: true,
           sentence: "Your change to another answer in Your question reopened 1 question.",
         },
