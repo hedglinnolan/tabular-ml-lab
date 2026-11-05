@@ -71,8 +71,9 @@ function asLimitation(triage: Triage, item: TriageItem): Omit<ConfirmSweepInput,
  * where it is decided, or its disposition is changed (the owner's Q8): before the gate passes,
  * once every noticing's disposition is recorded and none blocks, its line offers "Record as a
  * limitation", which records that change (`asLimitation`), the decision the gate's refusal names
- * then, whose way forward opens this card (FOUNDATION §1: the card is the one place a choice is
- * recorded); its line then reads as recorded so, and offers it no more.
+ * then, whose way forward opens this card on that line, which it focuses (StageCard; FOUNDATION §1:
+ * the card is the one place a choice is recorded); its line then reads as recorded so, and offers
+ * it no more.
  * Once the gate has passed (`passed`: under Predict the held-out rows
  * are open, under Estimate the plan is fixed) the card is read, not confirmed, and its heading says
  * so in the past: settled only where no noticing is open and none recorded "act on it" is still
@@ -130,7 +131,8 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
       </header>
       <ul className={s.items}>
         {items.map((i) => (
-          <li key={i.id} className={s.item} data-item={i.id} data-blocker={i.blocker || undefined}>
+          // Focusable, not tabbable: a request that names the noticing on the triage focuses its line (StageCard).
+          <li key={i.id} className={s.item} data-item={i.id} data-blocker={i.blocker || undefined} tabIndex={-1}>
             <span className={s.itemSummary}>
               <Rich text={i.summary} />
             </span>

@@ -7,10 +7,12 @@
  * beneath Fit as the shell's stage says a refusal (StageRefusal's `useBesideCard`), and so is a
  * press of Fit the engine refused (`refusedPress`): no way forward is a press that records, since
  * in the quest shell a choice is recorded on the card. One that names the card it opens is a press
- * that opens it, a decision's included, which opens the card that records it (the owner's Q3: no
- * dead end); a decision that names no card is not said, and any other way forward is said in
- * words. A press's refusal is said while what it answered stands (`PressedOn`), and not again where
- * it is the fit's own.
+ * that opens it, and so is a decision, which opens the card that records it (the owner's Q3: no
+ * dead end): the card it names, else the one the quest log places its kind on (a missing-values
+ * answer's, Who's in), unless that is Models, the card Fit is drawn beside, which offers it; a
+ * decision that opens no card is not said, and any other way forward is said in words. A press's
+ * refusal is said while what it answered stands (`PressedOn`), and not again where it is the fit's
+ * own.
  */
 import { Fragment, useState } from "react";
 import { isRefusalError } from "../api/client";
@@ -18,7 +20,7 @@ import { useCancelFit, useJobs, usePressFit, useProjectView } from "../api/queri
 import type { DecisionRecord, QuestLog, Refusal, StageStatus } from "../api/schema";
 import { stageLabel } from "../components/JobChips";
 import { targetName } from "../components/record/target";
-import { finish, refusalOf, useBesideCard, type StageRefused } from "../components/StageRefusal";
+import { finish, refusalOf, useBesideCard, type Placing, type StageRefused } from "../components/StageRefusal";
 import { Plain, kit as k } from "../kit";
 import { fitPosition } from "./log";
 import q from "./quest.module.css";
@@ -42,6 +44,8 @@ export function FitControl({
   const stands = pressedOn !== null && pressedOn.decisions === decisions && pressedOn.refused === refused;
   const pressRefused = press.error && isRefusalError(press.error) && stands ? refusedPress(press.error.refusal, refused) : null;
   const pressSaid = press.error && !isRefusalError(press.error) ? press.error.message : null;
+  // Fit is drawn beside the Models card, which offers its own decisions (Tapestry: only while Models is shown).
+  const placing: Placing = { log, decisions, beside: "models" };
   const said = pressRefused
     ? null
     : (pressSaid ??
@@ -67,8 +71,8 @@ export function FitControl({
             <Plain text={log.fit.reason} />
           </p>
         ) : null}
-        {refused ? <FitRefusal refusal={refused} /> : null}
-        {pressRefused ? <Beside refusal={pressRefused} /> : null}
+        {refused ? <FitRefusal refusal={refused} placing={placing} /> : null}
+        {pressRefused ? <Beside refusal={pressRefused} placing={placing} /> : null}
         {said ? (
           <p className={q.fitReason} role="alert">
             <Plain text={said} />
@@ -108,7 +112,7 @@ export function FitControl({
         >
           Cancel
         </button>
-        {pressRefused ? <Beside refusal={pressRefused} /> : null}
+        {pressRefused ? <Beside refusal={pressRefused} placing={placing} /> : null}
         {said ? (
           <p className={q.fitReason} role="alert">
             <Plain text={said} />
@@ -139,11 +143,12 @@ interface PressedOn {
  *  where it is the fit's own: a press refused with the refusal the fit's status serves (`shown`),
  *  its code and words the same, is not said again, since `FitRefusal` says it. Under Estimate and
  *  Describe the open noticings' triage holds the press (core/fit_press.py `triage_refusal`): until
- *  it is confirmed, its way forward to the triage opens the card it is drawn on (Models, at its
- *  end), and its "Keep the recommended dispositions", a decision that names no card, is that
- *  card's Confirm all, not said here; while a noticing kept to act on is not acted on, its way
- *  forward to where it is acted on opens that card, and its "Record as a limitation", a decision,
- *  opens the triage's card, which records it (TriageCard). */
+ *  it is confirmed, its way forward to the triage opens Models, whose card then brings the triage
+ *  into view at its end (StageCard), and its "Keep the recommended dispositions", a decision that
+ *  opens no card (a sweep's confirmation is placed on none by its kind), is that triage's Confirm
+ *  all, not said here; while a noticing kept to act on is not acted on, its way forward to where it
+ *  is acted on opens that card, and its "Record as a limitation", a decision, opens the triage on
+ *  that noticing's line, which records it (TriageCard; StageRefusal's `cardOf`). */
 function refusedPress(refusal: Refusal, shown: StageRefused | null): StageRefused | null {
   if (shown && shown.code === refusal.error.code && shown.message === refusal.error.message) return null;
   return { stage: "fit", ...refusal.error };
@@ -151,20 +156,21 @@ function refusedPress(refusal: Refusal, shown: StageRefused | null): StageRefuse
 
 /** The fit's refusal beneath Fit, as Fit's other lines are said there (`Beside`), its words always
  *  ending with their stop. */
-function FitRefusal({ refusal }: { refusal: StageRefused }) {
-  return <Beside refusal={refusal} testId="fit-refusal" finished />;
+function FitRefusal({ refusal, placing }: { refusal: StageRefused; placing: Placing }) {
+  return <Beside refusal={refusal} placing={placing} testId="fit-refusal" finished />;
 }
 
 /** A refusal beneath Fit: "<the refusal's words> <each way forward said in words>", then a press
  *  for each way forward that opens a card. Fit sits in the tapestry, which records nothing
  *  (FOUNDATION §1: the card is the one place a choice is recorded; Stage's `recordHere`), so the
  *  refusal is said as the card leaves it (StageRefusal's `useBesideCard`): no press records; one
- *  that names the card it opens opens it where the shell opens cards, a decision's the card that
- *  records it; a decision that names no card is the card's to offer, and its label names a choice,
- *  which said as a sentence would read as a fact. The words end with their stop wherever something
- *  follows them, and always with `finished`; otherwise they are the refusal's as served. */
-function Beside({ refusal, testId, finished = false }: { refusal: StageRefused; testId?: string; finished?: boolean }) {
-  const { message, said, to } = useBesideCard(refusal);
+ *  that names the card it opens opens it where the shell opens cards, and a decision the card that
+ *  records it, by `placing`; a decision that opens no card is a card's to offer, and its label
+ *  names a choice, which said as a sentence would read as a fact. The words end with their stop
+ *  wherever something follows them, and always with `finished`; otherwise they are the refusal's as
+ *  served. */
+function Beside({ refusal, placing, testId, finished = false }: { refusal: StageRefused; placing: Placing; testId?: string; finished?: boolean }) {
+  const { message, said, to } = useBesideCard(refusal, placing);
   return (
     <p
       className={q.fitReason}

@@ -416,12 +416,14 @@ def triage_refusal(t: Any) -> Any:
     locked).
 
     Each way forward names the card it opens (``target``, G12; the owner's Q3, 2026-11-04: no dead
-    end), since Fit sits in the tapestry, which records nothing (calm/FOUNDATION §1): the triage in
-    its stage, on its open line; where a blocking noticing is decided, and where a noticing kept to
-    act on is acted on (:func:`_decided_target`: the question it routes to, else its own line where
-    the quest log serves one, else its stage); and "Record as a limitation", a decision, the
-    triage's card, which offers that same decision on the noticing's line. "Keep the recommended
-    dispositions" names none: the triage's way forward beside it opens the same card."""
+    end), since Fit sits in the tapestry, which records nothing (calm/FOUNDATION §1): the triage's
+    stage, which the shell opens on the triage while it waits and no counted line there is open
+    (the quest log serves the triage as no line); where a blocking noticing is decided, and where a
+    noticing kept to act on is acted on (:func:`_decided_target`: the question it routes to, else
+    its own line where the quest log serves one, else its stage); and "Record as a limitation", a
+    decision, the triage's stage, where the shell opens the triage on that noticing's line, which
+    offers that same decision. "Keep the recommended dispositions" names none: the triage's way
+    forward beside it opens the same card."""
     from turbotab.core.decisions import Refusal
     from turbotab.core.exit_target import toward
     from turbotab.core.quest import STAGE_NAMES

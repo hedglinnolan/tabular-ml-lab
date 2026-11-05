@@ -28,7 +28,11 @@
  *
  * A stage opened by a request (the quest line, a "Waiting for" link, a noticing's lever, the foot's
  * link) brings the line it names, else its open line, into view and gives it focus (§1, the
- * five-second test).
+ * five-second test). A request can name the triage drawn on the card, on one noticing's line
+ * (record/target.ts `triageTarget`: Fit's "Record as a limitation", which the triage records); one
+ * that names the stage alone brings the triage into view while it waits for a disposition (a
+ * noticing open, or one kept to act on, which holds Fit) and no line of the stage that counts is
+ * open, since then it is what the stage waits for (Fit's "Triage the open noticings in Models").
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { isRefusalError } from "../api/client";
@@ -55,7 +59,7 @@ import type {
 import { Foot, Plain, foot as f, kit as k, plain } from "../kit";
 import { listJoin } from "../util/format";
 import { oneRoleAtATime } from "../components/record/besideAsk";
-import { targetName, targetOf as exitTarget, useOpenTarget } from "../components/record/target";
+import { targetName, targetOf as exitTarget, triageOf, useOpenTarget } from "../components/record/target";
 import { CardFor } from "./cards/CardFor";
 import { DECLARATION_CARDS, DECLARATION_DEFAULTS } from "./cards/predict";
 import { columnOf, recordable } from "./cards/renderers";
@@ -240,11 +244,27 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
   }
   const root = useRef<HTMLElement>(null);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  // Results, once reached, is W1-G's column whole: it draws every line of the stage itself.
+  const results = columnOf(stage) === "results";
+  // The triage of the open noticings, where the shell draws it outside Results' column: under
+  // Estimate, at Models' end (log.ts `triageStage`).
+  const triageHere = !results && stage.reached && triageStage(log) === stage.key;
+  const triage = useTriage(pid, triageHere).data;
+  // It waits while a noticing has no disposition recorded, or one recorded "act on it" is listed,
+  // which holds Fit (core/fit_press.py `triage_refusal`); never once its gate has passed.
+  const triageWaits =
+    triageHere && !!triage && triage.stage === stage.key && !triage.passed && triage.items.length > 0 &&
+    (!triage.answered || triage.items.some((i) => i.recorded === "act_on_it"));
   const requested = request?.n ?? null;
   useEffect(() => {
     if (requested === null || !root.current) return;
     const lines = [...root.current.querySelectorAll<HTMLElement>("[data-line]")];
-    const el = lines.find((x) => x.dataset.line === expanded) ?? root.current.querySelector<HTMLElement>("h2");
+    // The triage the request names, on its noticing's line; or, asked for the stage alone, the
+    // triage while it waits and no counted line is open.
+    const named = triageOf(request?.line ?? null) ?? (!request?.line && !open?.counted && triageWaits ? { noticing: null } : null);
+    const drawn = named ? root.current.querySelector<HTMLElement>('[data-testid="results-triage"]') : null;
+    const item = drawn && named?.noticing != null ? drawn.querySelector<HTMLElement>(`[data-item="${CSS.escape(named.noticing)}"]`) : null;
+    const el = item ?? drawn ?? lines.find((x) => x.dataset.line === expanded) ?? root.current.querySelector<HTMLElement>("h2");
     if (el) bringIntoView(el);
     // Only a request moves the screen; the expanded line changing as answers arrive does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -262,11 +282,6 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
     ...groups.Decide.filter((l) => !canAnswer(l) && !unavailableQuiet(l)),
   ];
   const drawHeld = drawWaitsForSweep(stage);
-  // Results, once reached, is W1-G's column whole: it draws every line of the stage itself.
-  const results = columnOf(stage) === "results";
-  // The triage of the open noticings, where the shell draws it outside Results' column: under
-  // Estimate, at Models' end (log.ts `triageStage`).
-  const triageHere = !results && stage.reached && triageStage(log) === stage.key;
   const back = !results && expanded !== openId ? () => setExpanded(openId) : null;
   const toggle = (l: QuestLine) => setExpanded((cur) => (cur === idOf(l) ? openId : idOf(l)));
   const line = (l: QuestLine, confirm = false) => (
