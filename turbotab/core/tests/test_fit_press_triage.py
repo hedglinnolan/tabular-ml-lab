@@ -22,9 +22,9 @@ recommended).
   numbered sentence of its own, with its recommended disposition in a sentence after it, so a
   summary's own semicolon and a label's own parentheses stay inside their noticing.
 * Each way forward names the card it opens (``target``, G12; the owner's Q3, 2026-11-04: no dead
-  end): the triage in its stage, a blocking noticing's own line, a noticing kept to act on at the
-  question it routes to, else at its own line where the quest log serves one (a finding's), else in
-  its stage; and "Record as a limitation", a decision, the triage's card, which records it (the
+  end): the triage in its stage; a blocking noticing, and one kept to act on, at the question it
+  routes to, else at its own line where the quest log serves one (a finding's), else in its stage;
+  and "Record as a limitation", a decision, the triage's card, which records it (the
   tapestry, where Fit sits, records nothing: FOUNDATION §1). "Keep the recommended dispositions"
   names none: the triage's way forward beside it opens the same card. Built by the engine's own
   triage, each target names a stage and a line the quest log serves.
@@ -136,6 +136,35 @@ def test_a_blocking_noticing_is_decided_on_its_own_before_the_rest_are_triaged()
                                           item("b", "B", blocker=True, recorded="no_change")))
     assert two.message == f"{LEAD} 2 noticings must be resolved first. (1) A. (2) B."
     assert [e["label"] for e in two.exits] == ["Decide: A.", "Decide: B"]
+
+
+def test_built_by_the_engine_a_measured_blocker_opens_the_question_it_is_decided_at():
+    """The other way for where a blocker is decided: a measured noticing (``sweep._noticing_item``:
+    its line ``noticing:<thread>``) is no line of the quest log, so its way forward opens the
+    question it routes to, a line the log serves, not a key the log does not hold. Built by the
+    engine, on the exact Atwater identity (kcal the sum of its parts: a blocker, decided at the
+    adjustment question; test_collinear_adjustment.py), the stage that serves that line is read
+    off the engine's own quest log."""
+    from turbotab.core import sweep
+    from turbotab.core.tests.test_collinear_adjustment import ADJUST, THREAD, noticing, state, table
+    from turbotab.core.tests.test_confirm_sweep import log_of
+
+    f = table(exact=True)
+    s = state(ADJUST)
+    log = log_of(s, findings={"findings": []}, columns=list(f.columns))
+    t = sweep.triage(s, log, {"findings": []}, noticed=[noticing(f)])
+    blocker = next(i for i in t.items if i.id == THREAD)
+    assert blocker.blocker and blocker.line == f"noticing:{THREAD}"
+    assert blocker.question == "adjustment"
+    served = {st.key: {line.key for line in st.lines} for st in log.stages}
+    assert all(THREAD not in keys for keys in served.values())
+    (at,) = [stage for stage, keys in served.items() if "adjustment" in keys]
+    refused = fit_press.triage_refusal(t)
+    assert refused is not None and refused.code == "triage_open"
+    (decide,) = refused.exits
+    assert decide["label"].startswith("Decide: ") and decide["decision"] is None
+    assert decide["target"] == {"stage": at, "key": "adjustment"}
+    assert decide["target"]["key"] in served[decide["target"]["stage"]]
 
 
 @pytest.mark.parametrize("recorded", ["no_change", "could_bias"])

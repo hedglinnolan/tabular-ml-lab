@@ -377,12 +377,12 @@ def _acted_at(i: Any) -> str:
     return f"in {stage}" if stage else "where it is decided"
 
 
-def _acted_target(i: Any) -> dict[str, Any] | None:
-    """The card where noticing ``i`` is acted on, as :func:`_acted_at` names it, for its way
-    forward's target (G12): the question it routes to; else its own line in its stage, where the
-    quest log serves it one (a finding's line, ``finding:<id>``, keyed by its id; a measured
-    noticing's is no line of the log, ``sweep._noticing_item``), else that stage on its open line;
-    None where its stage is none the log serves."""
+def _decided_target(i: Any) -> dict[str, Any] | None:
+    """The card where noticing ``i`` is decided or acted on, as :func:`_acted_at` names it, for its
+    way forward's target (G12), a blocker's included: the question it routes to; else its own line
+    in its stage, where the quest log serves it one (a finding's line, ``finding:<id>``, keyed by
+    its id; a measured noticing's is no line of the log, ``sweep._noticing_item``), else that stage
+    on its open line; None where its stage is none the log serves."""
     from turbotab.core.exit_target import toward
     from turbotab.core.quest import QUESTIONS, STAGE_NAMES
 
@@ -417,10 +417,11 @@ def triage_refusal(t: Any) -> Any:
 
     Each way forward names the card it opens (``target``, G12; the owner's Q3, 2026-11-04: no dead
     end), since Fit sits in the tapestry, which records nothing (calm/FOUNDATION §1): the triage in
-    its stage, on its open line; a blocking noticing's own line; where a noticing kept to act on is
-    acted on (:func:`_acted_target`); and "Record as a limitation", a decision, the triage's card,
-    which offers that same decision on the noticing's line. "Keep the recommended dispositions"
-    names none: the triage's way forward beside it opens the same card."""
+    its stage, on its open line; where a blocking noticing is decided, and where a noticing kept to
+    act on is acted on (:func:`_decided_target`: the question it routes to, else its own line where
+    the quest log serves one, else its stage); and "Record as a limitation", a decision, the
+    triage's card, which offers that same decision on the noticing's line. "Keep the recommended
+    dispositions" names none: the triage's way forward beside it opens the same card."""
     from turbotab.core.decisions import Refusal
     from turbotab.core.exit_target import toward
     from turbotab.core.quest import STAGE_NAMES
@@ -436,7 +437,7 @@ def triage_refusal(t: Any) -> Any:
             f"{PRESS_WAITS_FOR_TRIAGE} {_noticings(len(blocking))} must be resolved first"
             f"{_named(blocking)}",
             exits=[{"label": f"Decide: {i.summary}", "decision": None,
-                    "target": toward(stage=i.stage, key=i.id)} for i in blocking])
+                    "target": _decided_target(i)} for i in blocking])
     waiting = [i for i in items if i.recorded is None]
     if not waiting:
         unacted = [i for i in items if i.recorded == "act_on_it"]
@@ -446,7 +447,7 @@ def triage_refusal(t: Any) -> Any:
         exits: list[dict[str, Any]] = []
         for i in unacted:
             exits.append({"label": f"Act on it {_acted_at(i)}: {i.summary}", "decision": None,
-                          "target": _acted_target(i)})
+                          "target": _decided_target(i)})
             exits.append({"label": f"Record as a limitation: {i.summary}", "decision": {
                 "kind": "confirm_sweep", "stage": stage, "sweep": "noticings",
                 "lines": [{"id": i.line, "key": i.id, "value": "could_bias"}]},
