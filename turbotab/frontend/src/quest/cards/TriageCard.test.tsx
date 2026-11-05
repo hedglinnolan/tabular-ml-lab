@@ -352,12 +352,38 @@ describe("a noticing recorded to act on, before the gate passes (DE1)", () => {
     expect(within(card).queryByRole("button", { name: LIMIT })).toBeNull();
   });
 
-  it("waits, disabled, while a noticing blocks the triage, as Confirm all does", () => {
+  /**
+   * The gate's refusal offers "Record as a limitation" only once every noticing listed has a
+   * recorded disposition and none blocks (core/fit_press.py `triage_refusal`: a blocker is decided
+   * first, then an open noticing is triaged; core/seal.py the same under Predict). A one-line
+   * confirmation records every other noticing as recorded, else as recommended (core/sweep.py
+   * `_confirm_the_triage`), so pressed beside an open noticing it would record that one too, at the
+   * engine's recommendation, untriaged: the press is not offered there.
+   */
+  it("is not offered while a noticing blocks the triage, which is decided first", () => {
     serve();
     const blocker = item("outcome_constant", { blocker: true, severity: "critical" });
     const t: Triage = { ...kept(ESTIMATE), items: [blocker, ...kept(ESTIMATE).items], blockers: 1, confirmable: false, answered: false };
     const card = mount(t);
-    expect(within(itemEl(card, ACT.id)).getByRole("button", { name: LIMIT })).toBeDisabled();
+    expect(itemEl(card, ACT.id).textContent).toContain(`${ACT.label} · recorded`);
+    expect(within(card).queryByRole("button", { name: LIMIT })).toBeNull();
+  });
+
+  it("is not offered while another noticing is still open, whose triage Confirm all records", () => {
+    serve();
+    // A noticing that arrived after the triage was confirmed (or one whose recorded disposition no
+    // longer stands): its disposition is not recorded. As core/sweep.py `triage` serves it then:
+    // confirmable (items, no blocker, the gate not passed), not answered.
+    const open: Triage = { ...kept(ESTIMATE), items: kept(ESTIMATE).items.map((i) => (i.id === NOTE.id ? { ...i, recorded: null } : i)), answered: false };
+    expect(open.confirmable).toBe(true);
+    expect(open.items.filter((i) => i.recorded === "act_on_it").map((i) => i.id)).toEqual([ACT.id]);
+    const card = mount(open);
+    expect(within(card).queryByRole("button", { name: LIMIT })).toBeNull();
+    expect(within(card).getByTestId("triage-confirm")).toBeEnabled();
+    // Once that noticing is triaged, the line recorded act on it offers it again.
+    cleanup();
+    const answered = mount({ ...open, items: kept(ESTIMATE).items, answered: true });
+    expect(within(itemEl(answered, ACT.id)).getByRole("button", { name: LIMIT })).toBeEnabled();
   });
 });
 

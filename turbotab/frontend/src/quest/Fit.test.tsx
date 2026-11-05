@@ -209,7 +209,8 @@ describe("Fit, a press the engine refused", () => {
   const TRIAGE_IN_MODELS = "Triage the open noticings in Models";
   const KEEP = "Keep the recommended dispositions";
   // Each way forward that names no decision names the card it opens (core/fit_press.py
-  // `triage_refusal`, G12): the triage's, Models on its open line; a blocking noticing's own line.
+  // `triage_refusal`, G12): the triage's, Models on its open line; where a blocking noticing is
+  // decided (a finding's own line here; a measured one's question, test_fit_press_triage.py).
   const AT_TRIAGE = { stage: "models", key: null };
   const OPEN: Refusal = {
     error: {
@@ -315,7 +316,7 @@ describe("Fit, a press the engine refused", () => {
       expect(decide).not.toHaveBeenCalled();
     });
 
-    it("opens a blocking noticing's own line", async () => {
+    it("opens the line a blocking noticing is decided on, a finding's own", async () => {
       const open = vi.fn();
       await pressRefused(BLOCKING, open);
       expect(presses()).toEqual([[plain(BLOCKING.error.exits[0]!.label), "data:outcome_constant"]]);
@@ -338,6 +339,43 @@ describe("Fit, a press the engine refused", () => {
       await user.click(limit!);
       expect(open.mock.calls).toEqual([[AT_ACT], [AT_TRIAGE]]);
       expect(decide).not.toHaveBeenCalled();
+    });
+
+    it("opens the cards the server's 409 names, read through the client as fetch answers it", async () => {
+      // No RefusalError is made here: the press goes through api.pressFit to fetch, which answers
+      // the 409 as the server serves it (server/tests/test_fit_press_holds_api.py), so the targets
+      // reach the presses only as the client parses them (client.ts `parseRefusal`).
+      const posted: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if ((init?.method ?? "GET") !== "POST") return new Promise<Response>(() => {});
+          posted.push(url);
+          return new Response(JSON.stringify(KEPT), { status: 409, headers: { "Content-Type": "application/json" } });
+        }),
+      );
+      try {
+        const open = vi.fn();
+        wrap(
+          <OpenCard.Provider value={open}>
+            <FitControl pid="p" log={logWith(unlocked)} fit={fitStatus("fresh", 1)} />
+          </OpenCard.Provider>,
+        );
+        await userEvent.setup().click(screen.getByTestId("fit"));
+        await within(screen.getByTestId("fit-position")).findByRole("alert");
+        expect(posted).toEqual(["/api/projects/p/fit"]);
+        expect(presses()).toEqual([
+          [plain(ACT), "data:sas_zeros"],
+          [plain(LIMIT), "models"],
+        ]);
+        const [act, limit] = screen.getAllByTestId("fit-to");
+        await userEvent.setup().click(act!);
+        await userEvent.setup().click(limit!);
+        expect(open.mock.calls).toEqual([[AT_ACT], [AT_TRIAGE]]);
+        expect(posted).toHaveLength(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
 
     it("opens the card a way forward of the fit's own refusal names, a decision's included, and says the one with no card in words", () => {

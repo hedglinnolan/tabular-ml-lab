@@ -788,6 +788,30 @@ describe("the usual-intake card, where the stage refuses the analysis of an answ
       expect(within(second.refused).queryByTestId("usual-intake-refused-to")).toBeNull();
       expect(second.refused.querySelector("p")).toHaveTextContent(second.ask.label);
     });
+
+    it("is said in words where the card it names is this one, whose fields answer it", () => {
+      // core/stages/usual_intake.py serves "Name the recall-day columns" (and the component's
+      // column, or its amounts) with `toward("set_usual_intake")`, this card's own line: a press
+      // there would only open the card it sits in.
+      const open = vi.fn();
+      const at = served();
+      const nutrient = at.offer.candidates[0]!.column;
+      const own = { label: "Name the recall-day columns", decision: null, target: { stage: "models", key: KIND } };
+      const why = "Each participant has one row: name the columns that hold each recall day, first recall first.";
+      mount({
+        artifact: { ...at.artifact, analyses: [analysisOf({ nutrient, model: "amount_only", applies: false, refused: why, exits: [own], methods: `No usual-intake distribution was estimated for \`${nutrient}\`: ${why}` })] },
+        answers: { [nutrient]: { model: "amount_only" } },
+        decisions: [{ id: "r9", decision: { kind: KIND, nutrient, model: "amount_only" } as unknown as Decision }],
+        line: { status: "answered", decision_id: "r9" },
+        open,
+      });
+      const refused = screen.getByTestId("usual-intake-refused");
+      expect(lineOf().key).toBe(own.target.key);
+      expect(within(refused).queryByTestId("usual-intake-refused-to")).toBeNull();
+      expect(within(refused).queryByRole("button")).toBeNull();
+      expect(refused.querySelector("p")).toHaveTextContent(own.label);
+      expect(open).not.toHaveBeenCalled();
+    });
   });
 
   it("answers a way forward the engine refuses in its words, at the refusal", async () => {

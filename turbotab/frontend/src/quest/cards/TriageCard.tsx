@@ -68,10 +68,11 @@ function asLimitation(triage: Triage, item: TriageItem): Omit<ConfirmSweepInput,
  * disposition and its reason, and, where one is owed and the reason does not say so, that a
  * limitation sentence is; a blocker is decided on its own first. "Confirm all" records each as listed (`confirm_sweep`, the gate's
  * stage, sweep "noticings"). A noticing recorded "act on it" holds the gate until it is acted on
- * where it is decided, or its disposition is changed (the owner's Q8): before the gate passes its
- * line offers "Record as a limitation", which records that change (`asLimitation`), the decision
- * the gate's refusal names, whose way forward opens this card (FOUNDATION §1: the card is the one
- * place a choice is recorded); its line then reads as recorded so, and offers it no more.
+ * where it is decided, or its disposition is changed (the owner's Q8): before the gate passes,
+ * once every noticing's disposition is recorded and none blocks, its line offers "Record as a
+ * limitation", which records that change (`asLimitation`), the decision the gate's refusal names
+ * then, whose way forward opens this card (FOUNDATION §1: the card is the one place a choice is
+ * recorded); its line then reads as recorded so, and offers it no more.
  * Once the gate has passed (`passed`: under Predict the held-out rows
  * are open, under Estimate the plan is fixed) the card is read, not confirmed, and its heading says
  * so in the past: settled only where no noticing is open and none recorded "act on it" is still
@@ -100,6 +101,12 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
   const settled = triage.passed && open === 0 && toAct === 0;
   const unsettled = [open ? `${open} open` : "", toAct ? `${toAct} still to act on` : ""].filter(Boolean).join(" and ");
   const counted = items.length === 1 ? "1 noticing" : `${items.length} noticings`;
+  // A line recorded "act on it" offers its change of disposition only where the gate's refusal
+  // offers it (core/fit_press.py `triage_refusal`, core/seal.py): before the gate passes, with
+  // every noticing's disposition recorded and none blocking (`answered`). Beside an open noticing
+  // the one-line confirmation would record that one too, as the engine recommends (core/sweep.py
+  // `_confirm_the_triage`), untriaged: there Confirm all is the press, as the refusal says.
+  const changeable = triage.answered && !triage.passed;
   /** Record the triage: every noticing as listed (Confirm all, no lines), or one line set. */
   const press = (sweep: Omit<ConfirmSweepInput, "kind"> = { stage: triage.stage as SweepStage, sweep: "noticings", lines: [] }) => {
     setRefused(null);
@@ -131,12 +138,12 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
               {i.blocker ? "Resolve first · " : ""}
               {i.recorded && i.recorded !== i.recommended ? `Recommended: ${i.label} · recorded ${RECORDED[i.recorded]}` : i.label}
               {i.recorded && i.recorded === i.recommended ? " · recorded" : ""}
-              {i.recorded === "act_on_it" && !triage.passed ? (
+              {i.recorded === "act_on_it" && changeable ? (
                 <button
                   type="button"
                   className={r.linkButton}
                   onClick={() => press(asLimitation(triage, i))}
-                  disabled={confirm.isPending || !triage.confirmable}
+                  disabled={confirm.isPending}
                   data-testid="triage-as-limitation"
                 >
                   Record as a limitation

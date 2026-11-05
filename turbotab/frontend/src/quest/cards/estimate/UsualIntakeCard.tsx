@@ -28,8 +28,8 @@
  * weekend column's values, the survey question unanswered) the stage serves as a refused analysis,
  * kept before the lock since it asks for an answer (core/estimand.py `withhold`). The card says each
  * in the engine's words (the analysis's methods sentence, which names the component and the
- * refusal), then each way forward that names no decision in words (or, where it names the card it
- * opens and the shell opens cards, as a press that opens it: G12), and offers each that is a
+ * refusal), then each way forward that names no decision in words (or, where it names another
+ * card and the shell opens cards, as a press that opens it: G12), and offers each that is a
  * decision as a press that records it as served. It shows no analysis that applies, and so no
  * number. A press the engine refuses (under prediction, a column the table lacks) is answered in its
  * own words, with its exits.
@@ -192,11 +192,13 @@ const finish = (text: string) => (/[.!?]$/.test(text.trim()) ? text.trim() : `${
 /** An analysis the stage refused: the engine's sentence of it, each way forward that names no
  *  decision in words after it, and a press for each that is a decision. One that names no decision
  *  but the card it opens (the survey question's, core/stages/usual_intake.py) is, where the shell
- *  opens cards, a press that opens it instead of a sentence. A press the server does not record is
- *  answered here, in its words. */
-function Refused({ card, analysis }: { card: CardWiring; analysis: Analysis }) {
+ *  opens cards, a press that opens it instead of a sentence; one that names this card's own line
+ *  (`own`: naming the component's columns, `toward("set_usual_intake")`) is said in words, since
+ *  this card's fields answer it and a press would open only the card it sits in. A press the
+ *  server does not record is answered here, in its words. */
+function Refused({ card, analysis, own }: { card: CardWiring; analysis: Analysis; own: string }) {
   const opener = useOpenTarget();
-  const ways = waysOf(analysis).map((x) => ({ ...x, open: opener(x) }));
+  const ways = waysOf(analysis).map((x) => ({ ...x, open: x.target?.key === own ? null : opener(x) }));
   const at = (i: number) => `refused:${analysis.nutrient}:${i}`;
   const answer = card.answerAt && ways.some((_, i) => card.answerAt!.key === at(i)) ? card.answerAt.node : null;
   return (
@@ -252,6 +254,7 @@ function Body({
   analyses,
   answered,
   initial,
+  own,
 }: {
   card: CardWiring;
   offer: UsualIntakeOffer;
@@ -259,6 +262,8 @@ function Body({
   answered: boolean;
   /** The component of the line's own record, once the line is answered. */
   initial: string;
+  /** The line's key, the card a way forward names when it names this one. */
+  own: string;
 }) {
   const answers = card.state?.usual_intake ?? null;
   const components = componentsOf(offer, answers);
@@ -281,7 +286,7 @@ function Body({
       {analyses
         .filter((a) => a.refused)
         .map((a) => (
-          <Refused key={a.nutrient} card={card} analysis={a} />
+          <Refused key={a.nutrient} card={card} analysis={a} own={own} />
         ))}
       <div className={c.fields}>
         <SelectField
@@ -361,6 +366,7 @@ export const UsualIntakeCard: LineCard = ({ pid, line }) => {
             analyses={analyses}
             answered={line.status === "answered"}
             initial={initial}
+            own={line.key}
           />
         </StaleVeil>
       ) : failed && view ? (
